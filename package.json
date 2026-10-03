@@ -1,0 +1,33 @@
+{
+  "name": "haraka-erp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "imapflow": "^2.2.1",
+    "lucide-react": "^1.49.0",
+    "mailparser": "^3.9.33",
+    "next": "16.3.8",
+    "nodemailer": "^10.0.13",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^24.19.1",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,227 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { all, get, getSetting, nextNumber, run, tx } from "@/lib/db";
+import { requireUser } from "@/lib/session";
+import { numf, str, withMsg } from "@/lib/form";
+import { allocateFefo, releaseAllocations } from "@/lib/inventory";
+import { addDays, today } from "@/lib/format";
+import {
+  invoiceEmail,
+  loadOrderForEmail,
+  orderConfirmationEmail,
+  paymentReceiptEmail,
+  reminderEmail,
+  sendEmail,
+  shippingEmail,
+} from "@/lib/email";
+
+type Line = { product_id: number; qty: number; price: number };
+
+function totals(lines: Line[], discountPct: number, taxPct: number) {
+  const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
+  const afterDisc = subtotal * (1 - discountPct / 100);
+  return { subtotal, total: Math.round(afterDisc * (1 + taxPct / 100)) };
+}
+
+export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: string }> {
+  await requireUser();
+  const customerId = numf(fd, "customer_id");
+  const intent = str(fd, "intent");
+  let lines: Line[] = [];
+  try {
+    lines = (JSON.parse(str(fd, "lines")) as Line[]).filter((l) => l.product_id && l.qty > 0);
+  } catch {
+    return { error: "Data item tidak valid." };
+  }
+  if (!customerId) return { error: "Pilih pelanggan." };
+  if (!lines.length) return { error: "Tambahkan minimal satu produk." };
+
+  const discountPct = numf(fd, "discount_pct");
+  const taxPct = numf(fd, "tax_pct");
+  const { subtotal, total } = totals(lines, discountPct, taxPct);
+  const orderDate = str(fd, "order_date") || today();
+
+  const soId = tx(() => {
+    const soNo = nextNumber("SO", "sales_orders", "so_no");
+    const r = run(
+      `INSERT INTO sales_orders (so_no, customer_id, order_date, status, discount_pct, tax_pct, subtotal, total, notes)
+       VALUES (?,?,?, 'draft', ?,?,?,?,?)`,
+      soNo,
+      customerId,
+      orderDate,
+      discountPct,
+      taxPct,
+      subtotal,
+      total,
+      str(fd, "notes"),
+    );
+    const id = Number(r.lastInsertRowid);
+    for (const l of lines) run("INSERT INTO so_items (so_id, product_id, qty, price) VALUES (?,?,?,?)", id, l.product_id, Math.round(l.qty), l.price);
+    return id;
+  });
+
+  if (intent === "confirm") {
+    const note = await doConfirm(soId);
+    redirect(withMsg(`/penjualan/${soId}`, `Pesanan dibuat & dikonfirmasi. ${note}`));
+  }
+  redirect(withMsg(`/penjualan/${soId}`, "Draft pesanan disimpan."));
+}
+
+async function autoEmail(settingKey: string, soId: number, build: typeof orderConfirmationEmail, refType = "sales_order") {
+  if (getSetting(settingKey) !== "1") return "";
+  const data = loadOrderForEmail(soId);
+  if (!data) return "";
+  if (!data.order.email) return "Pelanggan belum punya email — email tidak dikirim.";
+  const mail = build(data.order, data.items);
+  const res = await sendEmail({ to: data.order.email, ...mail, refType, refId: soId });
+  return res.ok ? `Email terkirim ke ${data.order.email}.` : `Email gagal: ${res.error}`;
+}
+
+async function doConfirm(soId: number) {
+  run("UPDATE sales_orders SET status = 'dikonfirmasi' WHERE id = ? AND status = 'draft'", soId);
+  return autoEmail("auto_email_order", soId, orderConfirmationEmail);
+}
+
+export async function confirmOrder(fd: FormData) {
+  await requireUser();
+  const id = numf(fd, "id");
+  const note = await doConfirm(id);
+  revalidatePath("/penjualan");
+  redirect(withMsg(`/penjualan/${id}`, `Pesanan dikonfirmasi. ${note}`));
+}
+
+export async function shipOrder(fd: FormData) {
+  await requireUser();
+  const id = numf(fd, "id");
+  const so = get<{ id: number; so_no: string; status: string; customer_id: number; payment_terms: number }>(
+    "SELECT so.*, c.payment_terms FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
+    id,
+  );
+  if (!so || so.status !== "dikonfirmasi") redirect(withMsg(`/penjualan/${id}`, "Hanya pesanan dikonfirmasi yang bisa dikirim.", "error"));
+
+  const shipDate = str(fd, "shipped_at") || today();
+  try {
+    tx(() => {
+      const items = all<{ id: number; product_id: number; qty: number }>("SELECT id, product_id, qty FROM so_items WHERE so_id = ?", id);
+      for (const it of items) allocateFefo(it.id, it.product_id, it.qty, so.so_no);
+      const invoiceNo = nextNumber("INV", "sales_orders", "invoice_no");
+      run(
+        `UPDATE sales_orders SET status='dikirim', shipped_at=?, courier=?, tracking_no=?, invoice_no=?, due_date=? WHERE id=?`,
+        shipDate,
+        str(fd, "courier"),
+        str(fd, "tracking_no"),
+        invoiceNo,
+        addDays(shipDate, so.payment_terms),
+        id,
+      );
+    });
+  } catch (e) {
+    redirect(withMsg(`/penjualan/${id}`, e instanceof Error ? e.message : "Gagal memproses pengiriman.", "error"));
+  }
+
+  const notes = [await autoEmail("auto_email_shipping", id, shippingEmail), await autoEmail("auto_email_invoice", id, invoiceEmail, "invoice")]
+    .filter(Boolean)
+    .filter((v, i, a) => a.indexOf(v) === i);
+  revalidatePath("/penjualan");
+  revalidatePath("/inventori");
+  redirect(withMsg(`/penjualan/${id}`, `Pesanan dikirim, stok dipotong (FEFO), invoice dibuat. ${notes.join(" ")}`));
+}
+
+export async function recordPayment(fd: FormData) {
+  await requireUser();
+  const id = numf(fd, "id");
+  const amount = numf(fd, "amount");
+  const so = get<{ total: number; paid: number; status: string }>("SELECT total, paid, status FROM sales_orders WHERE id = ?", id);
+  if (!so || amount <= 0) redirect(withMsg(`/penjualan/${id}`, "Nominal pembayaran tidak valid.", "error"));
+  if (amount > so.total - so.paid + 0.5) redirect(withMsg(`/penjualan/${id}`, "Nominal melebihi sisa tagihan.", "error"));
+
+  tx(() => {
+    run(
+      "INSERT INTO payments (so_id, pay_date, amount, method, note) VALUES (?,?,?,?,?)",
+      id,
+      str(fd, "pay_date") || today(),
+      amount,
+      str(fd, "method") || "Transfer",
+      str(fd, "note"),
+    );
+    run("UPDATE sales_orders SET paid = paid + ? WHERE id = ?", amount, id);
+    run("UPDATE sales_orders SET status = 'selesai' WHERE id = ? AND status = 'dikirim' AND paid >= total", id);
+  });
+
+  let note = "";
+  if (fd.get("send_receipt")) {
+    const data = loadOrderForEmail(id);
+    if (data?.order.email) {
+      const res = await sendEmail({ to: data.order.email, ...paymentReceiptEmail(data.order, amount), refType: "sales_order", refId: id });
+      note = res.ok ? `Tanda terima dikirim ke ${data.order.email}.` : `Email gagal: ${res.error}`;
+    }
+  }
+  revalidatePath("/penjualan");
+  redirect(withMsg(`/penjualan/${id}`, `Pembayaran dicatat. ${note}`));
+}
+
+export async function cancelOrder(fd: FormData) {
+  await requireUser();
+  const id = numf(fd, "id");
+  const so = get<{ so_no: string; status: string; paid: number }>("SELECT so_no, status, paid FROM sales_orders WHERE id = ?", id);
+  if (!so || so.status === "batal" || so.status === "selesai") redirect(withMsg(`/penjualan/${id}`, "Pesanan ini tidak bisa dibatalkan.", "error"));
+  if (so.paid > 0) redirect(withMsg(`/penjualan/${id}`, "Pesanan sudah ada pembayaran — selesaikan refund dahulu.", "error"));
+  tx(() => {
+    if (so.status === "dikirim") releaseAllocations(id, so.so_no);
+    run("UPDATE sales_orders SET status = 'batal' WHERE id = ?", id);
+  });
+  revalidatePath("/penjualan");
+  redirect(withMsg(`/penjualan/${id}`, so.status === "dikirim" ? "Pesanan dibatalkan dan stok dikembalikan." : "Pesanan dibatalkan."));
+}
+
+export async function deleteDraft(fd: FormData) {
+  await requireUser();
+  const id = numf(fd, "id");
+  run("DELETE FROM sales_orders WHERE id = ? AND status = 'draft'", id);
+  revalidatePath("/penjualan");
+  redirect(withMsg("/penjualan", "Draft dihapus."));
+}
+
+export async function emailOrderDocument(fd: FormData) {
+  await requireUser();
+  const id = numf(fd, "id");
+  const kind = str(fd, "kind");
+  const data = loadOrderForEmail(id);
+  if (!data) redirect("/penjualan");
+  const to = str(fd, "to") || data.order.email;
+  if (!to) redirect(withMsg(`/penjualan/${id}`, "Pelanggan belum punya email. Isi alamat tujuan.", "error"));
+  const builders = {
+    konfirmasi: () => orderConfirmationEmail(data.order, data.items),
+    pengiriman: () => shippingEmail(data.order, data.items),
+    invoice: () => invoiceEmail(data.order, data.items),
+    pengingat: () => reminderEmail(data.order),
+  } as const;
+  const build = builders[kind as keyof typeof builders];
+  if (!build) redirect(withMsg(`/penjualan/${id}`, "Jenis dokumen tidak dikenal.", "error"));
+  const res = await sendEmail({ to, ...build(), refType: kind === "invoice" || kind === "pengingat" ? "invoice" : "sales_order", refId: id });
+  redirect(withMsg(`/penjualan/${id}`, res.ok ? `Email ${kind} terkirim ke ${to}.` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
+}
+
+/** Kirim pengingat ke semua invoice yang lewat jatuh tempo. */
+export async function sendOverdueReminders() {
+  await requireUser();
+  const overdue = all<{ id: number }>(
+    "SELECT so.id FROM sales_orders so WHERE so.invoice_no IS NOT NULL AND so.status != 'batal' AND so.paid < so.total AND so.due_date < ?",
+    today(),
+  );
+  let ok = 0;
+  let fail = 0;
+  for (const o of overdue) {
+    const data = loadOrderForEmail(o.id);
+    if (!data?.order.email) {
+      fail++;
+      continue;
+    }
+    const res = await sendEmail({ to: data.order.email, ...reminderEmail(data.order), refType: "invoice", refId: o.id });
+    if (res.ok) ok++;
+    else fail++;
+  }
+  redirect(withMsg("/penjualan?tab=piutang", `Pengingat terkirim: ${ok}. Gagal/tanpa email: ${fail}.`, fail && !ok ? "error" : "msg"));
+}

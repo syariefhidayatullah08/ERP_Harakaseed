@@ -1,0 +1,410 @@
+import "server-only";
+import { DatabaseSync } from "node:sqlite";
+import fs from "node:fs";
+import path from "node:path";
+import { hashPassword } from "./password";
+
+const DB_DIR = path.join(process.cwd(), "data");
+const DB_PATH = process.env.DATABASE_PATH ?? path.join(DB_DIR, "haraka.db");
+
+const globalForDb = globalThis as unknown as { __harakaDb?: DatabaseSync };
+
+function open(): DatabaseSync {
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  const db = new DatabaseSync(DB_PATH);
+  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+  migrate(db);
+  seed(db);
+  return db;
+}
+
+
+type Row = Record<string, unknown>;
+type Param = string | number | null;
+
+export function all<T = Row>(sql: string, ...params: Param[]): T[] {
+  return db.prepare(sql).all(...params).map((r) => ({ ...r })) as T[];
+}
+
+export function get<T = Row>(sql: string, ...params: Param[]): T | undefined {
+  const r = db.prepare(sql).get(...params);
+  return (r ? { ...r } : undefined) as T | undefined;
+}
+
+export function run(sql: string, ...params: Param[]) {
+  return db.prepare(sql).run(...params);
+}
+
+export function tx<T>(fn: () => T): T {
+  db.exec("BEGIN");
+  try {
+    const result = fn();
+    db.exec("COMMIT");
+    return result;
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+/** Next document number, e.g. SO-2026-0007. */
+export function nextNumber(prefix: string, table: string, column: string): string {
+  const year = new Date().getFullYear();
+  const like = `${prefix}-${year}-%`;
+  const row = get<{ n: string | null }>(
+    `SELECT MAX(${column}) AS n FROM ${table} WHERE ${column} LIKE ?`,
+    like,
+  );
+  const last = row?.n ? Number(row.n.split("-").pop()) : 0;
+  return `${prefix}-${year}-${String(last + 1).padStart(4, "0")}`;
+}
+
+export function getSetting(key: string, fallback = ""): string {
+  return get<{ value: string }>("SELECT value FROM settings WHERE key = ?", key)?.value ?? fallback;
+}
+
+export function setSetting(key: string, value: string) {
+  run(
+    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    key,
+    value,
+  );
+}
+
+function migrate(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'staff',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY,
+      sku TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      crop TEXT NOT NULL,
+      category TEXT NOT NULL,
+      seed_type TEXT NOT NULL DEFAULT 'F1 Hibrida',
+      pack_size TEXT NOT NULL,
+      unit_price REAL NOT NULL DEFAULT 0,
+      min_stock INTEGER NOT NULL DEFAULT 0,
+      shelf_life_months INTEGER NOT NULL DEFAULT 18,
+      description TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS growers (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      village TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      area_ha REAL NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS productions (
+      id INTEGER PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      grower_id INTEGER REFERENCES growers(id),
+      area_ha REAL NOT NULL DEFAULT 0,
+      plant_date TEXT NOT NULL,
+      est_harvest TEXT,
+      harvest_kg REAL,
+      status TEXT NOT NULL DEFAULT 'tanam',
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS lots (
+      id INTEGER PRIMARY KEY,
+      lot_no TEXT NOT NULL UNIQUE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      production_id INTEGER REFERENCES productions(id),
+      qty_initial INTEGER NOT NULL,
+      qty_available INTEGER NOT NULL,
+      germination REAL NOT NULL DEFAULT 0,
+      purity REAL NOT NULL DEFAULT 0,
+      moisture REAL NOT NULL DEFAULT 0,
+      prod_date TEXT NOT NULL,
+      expiry_date TEXT NOT NULL,
+      location TEXT NOT NULL DEFAULT 'Gudang Jember',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS stock_moves (
+      id INTEGER PRIMARY KEY,
+      lot_id INTEGER NOT NULL REFERENCES lots(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      kind TEXT NOT NULL,
+      qty INTEGER NOT NULL,
+      ref TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'distributor',
+      contact_person TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      city TEXT NOT NULL DEFAULT '',
+      address TEXT NOT NULL DEFAULT '',
+      payment_terms INTEGER NOT NULL DEFAULT 30,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_orders (
+      id INTEGER PRIMARY KEY,
+      so_no TEXT NOT NULL UNIQUE,
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      order_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      discount_pct REAL NOT NULL DEFAULT 0,
+      tax_pct REAL NOT NULL DEFAULT 0,
+      subtotal REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      paid REAL NOT NULL DEFAULT 0,
+      invoice_no TEXT,
+      due_date TEXT,
+      shipped_at TEXT,
+      courier TEXT NOT NULL DEFAULT '',
+      tracking_no TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS so_items (
+      id INTEGER PRIMARY KEY,
+      so_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      qty INTEGER NOT NULL,
+      price REAL NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS so_allocations (
+      id INTEGER PRIMARY KEY,
+      so_item_id INTEGER NOT NULL REFERENCES so_items(id) ON DELETE CASCADE,
+      lot_id INTEGER NOT NULL REFERENCES lots(id),
+      qty INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY,
+      so_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+      pay_date TEXT NOT NULL,
+      amount REAL NOT NULL,
+      method TEXT NOT NULL DEFAULT 'Transfer',
+      note TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      address TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_orders (
+      id INTEGER PRIMARY KEY,
+      po_no TEXT NOT NULL UNIQUE,
+      supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+      order_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      total REAL NOT NULL DEFAULT 0,
+      notes TEXT NOT NULL DEFAULT '',
+      received_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS po_items (
+      id INTEGER PRIMARY KEY,
+      po_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      qty REAL NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'pcs',
+      price REAL NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS emails (
+      id INTEGER PRIMARY KEY,
+      direction TEXT NOT NULL,
+      message_id TEXT UNIQUE,
+      from_addr TEXT NOT NULL DEFAULT '',
+      to_addr TEXT NOT NULL DEFAULT '',
+      subject TEXT NOT NULL DEFAULT '',
+      body_html TEXT NOT NULL DEFAULT '',
+      body_text TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'terkirim',
+      error TEXT NOT NULL DEFAULT '',
+      ref_type TEXT,
+      ref_id INTEGER,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_lots_product ON lots(product_id);
+    CREATE INDEX IF NOT EXISTS idx_moves_lot ON stock_moves(lot_id);
+    CREATE INDEX IF NOT EXISTS idx_so_customer ON sales_orders(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_emails_ref ON emails(ref_type, ref_id);
+  `);
+}
+
+const PRODUCTS: [string, string, string, string, string, string, number, number, string][] = [
+  ["HKS-KNT-50", "KENTA F1", "Semangka Tanpa Biji", "Buah", "F1 Hibrida", "50 butir", 185000, 200, "Semangka seedless, daging merah renyah, kulit kuat untuk distribusi jarak jauh."],
+  ["HKS-DRA-10", "DIARA F1", "Melon Daging Oranye", "Buah", "F1 Hibrida", "10 g", 165000, 200, "Melon jaring daging oranye, manis tinggi, tahan simpan."],
+  ["HKS-BNT-10", "BIANTARA F1", "Cabai Merah Keriting", "Cabai", "F1 Hibrida", "10 g", 145000, 400, "Cabai keriting produktif, adaptif dataran rendah–menengah."],
+  ["HKS-MRS-250", "MARISA F1", "Jagung Manis", "Jagung", "F1 Hibrida", "250 g", 95000, 300, "Jagung manis tongkol besar, kadar gula tinggi."],
+  ["HKS-MEI-25", "MEILI F1", "Mentimun", "Sayuran Buah", "F1 Hibrida", "25 g", 85000, 300, "Mentimun segar, buah lurus seragam, hijau cerah."],
+  ["HKS-SHW-10", "SAHWA F1", "Tomat Salad Dataran Rendah", "Sayuran Buah", "F1 Hibrida", "10 g", 135000, 250, "Tomat salad tahan panas untuk dataran rendah."],
+  ["HKS-JNU-10", "JANU F1", "Terong Ungu", "Sayuran Buah", "F1 Hibrida", "10 g", 75000, 250, "Terong ungu mengkilap, buah panjang seragam."],
+  ["HKS-VDA-25", "VEDA F1", "Pare", "Sayuran Buah", "F1 Hibrida", "25 g", 70000, 200, "Pare hijau produktif, bintil rapat."],
+  ["HKS-VNT-100", "VINETA", "Kacang Panjang Biji Hitam", "Kacang-kacangan", "OP", "100 g", 35000, 500, "Kacang panjang biji hitam, polong panjang dan renyah."],
+  ["HKS-LMN-250", "LUMINA", "Buncis", "Kacang-kacangan", "OP", "250 g", 45000, 300, "Buncis tegak, polong lurus dan lembut."],
+  ["HKS-SDY-25", "SENDAYU", "Sawi Manis", "Sayuran Daun", "OP", "25 g", 25000, 400, "Sawi manis cepat panen, daun lebar."],
+  ["HKS-CLM-5", "CALLINA MADU", "Pepaya Premium", "Buah", "OP", "5 g", 55000, 150, "Pepaya Callina rasa madu, daging tebal oranye kemerahan."],
+];
+
+function seed(db: DatabaseSync) {
+  const has = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
+  if (has.n > 0) return;
+
+  db.exec("BEGIN");
+  try {
+    db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'admin')").run(
+      "Administrator",
+      (process.env.ADMIN_EMAIL ?? "admin@harakaseeds.com").toLowerCase(),
+      hashPassword(process.env.ADMIN_PASSWORD ?? "haraka123"),
+    );
+
+    const settings: Record<string, string> = {
+      company_name: "PT Benih Haraka Sejahtera",
+      company_brand: "HARAKA SEED",
+      company_tagline: "Quality you can plant with confidence",
+      company_address: "Jl. H. Moh. Noer, RT001/RW001, Desa Rowoindah, Ajung, Jember, Jawa Timur",
+      company_phone: "0811-3784-575",
+      company_email: "ptbenihharakasejahtera@gmail.com",
+      company_website: "https://harakaseeds.com",
+      bank_info: "Bank —, No. Rek —, a.n. PT Benih Haraka Sejahtera",
+      alert_email: "ptbenihharakasejahtera@gmail.com",
+      auto_email_order: "1",
+      auto_email_shipping: "1",
+      auto_email_invoice: "1",
+    };
+    const setStmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
+    for (const [k, v] of Object.entries(settings)) setStmt.run(k, v);
+
+    const pStmt = db.prepare(
+      "INSERT INTO products (sku, name, crop, category, seed_type, pack_size, unit_price, min_stock, description) VALUES (?,?,?,?,?,?,?,?,?)",
+    );
+    for (const p of PRODUCTS) pStmt.run(...p);
+
+    if (process.env.SEED_DEMO !== "0") seedDemo(db);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+/** Contoh transaksi agar dashboard tidak kosong. Hapus lewat Pengaturan → Hapus data contoh. */
+function seedDemo(db: DatabaseSync) {
+  const today = new Date();
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const addDays = (n: number) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + n);
+    return iso(d);
+  };
+
+  const growers = [
+    ["Pak Sutrisno", "Rowoindah, Ajung", "0812-0000-0001", 1.5],
+    ["Bu Siti Aminah", "Sukorambi", "0812-0000-0002", 0.8],
+    ["Pak Hendra", "Kalisat", "0812-0000-0003", 2.0],
+  ] as const;
+  const gStmt = db.prepare("INSERT INTO growers (name, village, phone, area_ha) VALUES (?,?,?,?)");
+  for (const g of growers) gStmt.run(...g);
+
+  const customers = [
+    ["CUST-001", "CV Tani Makmur (Contoh)", "distributor", "Bapak Agus", "Jember"],
+    ["CUST-002", "UD Sumber Benih (Contoh)", "distributor", "Ibu Rina", "Banyuwangi"],
+    ["CUST-003", "Toko Tani Subur (Contoh)", "toko", "Mas Dedi", "Lumajang"],
+    ["CUST-004", "Kios Saprotan Jaya (Contoh)", "toko", "Pak Yanto", "Bondowoso"],
+  ] as const;
+  const cStmt = db.prepare(
+    "INSERT INTO customers (code, name, kind, contact_person, city, email) VALUES (?,?,?,?,?, '')",
+  );
+  for (const c of customers) cStmt.run(...c);
+
+  db.prepare("INSERT INTO suppliers (name, category) VALUES (?, ?)").run("Supplier Kemasan Aluminium Foil (Contoh)", "Kemasan");
+  db.prepare("INSERT INTO suppliers (name, category) VALUES (?, ?)").run("Supplier Fungisida Seed Treatment (Contoh)", "Bahan Perlakuan Benih");
+
+  // Lot awal per produk
+  const products = db.prepare("SELECT id, sku, min_stock FROM products").all() as { id: number; sku: string; min_stock: number }[];
+  const lotStmt = db.prepare(
+    "INSERT INTO lots (lot_no, product_id, qty_initial, qty_available, germination, purity, moisture, prod_date, expiry_date) VALUES (?,?,?,?,?,?,?,?,?)",
+  );
+  const moveStmt = db.prepare(
+    "INSERT INTO stock_moves (lot_id, product_id, kind, qty, ref, note, created_at) VALUES (?,?,?,?,?,?,?)",
+  );
+  products.forEach((p, i) => {
+    const qty = i % 4 === 3 ? Math.round(p.min_stock * 0.6) : p.min_stock * (3 + (i % 3));
+    const lotNo = `L${today.getFullYear()}${String(i + 1).padStart(3, "0")}-${p.sku.split("-")[1]}`;
+    const expiry = i === 5 ? addDays(40) : addDays(300 + i * 15);
+    const r = lotStmt.run(lotNo, p.id, qty, qty, 85 + (i % 4) * 2.5, 98 + (i % 2), 7, addDays(-120 + i), expiry);
+    moveStmt.run(Number(r.lastInsertRowid), p.id, "masuk", qty, lotNo, "Stok awal", addDays(-120 + i) + " 08:00:00");
+  });
+
+  db.prepare(
+    "INSERT INTO productions (code, product_id, grower_id, area_ha, plant_date, est_harvest, status, notes) VALUES (?,?,?,?,?,?,?,?)",
+  ).run(`PRD-${today.getFullYear()}-0001`, 3, 1, 1.5, addDays(-60), addDays(30), "tanam", "Produksi benih cabai musim kemarau");
+  db.prepare(
+    "INSERT INTO productions (code, product_id, grower_id, area_ha, plant_date, est_harvest, harvest_kg, status, notes) VALUES (?,?,?,?,?,?,?,?,?)",
+  ).run(`PRD-${today.getFullYear()}-0002`, 1, 3, 2.0, addDays(-110), addDays(-10), 42, "uji_lab", "Menunggu hasil uji daya kecambah");
+
+  // Pesanan contoh 6 bulan terakhir
+  const soStmt = db.prepare(
+    "INSERT INTO sales_orders (so_no, customer_id, order_date, status, subtotal, total, paid, invoice_no, due_date, shipped_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+  );
+  const itemStmt = db.prepare("INSERT INTO so_items (so_id, product_id, qty, price) VALUES (?,?,?,?)");
+  const prices = db.prepare("SELECT id, unit_price FROM products").all() as { id: number; unit_price: number }[];
+  let n = 0;
+  for (let m = 5; m >= 0; m--) {
+    for (let k = 0; k < 3; k++) {
+      n++;
+      const d = new Date(today);
+      d.setDate(d.getDate() - (m * 30 + (2 - k) * 9 + 1));
+      const date = iso(d);
+      const status = m === 0 && k === 2 ? "dikonfirmasi" : m === 0 && k === 1 ? "dikirim" : "selesai";
+      const lines = [prices[(n * 3) % prices.length], prices[(n * 5 + 1) % prices.length]];
+      const qtys = [10 + ((n * 7) % 30), 5 + ((n * 3) % 20)];
+      const subtotal = lines.reduce((s, l, j) => s + l.unit_price * qtys[j], 0);
+      const paid = status === "selesai" ? subtotal : status === "dikirim" ? Math.round(subtotal / 2) : 0;
+      const soNo = `SO-${d.getFullYear()}-${String(n).padStart(4, "0")}`;
+      const inv = status === "dikonfirmasi" ? null : `INV-${d.getFullYear()}-${String(n).padStart(4, "0")}`;
+      const due = new Date(d);
+      due.setDate(due.getDate() + 30);
+      const r = soStmt.run(soNo, 1 + (n % 4), date, status, subtotal, subtotal, paid, inv, iso(due), status === "dikonfirmasi" ? null : date);
+      const soId = Number(r.lastInsertRowid);
+      lines.forEach((l, j) => itemStmt.run(soId, l.id, qtys[j], l.unit_price));
+      if (paid > 0) {
+        db.prepare("INSERT INTO payments (so_id, pay_date, amount, method) VALUES (?,?,?, 'Transfer')").run(soId, date, paid);
+      }
+    }
+  }
+}
+
+// Dibuat paling akhir agar konstanta seed di atas sudah terinisialisasi.
+export const db: DatabaseSync = globalForDb.__harakaDb ?? (globalForDb.__harakaDb = open());
