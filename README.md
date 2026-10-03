@@ -37,6 +37,8 @@ vercel env pull      # ambil DATABASE_URL dkk. ke .env.local
 npm run dev          # http://localhost:3000
 ```
 
+Lupa kata sandi admin: `node --env-file=.env.local scripts/reset-password.mjs <email> <sandi-baru>`.
+
 > **Penting:** environment Development memakai database yang sama dengan Production. Agar uji coba lokal tidak mengubah data asli, jalankan dengan schema terpisah: `DB_SCHEMA=dev npm run dev`. Hapus schema uji dengan `node --env-file=.env.local scripts/drop-schema.mjs dev`.
 
 Tabel dibuat otomatis saat aplikasi pertama kali dibuka dan langsung diisi data contoh (pelanggan dan supplier bertanda "(Contoh)", pesanan 6 bulan, lot awal). Harga produk hanya perkiraan, jadi sesuaikan di menu Produk. Untuk mulai dengan data asli, buka **Pengaturan → Hapus data contoh & transaksi**.

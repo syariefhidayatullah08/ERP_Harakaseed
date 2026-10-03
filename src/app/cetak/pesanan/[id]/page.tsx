@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/session";
 import { num, rupiah, tanggal } from "@/lib/format";
 import { PrintButton } from "@/components/buttons";
 
+export const dynamic = "force-dynamic";
+
 export default async function PrintOrder({ params, searchParams }: PageProps<"/cetak/pesanan/[id]">) {
   await requireUser();
   const { id } = await params;
