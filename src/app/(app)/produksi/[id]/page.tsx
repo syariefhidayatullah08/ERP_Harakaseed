@@ -5,10 +5,12 @@ import { PRD_STATUS, num, tanggal, today } from "@/lib/format";
 import { Badge, Card, DL, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { advanceProduction } from "@/actions/production";
+import { requireAccess } from "@/lib/session";
 
 const FLOW = ["tanam", "panen", "prosesing", "uji_lab", "lulus"];
 
 export default async function ProductionDetail({ params, searchParams }: PageProps<"/produksi/[id]">) {
+  await requireAccess("produksi");
   const { id } = await params;
   const sp = await searchParams;
   const p = await get<{

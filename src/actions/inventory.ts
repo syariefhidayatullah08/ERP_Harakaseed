@@ -3,14 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { get, getSetting, run, tx } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { createLot, lowStockProducts } from "@/lib/inventory";
 import { lowStockEmail, sendEmail } from "@/lib/email";
 import { addDays } from "@/lib/format";
 
 export async function createLotAction(fd: FormData) {
-  await requireUser();
+  await requireAccess("inventori");
   const productId = numf(fd, "product_id");
   const qty = Math.round(numf(fd, "qty"));
   const lotNo = str(fd, "lot_no").toUpperCase();
@@ -38,7 +38,7 @@ export async function createLotAction(fd: FormData) {
 }
 
 export async function adjustLot(fd: FormData) {
-  await requireUser();
+  await requireAccess("inventori");
   const lotId = numf(fd, "lot_id");
   const delta = Math.round(numf(fd, "delta"));
   const reason = str(fd, "reason");
@@ -64,7 +64,7 @@ export async function adjustLot(fd: FormData) {
 }
 
 export async function sendLowStockAlert() {
-  await requireUser();
+  await requireAccess("inventori");
   const rows = await lowStockProducts();
   if (!rows.length) redirect(withMsg("/inventori", "Semua stok di atas minimum, tidak ada yang perlu dikirim."));
   const to = await getSetting("alert_email");

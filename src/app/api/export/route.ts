@@ -1,9 +1,12 @@
 import { currentUser } from "@/lib/session";
+import { canAccess } from "@/lib/access";
 import { today } from "@/lib/format";
 import { salesByCustomer, salesByProduct, salesLines, stockByLot, toCsv } from "@/lib/reports";
 
 export async function GET(request: Request) {
-  if (!(await currentUser())) return new Response("Unauthorized", { status: 401 });
+  const user = await currentUser();
+  if (!user) return new Response("Unauthorized", { status: 401 });
+  if (!canAccess(user.role, "laporan")) return new Response("Forbidden", { status: 403 });
   const url = new URL(request.url);
   const type = url.searchParams.get("type") ?? "penjualan";
   const from = url.searchParams.get("from") ?? `${today().slice(0, 4)}-01-01`;

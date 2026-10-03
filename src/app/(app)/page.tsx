@@ -2,12 +2,18 @@ import Link from "next/link";
 import { AlertTriangle, CalendarClock, Mail, PackageCheck } from "lucide-react";
 import { all, get } from "@/lib/db";
 import { lowStockProducts } from "@/lib/inventory";
-import { rupiah, num, tanggal, today, addDays, daysUntil, SO_STATUS, paymentStatus } from "@/lib/format";
-import { Badge, Card, Empty, PageHeader, StatCard } from "@/components/ui";
+import { rupiah, num, tanggal, today, addDays, daysUntil, SO_STATUS, PRD_STATUS, paymentStatus } from "@/lib/format";
+import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { BarChart, RankBars } from "@/components/bar-chart";
 import { emailConfigured } from "@/lib/email";
+import { requireUser } from "@/lib/session";
+import { canAccess } from "@/lib/access";
 
-export default async function Dashboard() {
+export default async function Dashboard({ searchParams }: PageProps<"/">) {
+  const sp = await searchParams;
+  const user = await requireUser();
+  // Peran tanpa akses penjualan (mis. gudang) melihat dasbor operasional saja.
+  if (!canAccess(user.role, "penjualan")) return <OpsDashboard error={sp.error as string} />;
   const t = today();
   const monthStart = t.slice(0, 8) + "01";
   const lastMonthStart = (() => {
@@ -98,13 +104,13 @@ export default async function Dashboard() {
           </>
         }
       />
+      <Flash error={sp.error as string} />
 
       {!emailConfigured() && (
         <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <Mail size={18} className="mt-0.5 shrink-0" />
           <div>
-            Email belum terhubung. Isi <code className="font-mono">EMAIL_USER</code> dan <code className="font-mono">EMAIL_PASS</code> di{" "}
-            <code className="font-mono">.env.local</code> lalu jalankan ulang server.{" "}
+            Email belum terhubung: <code className="font-mono">EMAIL_PASS</code> (App Password Gmail) belum diisi di environment Vercel.{" "}
             <Link href="/pengaturan" className="font-semibold underline">
               Lihat panduan
             </Link>
@@ -274,6 +280,88 @@ export default async function Dashboard() {
             )}
           </Card>
         </div>
+      </div>
+    </>
+  );
+}
+
+async function OpsDashboard({ error }: { error?: string }) {
+  const t = today();
+  const low = await lowStockProducts();
+  const expiring = await all<{ id: number; lot_no: string; name: string; qty_available: number; expiry_date: string }>(
+    `SELECT l.id, l.lot_no, p.name, l.qty_available, l.expiry_date FROM lots l JOIN products p ON p.id = l.product_id
+     WHERE l.qty_available > 0 AND l.expiry_date BETWEEN ? AND ? ORDER BY l.expiry_date`,
+    t,
+    addDays(t, 90),
+  );
+  const batches = await all<{ id: number; code: string; name: string; status: string; est_harvest: string | null }>(
+    `SELECT pr.id, pr.code, p.name, pr.status, pr.est_harvest FROM productions pr JOIN products p ON p.id = pr.product_id
+     WHERE pr.status IN ('tanam','panen','prosesing','uji_lab') ORDER BY pr.id DESC LIMIT 8`,
+  );
+  const toShip = (await get<{ n: number }>("SELECT COUNT(*) n FROM sales_orders WHERE status = 'dikonfirmasi'"))!.n;
+  const openPo = (await get<{ n: number }>("SELECT COUNT(*) n FROM purchase_orders WHERE status = 'dipesan'"))!.n;
+
+  return (
+    <>
+      <PageHeader title="Dashboard" subtitle={`Operasional gudang & produksi per ${tanggal(t)}`} />
+      <Flash error={error} />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Stok di bawah minimum" value={num(low.length)} tone={low.length ? "danger" : "default"} href="/inventori" />
+        <StatCard label="Lot kadaluarsa ≤ 90 hari" value={num(expiring.length)} tone={expiring.length ? "warn" : "default"} href="/inventori" />
+        <StatCard label="Pesanan perlu disiapkan" value={num(toShip)} hint="Sudah dikonfirmasi sales" />
+        <StatCard label="PO menunggu barang" value={num(openPo)} href="/pembelian" />
+      </div>
+      <div className="mt-5 grid gap-5 lg:grid-cols-3">
+        <Card title="Batch produksi berjalan" className="overflow-hidden">
+          {batches.length ? (
+            <ul className="divide-y divide-line text-sm">
+              {batches.map((b) => (
+                <li key={b.id}>
+                  <Link href={`/produksi/${b.id}`} className="flex items-center justify-between px-5 py-2.5 hover:bg-brand-50/50">
+                    <span>
+                      {b.name} <span className="text-xs text-muted">· {b.code}</span>
+                    </span>
+                    <Badge tone={PRD_STATUS[b.status]?.tone}>{PRD_STATUS[b.status]?.label}</Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty>Tidak ada batch berjalan.</Empty>
+          )}
+        </Card>
+        <Card title="Stok rendah">
+          {low.length ? (
+            <ul className="divide-y divide-line text-sm">
+              {low.map((p) => (
+                <li key={p.id} className="flex justify-between px-5 py-2.5">
+                  <span>{p.name}</span>
+                  <span className="tabular-nums">
+                    <b className="text-red-700">{num(p.stock)}</b> <span className="text-muted">/ {num(p.min_stock)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty>Semua stok aman.</Empty>
+          )}
+        </Card>
+        <Card title="Lot mendekati kadaluarsa">
+          {expiring.length ? (
+            <ul className="divide-y divide-line text-sm">
+              {expiring.map((l) => (
+                <li key={l.id} className="flex justify-between px-5 py-2.5">
+                  <Link href={`/inventori/${l.id}`} className="font-mono text-xs text-brand-700 hover:underline">
+                    {l.lot_no}
+                  </Link>
+                  <Badge tone={daysUntil(l.expiry_date) <= 30 ? "red" : "amber"}>{daysUntil(l.expiry_date)} hari</Badge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty>Tidak ada.</Empty>
+          )}
+        </Card>
       </div>
     </>
   );

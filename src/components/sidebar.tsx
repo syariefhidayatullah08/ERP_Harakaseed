@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { canAccess, moduleForPath, ROLES } from "@/lib/access";
 import { useState } from "react";
 import {
   LayoutDashboard,
@@ -44,7 +45,7 @@ export function Sidebar({
   unread,
   logout,
 }: {
-  user: { name: string; email: string };
+  user: { name: string; email: string; role: string };
   unread: number;
   logout: () => Promise<void>;
 }) {
@@ -81,7 +82,7 @@ export function Sidebar({
           </div>
         </Link>
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
-          {NAV.map((item, i) =>
+          {NAV.filter((item) => "section" in item || canAccess(user.role, moduleForPath(item.href))).map((item, i) =>
             "section" in item ? (
               <div key={i} className="px-3 pb-1.5 pt-5 text-[10px] font-semibold uppercase tracking-widest text-brand-300">
                 {item.section}
@@ -109,6 +110,7 @@ export function Sidebar({
         <div className="border-t border-white/10 px-5 py-4">
           <div className="truncate text-sm font-medium text-white">{user.name}</div>
           <div className="truncate text-xs text-brand-200">{user.email}</div>
+          <div className="mt-1 text-[11px] text-brand-300">{ROLES[user.role]?.label ?? user.role}</div>
           <form action={logout}>
             <button className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-brand-200 hover:text-white">
               <LogOut size={14} /> Keluar

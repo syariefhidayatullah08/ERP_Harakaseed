@@ -5,10 +5,12 @@ import { daysUntil, num, tanggal } from "@/lib/format";
 import { Badge, Card, DL, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { adjustLot } from "@/actions/inventory";
+import { requireAccess } from "@/lib/session";
 
 const KIND: Record<string, string> = { masuk: "green", keluar: "blue", penyesuaian: "amber", retur: "purple" };
 
 export default async function LotDetail({ params, searchParams }: PageProps<"/inventori/[id]">) {
+  await requireAccess("inventori");
   const { id } = await params;
   const sp = await searchParams;
   const lot = await get<{

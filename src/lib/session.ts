@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { get } from "./db";
+import { canAccess, MODULES, type Module } from "./access";
 
 export const SESSION_COOKIE = "haraka_session";
 const SECRET =
@@ -17,6 +18,17 @@ export type SessionUser = { id: number; name: string; email: string; role: strin
 
 function sign(payload: string) {
   return createHmac("sha256", SECRET).update(payload).digest("base64url");
+}
+
+/** Tanda tangan untuk tautan publik invoice (/i/<id>/<sig>) yang dibagikan ke pelanggan. */
+export function invoiceSignature(soId: number) {
+  return sign(`invoice:${soId}`).slice(0, 22);
+}
+
+export function verifyInvoiceSignature(soId: number, sig: string) {
+  const a = Buffer.from(invoiceSignature(soId));
+  const b = Buffer.from(sig);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function createToken(userId: number) {
@@ -45,5 +57,14 @@ export async function currentUser(): Promise<SessionUser | null> {
 export async function requireUser(): Promise<SessionUser> {
   const user = await currentUser();
   if (!user) redirect("/login");
+  return user;
+}
+
+/** Wajib login + punya akses ke modul; jika tidak, kembali ke dashboard dengan pesan. */
+export async function requireAccess(mod: Module): Promise<SessionUser> {
+  const user = await requireUser();
+  if (!canAccess(user.role, mod)) {
+    redirect(`/?error=${encodeURIComponent(`Peran Anda tidak punya akses ke modul ${MODULES[mod]}.`)}`);
+  }
   return user;
 }

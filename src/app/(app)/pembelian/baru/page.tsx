@@ -3,8 +3,10 @@ import { today } from "@/lib/format";
 import { Card, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { createPO } from "@/actions/purchasing";
+import { requireAccess } from "@/lib/session";
 
 export default async function NewPOPage({ searchParams }: PageProps<"/pembelian/baru">) {
+  await requireAccess("pembelian");
   const sp = await searchParams;
   const suppliers = await all<{ id: number; name: string; category: string }>("SELECT id, name, category FROM suppliers ORDER BY name");
   return (

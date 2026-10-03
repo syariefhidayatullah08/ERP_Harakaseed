@@ -3,13 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { all, get, insert, nextNumber, run, tx } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { purchaseOrderEmail, sendEmail } from "@/lib/email";
 import { today } from "@/lib/format";
 
 export async function saveSupplier(fd: FormData) {
-  await requireUser();
+  await requireAccess("pembelian");
   const name = str(fd, "name");
   if (!name) redirect(withMsg("/pembelian", "Nama supplier wajib diisi.", "error"));
   await run(
@@ -25,7 +25,7 @@ export async function saveSupplier(fd: FormData) {
 }
 
 export async function createPO(fd: FormData) {
-  await requireUser();
+  await requireAccess("pembelian");
   const supplierId = numf(fd, "supplier_id");
   const descs = fd.getAll("description").map(String);
   const qtys = fd.getAll("qty").map(Number);
@@ -53,7 +53,7 @@ export async function createPO(fd: FormData) {
 }
 
 export async function sendPO(fd: FormData) {
-  await requireUser();
+  await requireAccess("pembelian");
   const id = numf(fd, "id");
   const po = await get<{ po_no: string; order_date: string; supplier_name: string; email: string; total: number; notes: string; status: string }>(
     "SELECT po.*, s.name supplier_name, s.email FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = ?",
@@ -70,7 +70,7 @@ export async function sendPO(fd: FormData) {
 }
 
 export async function setPOStatus(fd: FormData) {
-  await requireUser();
+  await requireAccess("pembelian");
   const id = numf(fd, "id");
   const status = str(fd, "status");
   if (!["dipesan", "diterima", "batal"].includes(status)) redirect(`/pembelian/${id}`);

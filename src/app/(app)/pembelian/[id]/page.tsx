@@ -5,8 +5,10 @@ import { Badge, Card, DL, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { sendPO, setPOStatus } from "@/actions/purchasing";
+import { requireAccess } from "@/lib/session";
 
 export default async function PODetail({ params, searchParams }: PageProps<"/pembelian/[id]">) {
+  await requireAccess("pembelian");
   const { id } = await params;
   const sp = await searchParams;
   const po = await get<{ id: number; po_no: string; supplier: string; email: string; phone: string; order_date: string; status: string; total: number; notes: string; received_at: string | null }>(

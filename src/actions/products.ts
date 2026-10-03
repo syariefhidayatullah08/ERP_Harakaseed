@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { get, run } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 
 function read(fd: FormData) {
@@ -23,7 +23,7 @@ function read(fd: FormData) {
 }
 
 export async function saveProduct(fd: FormData) {
-  await requireUser();
+  await requireAccess("produk");
   const id = numf(fd, "id");
   const p = read(fd);
   const back = id ? `/produk/${id}` : "/produk/baru";

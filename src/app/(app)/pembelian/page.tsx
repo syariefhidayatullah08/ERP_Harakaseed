@@ -5,10 +5,12 @@ import { PO_STATUS, rupiah, tanggal } from "@/lib/format";
 import { Badge, Card, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { saveSupplier } from "@/actions/purchasing";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Pembelian" };
 
 export default async function PurchasingPage({ searchParams }: PageProps<"/pembelian">) {
+  await requireAccess("pembelian");
   const sp = await searchParams;
   const pos = await all<{ id: number; po_no: string; supplier: string; order_date: string; status: string; total: number }>(
     "SELECT po.*, s.name supplier FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id ORDER BY po.id DESC",

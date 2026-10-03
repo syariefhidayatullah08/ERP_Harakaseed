@@ -5,12 +5,14 @@ import { PRD_STATUS, num, tanggal, today } from "@/lib/format";
 import { Badge, Card, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { createProduction } from "@/actions/production";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Produksi Benih" };
 
 const STAGES = ["tanam", "panen", "prosesing", "uji_lab"];
 
 export default async function ProductionPage({ searchParams }: PageProps<"/produksi">) {
+  await requireAccess("produksi");
   const sp = await searchParams;
   const rows = await all<{
     id: number; code: string; name: string; crop: string; grower: string | null; area_ha: number; plant_date: string; est_harvest: string | null;

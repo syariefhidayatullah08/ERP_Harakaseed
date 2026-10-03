@@ -5,6 +5,7 @@ import { daysUntil, paymentStatus, rupiah, SO_STATUS, tanggal, today } from "@/l
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { sendOverdueReminders } from "@/actions/sales";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Penjualan" };
 
@@ -14,6 +15,7 @@ type Row = {
 };
 
 export default async function SalesPage({ searchParams }: PageProps<"/penjualan">) {
+  await requireAccess("penjualan");
   const sp = await searchParams;
   const tab = String(sp.tab ?? "pesanan");
   const status = String(sp.status ?? "");

@@ -3,10 +3,12 @@ import type { Metadata } from "next";
 import { productStock } from "@/lib/inventory";
 import { num, rupiah } from "@/lib/format";
 import { Badge, Flash, PageHeader } from "@/components/ui";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Produk" };
 
 export default async function ProductsPage({ searchParams }: PageProps<"/produk">) {
+  await requireAccess("produk");
   const sp = await searchParams;
   const q = String(sp.q ?? "").trim();
   const products = await productStock(

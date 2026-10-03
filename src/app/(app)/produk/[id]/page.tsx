@@ -5,8 +5,10 @@ import { productStock } from "@/lib/inventory";
 import { addDays, daysUntil, num, rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { ProductForm } from "../product-form";
+import { requireAccess } from "@/lib/session";
 
 export default async function ProductDetail({ params, searchParams }: PageProps<"/produk/[id]">) {
+  await requireAccess("produk");
   const { id } = await params;
   const sp = await searchParams;
   const [product] = await productStock("p.id = ?", Number(id));

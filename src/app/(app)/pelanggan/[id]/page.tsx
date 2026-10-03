@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { MessageCircle } from "lucide-react";
+import { waLink } from "@/lib/whatsapp";
 import { all, get } from "@/lib/db";
 import { CUSTOMER_KIND, rupiah, SO_STATUS, paymentStatus, tanggal } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { EmailCompose } from "@/components/email-compose";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { CustomerForm, type Customer } from "../customer-form";
+import { requireAccess } from "@/lib/session";
 
 export default async function CustomerDetail({ params, searchParams }: PageProps<"/pelanggan/[id]">) {
+  await requireAccess("pelanggan");
   const { id } = await params;
   const sp = await searchParams;
   const c = await get<Customer>("SELECT * FROM customers WHERE id = ?", Number(id));
@@ -39,9 +43,18 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
         subtitle={`${c.code} · ${CUSTOMER_KIND[c.kind] ?? c.kind} · ${c.city || "—"}`}
         back={{ href: "/pelanggan", label: "Pelanggan" }}
         actions={
-          <Link href={`/penjualan/baru?customer=${c.id}`} className="btn-primary">
-            + Buat pesanan
-          </Link>
+          <>
+            {waLink(c.phone, "x") && (
+              <a href={waLink(c.phone, `Halo ${c.contact_person || c.name},
+
+`)} target="_blank" rel="noopener noreferrer" className="btn-secondary">
+                <MessageCircle size={15} className="text-[#25D366]" /> WhatsApp
+              </a>
+            )}
+            <Link href={`/penjualan/baru?customer=${c.id}`} className="btn-primary">
+              + Buat pesanan
+            </Link>
+          </>
         }
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />

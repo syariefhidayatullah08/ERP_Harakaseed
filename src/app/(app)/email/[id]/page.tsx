@@ -4,6 +4,7 @@ import { get, run } from "@/lib/db";
 import { Badge, Card, Flash, PageHeader } from "@/components/ui";
 import { EmailCompose } from "@/components/email-compose";
 import { tanggal } from "@/lib/format";
+import { requireAccess } from "@/lib/session";
 
 const REF_LINK: Record<string, (id: number) => string> = {
   sales_order: (id) => `/penjualan/${id}`,
@@ -13,6 +14,7 @@ const REF_LINK: Record<string, (id: number) => string> = {
 };
 
 export default async function EmailDetail({ params, searchParams }: PageProps<"/email/[id]">) {
+  await requireAccess("email");
   const { id } = await params;
   const sp = await searchParams;
   const m = await get<{

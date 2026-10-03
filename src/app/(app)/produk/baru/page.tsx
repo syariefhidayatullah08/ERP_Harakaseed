@@ -1,7 +1,9 @@
 import { Flash, PageHeader } from "@/components/ui";
 import { ProductForm } from "../product-form";
+import { requireAccess } from "@/lib/session";
 
 export default async function NewProductPage({ searchParams }: PageProps<"/produk/baru">) {
+  await requireAccess("produk");
   const sp = await searchParams;
   return (
     <>

@@ -3,13 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { get, insert, nextNumber, run, tx } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { createLot } from "@/lib/inventory";
 import { addDays, today } from "@/lib/format";
 
 export async function createProduction(fd: FormData) {
-  await requireUser();
+  await requireAccess("produksi");
   const productId = numf(fd, "product_id");
   const plantDate = str(fd, "plant_date");
   if (!productId || !plantDate) redirect(withMsg("/produksi", "Pilih varietas dan tanggal tanam.", "error"));
@@ -31,7 +31,7 @@ export async function createProduction(fd: FormData) {
 const FLOW = ["tanam", "panen", "prosesing", "uji_lab", "lulus"];
 
 export async function advanceProduction(fd: FormData) {
-  await requireUser();
+  await requireAccess("produksi");
   const id = numf(fd, "id");
   const next = str(fd, "next");
   const back = `/produksi/${id}`;
@@ -83,7 +83,7 @@ export async function advanceProduction(fd: FormData) {
 }
 
 export async function saveGrower(fd: FormData) {
-  await requireUser();
+  await requireAccess("mitra");
   const id = numf(fd, "id");
   const name = str(fd, "name");
   if (!name) redirect(withMsg("/mitra", "Nama petani wajib diisi.", "error"));

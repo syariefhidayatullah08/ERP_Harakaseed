@@ -319,7 +319,7 @@ export async function invoiceEmail(o: OrderForEmail, items: ItemForEmail[]) {
        <tr><td style="color:#5b6b5d;padding-right:16px">Sisa tagihan</td><td><b>${rupiah(due)}</b></td></tr>
        <tr><td style="color:#5b6b5d;padding-right:16px">Jatuh tempo</td><td><b>${tanggal(o.due_date)}</b></td></tr></table>
        <p>Pembayaran dapat ditransfer ke:<br><b>${escapeHtml(await getSetting("bank_info"))}</b></p>
-       <p>Mohon kirimkan bukti transfer dengan membalas email ini.</p>`,
+       <p>Invoice PDF terlampir. Mohon kirimkan bukti transfer dengan membalas email ini.</p>`,
     ),
   };
 }

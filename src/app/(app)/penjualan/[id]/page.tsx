@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Printer } from "lucide-react";
-import { all, get } from "@/lib/db";
+import { FileDown, MessageCircle, Printer } from "lucide-react";
+import { all, get, getSettings } from "@/lib/db";
 import { daysUntil, num, paymentStatus, rupiah, SO_STATUS, tanggal, today } from "@/lib/format";
 import { Badge, Card, DL, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { cancelOrder, confirmOrder, deleteDraft, emailOrderDocument, recordPayment, shipOrder } from "@/actions/sales";
 import { productStock } from "@/lib/inventory";
+import { orderWhatsappMessages, waLink } from "@/lib/whatsapp";
+import { requireAccess } from "@/lib/session";
 
 export default async function OrderDetail({ params, searchParams }: PageProps<"/penjualan/[id]">) {
+  await requireAccess("penjualan");
   const { id } = await params;
   const sp = await searchParams;
   const o = await get<{
@@ -36,6 +39,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
     "SELECT * FROM payments WHERE so_id = ? ORDER BY pay_date",
     o.id,
   );
+  const settings = await getSettings();
   const emails = await all<EmailRow>("SELECT * FROM emails WHERE ref_type IN ('sales_order','invoice') AND ref_id = ? ORDER BY id DESC", o.id);
   const stock = o.status === "dikonfirmasi" ? await productStock() : [];
   const shortages = items
@@ -69,6 +73,9 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                 <Printer size={15} /> Surat jalan
               </Link>
             )}
+            <a href={`/api/pdf/${o.id}`} target="_blank" className="btn-secondary">
+              <FileDown size={15} /> PDF
+            </a>
           </>
         }
       />
@@ -270,6 +277,23 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
               )}
             </div>
           </Card>
+
+          {o.status !== "draft" && o.status !== "batal" && (
+            <Card title={<span className="flex items-center gap-2"><MessageCircle size={15} className="text-[#25D366]" /> Kirim via WhatsApp</span>}>
+              {waLink(o.phone, "x") ? (
+                <div className="space-y-2 p-5">
+                  {orderWhatsappMessages(o, settings.company_brand ?? "HARAKA SEED", settings.bank_info ?? "").map((m) => (
+                    <a key={m.key} href={waLink(o.phone, m.text)} target="_blank" rel="noopener noreferrer" className="btn-secondary w-full justify-start">
+                      <MessageCircle size={15} className="text-[#25D366]" /> {m.label}
+                    </a>
+                  ))}
+                  <p className="text-xs text-muted">Membuka WhatsApp ke {o.phone} dengan pesan siap kirim. Invoice & surat jalan berupa tautan PDF yang bisa dibuka pelanggan tanpa login.</p>
+                </div>
+              ) : (
+                <Empty>Isi nomor telepon/WA pelanggan untuk mengirim via WhatsApp.</Empty>
+              )}
+            </Card>
+          )}
 
           <Card title="Pelanggan">
             <div className="p-5 text-sm">

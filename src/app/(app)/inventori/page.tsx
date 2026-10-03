@@ -6,6 +6,7 @@ import { daysUntil, num, rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, Field, Flash, PageHeader, StatCard } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { createLotAction, sendLowStockAlert } from "@/actions/inventory";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Inventori" };
 
@@ -24,6 +25,7 @@ type LotRow = {
 };
 
 export default async function InventoryPage({ searchParams }: PageProps<"/inventori">) {
+  await requireAccess("inventori");
   const sp = await searchParams;
   const productFilter = Number(sp.product ?? 0);
   const showEmpty = sp.all === "1";

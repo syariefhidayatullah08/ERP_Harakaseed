@@ -1,7 +1,9 @@
 import { Card, Flash, PageHeader } from "@/components/ui";
 import { CustomerForm } from "../customer-form";
+import { requireAccess } from "@/lib/session";
 
 export default async function NewCustomerPage({ searchParams }: PageProps<"/pelanggan/baru">) {
+  await requireAccess("pelanggan");
   const sp = await searchParams;
   return (
     <>

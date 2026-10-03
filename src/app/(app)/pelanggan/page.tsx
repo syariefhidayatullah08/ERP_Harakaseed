@@ -3,10 +3,12 @@ import type { Metadata } from "next";
 import { all } from "@/lib/db";
 import { CUSTOMER_KIND, rupiah, tanggal } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader } from "@/components/ui";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Pelanggan" };
 
 export default async function CustomersPage({ searchParams }: PageProps<"/pelanggan">) {
+  await requireAccess("pelanggan");
   const sp = await searchParams;
   const q = String(sp.q ?? "").trim();
   const kind = String(sp.kind ?? "");

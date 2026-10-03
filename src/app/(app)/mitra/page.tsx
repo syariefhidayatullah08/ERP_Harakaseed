@@ -4,10 +4,12 @@ import { num } from "@/lib/format";
 import { Card, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { saveGrower } from "@/actions/production";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Petani Mitra" };
 
 export default async function GrowersPage({ searchParams }: PageProps<"/mitra">) {
+  await requireAccess("mitra");
   const sp = await searchParams;
   const rows = await all<{ id: number; name: string; village: string; phone: string; area_ha: number; batches: number; active: number; harvest: number }>(
     `SELECT g.*,

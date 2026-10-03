@@ -3,11 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { get, insert, nextNumber, run } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 
 export async function saveCustomer(fd: FormData) {
-  await requireUser();
+  await requireAccess("pelanggan");
   const id = numf(fd, "id");
   const c = {
     name: str(fd, "name"),

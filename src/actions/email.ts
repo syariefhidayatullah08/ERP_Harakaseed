@@ -3,14 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSetting } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAccess, requireUser } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { customEmail, sendEmail, syncInbox, verifySmtp } from "@/lib/email";
 
 const safeBack = (v: string) => (v.startsWith("/") && !v.startsWith("//") ? v : "/email");
 
 export async function composeEmail(fd: FormData) {
-  await requireUser();
+  await requireAccess("email");
   const to = str(fd, "to");
   const subject = str(fd, "subject");
   const message = str(fd, "message");
@@ -23,7 +23,7 @@ export async function composeEmail(fd: FormData) {
 }
 
 export async function syncInboxAction() {
-  await requireUser();
+  await requireAccess("email");
   const res = await syncInbox();
   revalidatePath("/", "layout");
   redirect(

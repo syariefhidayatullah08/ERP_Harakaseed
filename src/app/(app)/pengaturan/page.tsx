@@ -6,7 +6,8 @@ import { requireUser } from "@/lib/session";
 import { tanggal } from "@/lib/format";
 import { Badge, Card, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
-import { addUser, changePassword, clearTransactions, saveSettings } from "@/actions/settings";
+import { addUser, changePassword, clearTransactions, deleteUser, saveSettings, updateUser } from "@/actions/settings";
+import { ROLES } from "@/lib/access";
 import { testEmail } from "@/actions/email";
 
 export const metadata: Metadata = { title: "Pengaturan" };
@@ -142,11 +143,38 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
                   <td>
                     <div className="font-medium">{u.name}</div>
                     <div className="text-xs text-muted">{u.email}</div>
+                    {isAdmin && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs text-brand-700">Ubah peran / reset sandi</summary>
+                        <form action={updateUser} className="mt-2 flex flex-wrap items-end gap-2">
+                          <input type="hidden" name="id" value={u.id} />
+                          <select name="role" defaultValue={u.role} className="input w-auto py-1 text-xs">
+                            {Object.entries(ROLES).map(([k, r]) => (
+                              <option key={k} value={k}>
+                                {r.label}
+                              </option>
+                            ))}
+                          </select>
+                          <input name="password" type="password" minLength={8} placeholder="Sandi baru (opsional)" className="input w-44 py-1 text-xs" />
+                          <SubmitButton className="btn-secondary btn-sm">Simpan</SubmitButton>
+                        </form>
+                        {u.id !== me.id && (
+                          <form action={deleteUser} className="mt-2">
+                            <input type="hidden" name="id" value={u.id} />
+                            <SubmitButton className="btn-danger btn-sm" confirm={`Hapus pengguna ${u.email}?`}>
+                              Hapus pengguna
+                            </SubmitButton>
+                          </form>
+                        )}
+                      </details>
+                    )}
                   </td>
-                  <td>
-                    <Badge tone={u.role === "admin" ? "purple" : "gray"}>{u.role}</Badge>
+                  <td className="align-top">
+                    <Badge tone={u.role === "admin" ? "purple" : u.role === "sales" ? "blue" : u.role === "gudang" ? "amber" : "gray"}>
+                      {ROLES[u.role]?.label ?? u.role}
+                    </Badge>
                   </td>
-                  <td className="text-muted">{tanggal(u.created_at)}</td>
+                  <td className="align-top text-muted">{tanggal(u.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -163,11 +191,21 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
                 <input name="password" type="password" minLength={8} required className="input" />
               </Field>
               <Field label="Peran">
-                <select name="role" className="input">
-                  <option value="staff">Staff</option>
-                  <option value="admin">Admin</option>
+                <select name="role" defaultValue="staff" className="input">
+                  {Object.entries(ROLES).map(([k, r]) => (
+                    <option key={k} value={k}>
+                      {r.label}
+                    </option>
+                  ))}
                 </select>
               </Field>
+              <ul className="space-y-0.5 text-xs text-muted sm:col-span-2">
+                {Object.values(ROLES).map((r) => (
+                  <li key={r.label}>
+                    <b className="text-ink">{r.label}:</b> {r.description}
+                  </li>
+                ))}
+              </ul>
               <div className="sm:col-span-2">
                 <SubmitButton className="btn-secondary">Tambah pengguna</SubmitButton>
               </div>

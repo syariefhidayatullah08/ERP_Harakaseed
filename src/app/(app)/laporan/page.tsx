@@ -4,10 +4,12 @@ import { CUSTOMER_KIND, num, rupiah, today } from "@/lib/format";
 import { salesByCity, salesByCustomer, salesByMonth, salesByProduct } from "@/lib/reports";
 import { Card, Empty, PageHeader, StatCard } from "@/components/ui";
 import { BarChart, RankBars } from "@/components/bar-chart";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Laporan" };
 
 export default async function ReportsPage({ searchParams }: PageProps<"/laporan">) {
+  await requireAccess("laporan");
   const sp = await searchParams;
   const to = String(sp.to ?? today());
   const from = String(sp.from ?? `${to.slice(0, 4)}-01-01`);

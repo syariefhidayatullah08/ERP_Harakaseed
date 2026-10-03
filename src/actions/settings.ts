@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { exec, get, run, setSetting, tx } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { str, withMsg } from "@/lib/form";
+import { numf, str, withMsg } from "@/lib/form";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { ROLES } from "@/lib/access";
 
 const TEXT_KEYS = [
   "company_name",
@@ -45,9 +46,30 @@ export async function addUser(fd: FormData) {
     str(fd, "name") || email,
     email,
     hashPassword(password),
-    str(fd, "role") === "admin" ? "admin" : "staff",
+    str(fd, "role") in ROLES ? str(fd, "role") : "staff",
   );
   redirect(withMsg("/pengaturan", `Pengguna ${email} ditambahkan.`));
+}
+
+export async function updateUser(fd: FormData) {
+  const me = await requireAdmin();
+  const id = numf(fd, "id");
+  const role = str(fd, "role");
+  const password = str(fd, "password");
+  if (!(role in ROLES)) redirect(withMsg("/pengaturan", "Peran tidak dikenal.", "error"));
+  if (id === me.id && role !== "admin") redirect(withMsg("/pengaturan", "Anda tidak bisa mencabut peran admin dari akun sendiri.", "error"));
+  if (password && password.length < 8) redirect(withMsg("/pengaturan", "Kata sandi baru minimal 8 karakter.", "error"));
+  await run("UPDATE users SET role = ? WHERE id = ?", role, id);
+  if (password) await run("UPDATE users SET password_hash = ? WHERE id = ?", hashPassword(password), id);
+  redirect(withMsg("/pengaturan", password ? "Peran & kata sandi pengguna diperbarui." : "Peran pengguna diperbarui."));
+}
+
+export async function deleteUser(fd: FormData) {
+  const me = await requireAdmin();
+  const id = numf(fd, "id");
+  if (id === me.id) redirect(withMsg("/pengaturan", "Tidak bisa menghapus akun sendiri.", "error"));
+  await run("DELETE FROM users WHERE id = ?", id);
+  redirect(withMsg("/pengaturan", "Pengguna dihapus."));
 }
 
 export async function changePassword(fd: FormData) {

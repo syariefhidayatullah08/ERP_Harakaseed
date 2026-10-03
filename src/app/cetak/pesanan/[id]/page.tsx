@@ -1,14 +1,14 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { all, get, getSettings } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/lib/session";
 import { num, rupiah, tanggal } from "@/lib/format";
 import { PrintButton } from "@/components/buttons";
 
 export const dynamic = "force-dynamic";
 
 export default async function PrintOrder({ params, searchParams }: PageProps<"/cetak/pesanan/[id]">) {
-  await requireUser();
+  await requireAccess("penjualan");
   const { id } = await params;
   const sp = await searchParams;
   const deliveryNote = sp.doc === "sj";

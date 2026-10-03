@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/buttons";
 import { EmailCompose } from "@/components/email-compose";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { syncInboxAction } from "@/actions/email";
+import { requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Email" };
 
@@ -19,6 +20,7 @@ const TABS = [
 ];
 
 export default async function EmailPage({ searchParams }: PageProps<"/email">) {
+  await requireAccess("email");
   const sp = await searchParams;
   const tab = String(sp.tab ?? "masuk");
   const q = String(sp.q ?? "").trim();

@@ -3,9 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { all, get, getSetting, insert, nextNumber, run, tx } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
+import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
 import { addDays, today } from "@/lib/format";
 import {
   invoiceEmail,
@@ -26,7 +27,7 @@ function totals(lines: Line[], discountPct: number, taxPct: number) {
 }
 
 export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: string }> {
-  await requireUser();
+  await requireAccess("penjualan");
   const customerId = numf(fd, "customer_id");
   const intent = str(fd, "intent");
   let lines: Line[] = [];
@@ -68,13 +69,14 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
   redirect(withMsg(`/penjualan/${soId}`, "Draft pesanan disimpan."));
 }
 
-async function autoEmail(settingKey: string, soId: number, build: typeof orderConfirmationEmail, refType = "sales_order") {
+async function autoEmail(settingKey: string, soId: number, build: typeof orderConfirmationEmail, refType = "sales_order", pdf?: PdfDoc) {
   if (await getSetting(settingKey) !== "1") return "";
   const data = await loadOrderForEmail(soId);
   if (!data) return "";
   if (!data.order.email) return "Pelanggan belum punya email — email tidak dikirim.";
   const mail = await build(data.order, data.items);
-  const res = await sendEmail({ to: data.order.email, ...mail, refType, refId: soId });
+  const attachments = pdf ? await orderPdfAttachment(soId, pdf) : undefined;
+  const res = await sendEmail({ to: data.order.email, ...mail, refType, refId: soId, attachments });
   return res.ok ? `Email terkirim ke ${data.order.email}.` : `Email gagal: ${res.error}`;
 }
 
@@ -84,7 +86,7 @@ async function doConfirm(soId: number) {
 }
 
 export async function confirmOrder(fd: FormData) {
-  await requireUser();
+  await requireAccess("penjualan");
   const id = numf(fd, "id");
   const note = await doConfirm(id);
   revalidatePath("/penjualan");
@@ -92,7 +94,7 @@ export async function confirmOrder(fd: FormData) {
 }
 
 export async function shipOrder(fd: FormData) {
-  await requireUser();
+  await requireAccess("penjualan");
   const id = numf(fd, "id");
   const so = await get<{ id: number; so_no: string; status: string; customer_id: number; payment_terms: number }>(
     "SELECT so.*, c.payment_terms FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
@@ -120,7 +122,7 @@ export async function shipOrder(fd: FormData) {
     redirect(withMsg(`/penjualan/${id}`, e instanceof Error ? e.message : "Gagal memproses pengiriman.", "error"));
   }
 
-  const notes = [await autoEmail("auto_email_shipping", id, shippingEmail), await autoEmail("auto_email_invoice", id, invoiceEmail, "invoice")]
+  const notes = [await autoEmail("auto_email_shipping", id, shippingEmail, "sales_order", "sj"), await autoEmail("auto_email_invoice", id, invoiceEmail, "invoice", "invoice")]
     .filter(Boolean)
     .filter((v, i, a) => a.indexOf(v) === i);
   revalidatePath("/penjualan");
@@ -129,7 +131,7 @@ export async function shipOrder(fd: FormData) {
 }
 
 export async function recordPayment(fd: FormData) {
-  await requireUser();
+  await requireAccess("penjualan");
   const id = numf(fd, "id");
   const amount = numf(fd, "amount");
   const so = await get<{ total: number; paid: number; status: string }>("SELECT total, paid, status FROM sales_orders WHERE id = ?", id);
@@ -162,7 +164,7 @@ export async function recordPayment(fd: FormData) {
 }
 
 export async function cancelOrder(fd: FormData) {
-  await requireUser();
+  await requireAccess("penjualan");
   const id = numf(fd, "id");
   const so = await get<{ so_no: string; status: string; paid: number }>("SELECT so_no, status, paid FROM sales_orders WHERE id = ?", id);
   if (!so || so.status === "batal" || so.status === "selesai") redirect(withMsg(`/penjualan/${id}`, "Pesanan ini tidak bisa dibatalkan.", "error"));
@@ -176,7 +178,7 @@ export async function cancelOrder(fd: FormData) {
 }
 
 export async function deleteDraft(fd: FormData) {
-  await requireUser();
+  await requireAccess("penjualan");
   const id = numf(fd, "id");
   await run("DELETE FROM sales_orders WHERE id = ? AND status = 'draft'", id);
   revalidatePath("/penjualan");
@@ -184,7 +186,7 @@ export async function deleteDraft(fd: FormData) {
 }
 
 export async function emailOrderDocument(fd: FormData) {
-  await requireUser();
+  await requireAccess("penjualan");
   const id = numf(fd, "id");
   const kind = str(fd, "kind");
   const data = await loadOrderForEmail(id);
@@ -199,13 +201,15 @@ export async function emailOrderDocument(fd: FormData) {
   } as const;
   const build = builders[kind as keyof typeof builders];
   if (!build) redirect(withMsg(`/penjualan/${id}`, "Jenis dokumen tidak dikenal.", "error"));
-  const res = await sendEmail({ to, ...(await build()), refType: kind === "invoice" || kind === "pengingat" ? "invoice" : "sales_order", refId: id });
+  const pdf: PdfDoc | null = kind === "invoice" || kind === "pengingat" ? "invoice" : kind === "pengiriman" ? "sj" : null;
+  const attachments = pdf ? await orderPdfAttachment(id, pdf) : undefined;
+  const res = await sendEmail({ to, ...(await build()), refType: pdf === "invoice" ? "invoice" : "sales_order", refId: id, attachments });
   redirect(withMsg(`/penjualan/${id}`, res.ok ? `Email ${kind} terkirim ke ${to}.` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
 }
 
 /** Kirim pengingat ke semua invoice yang lewat jatuh tempo. */
 export async function sendOverdueReminders() {
-  await requireUser();
+  await requireAccess("penjualan");
   const overdue = await all<{ id: number }>(
     "SELECT so.id FROM sales_orders so WHERE so.invoice_no IS NOT NULL AND so.status != 'batal' AND so.paid < so.total AND so.due_date < ?",
     today(),
@@ -218,7 +222,7 @@ export async function sendOverdueReminders() {
       fail++;
       continue;
     }
-    const res = await sendEmail({ to: data.order.email, ...(await reminderEmail(data.order)), refType: "invoice", refId: o.id });
+    const res = await sendEmail({ to: data.order.email, ...(await reminderEmail(data.order)), refType: "invoice", refId: o.id, attachments: await orderPdfAttachment(o.id) });
     if (res.ok) ok++;
     else fail++;
   }
