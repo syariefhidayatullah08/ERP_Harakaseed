@@ -43,7 +43,7 @@ Lupa kata sandi admin: `node --env-file=.env.local scripts/reset-password.mjs <e
 
 Tabel dibuat otomatis saat aplikasi pertama kali dibuka dan langsung diisi data contoh (pelanggan dan supplier bertanda "(Contoh)", pesanan 6 bulan, lot awal). Harga produk hanya perkiraan, jadi sesuaikan di menu Produk. Untuk mulai dengan data asli, buka **Pengaturan → Hapus data contoh & transaksi**.
 
-Login awal memakai `ADMIN_EMAIL` / `ADMIN_PASSWORD` dari environment. Lokal tanpa variabel itu, default-nya `ptbenihharakasejahter@gmail.com` / `haraka123`. **Segera ganti kata sandi** di menu Pengaturan.
+Login awal memakai `ADMIN_EMAIL` / `ADMIN_PASSWORD` dari environment. Lokal tanpa variabel itu, default-nya `ptbenihharakasejahtera@gmail.com` / `haraka123`. **Segera ganti kata sandi** di menu Pengaturan.
 
 ### Menghubungkan Gmail
 1. Login ke akun Google perusahaan, lalu aktifkan **Verifikasi 2 Langkah**.

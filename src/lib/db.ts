@@ -340,7 +340,7 @@ async function seed(ex: Ex) {
   await ex(
     "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'admin')",
     "Administrator",
-    (process.env.ADMIN_EMAIL ?? "ptbenihharakasejahter@gmail.com").toLowerCase(),
+    (process.env.ADMIN_EMAIL ?? "ptbenihharakasejahtera@gmail.com").toLowerCase(),
     hashPassword(process.env.ADMIN_PASSWORD ?? "haraka123"),
   );
 
@@ -350,10 +350,10 @@ async function seed(ex: Ex) {
     company_tagline: "Quality you can plant with confidence",
     company_address: "Jl. H. Moh. Noer, RT001/RW001, Desa Rowoindah, Ajung, Jember, Jawa Timur",
     company_phone: "0811-3784-575",
-    company_email: "ptbenihharakasejahter@gmail.com",
+    company_email: "ptbenihharakasejahtera@gmail.com",
     company_website: "https://harakaseeds.com",
     bank_info: "Bank —, No. Rek —, a.n. PT Benih Haraka Sejahtera",
-    alert_email: "ptbenihharakasejahter@gmail.com",
+    alert_email: "ptbenihharakasejahtera@gmail.com",
     auto_email_order: "1",
     auto_email_shipping: "1",
     auto_email_invoice: "1",
