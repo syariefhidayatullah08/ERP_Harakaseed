@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 
 const TONES: Record<string, string> = {
   gray: "bg-gray-100 text-gray-700 ring-gray-200",
-  green: "bg-brand-50 text-brand-700 ring-brand-200",
+  green: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  brand: "bg-brand-50 text-brand-700 ring-brand-200",
+  orange: "bg-orange-50 text-orange-700 ring-orange-200",
   blue: "bg-sky-50 text-sky-700 ring-sky-200",
   amber: "bg-amber-50 text-amber-800 ring-amber-200",
   red: "bg-red-50 text-red-700 ring-red-200",

@@ -50,7 +50,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/produk"
                         <div className="text-lg font-bold tracking-wide text-brand-800 group-hover:text-brand-600">{p.name}</div>
                         <div className="text-sm text-muted">{p.crop}</div>
                       </div>
-                      <Badge tone={p.seed_type === "OP" ? "blue" : "green"}>{p.seed_type}</Badge>
+                      <Badge tone={p.seed_type === "OP" ? "orange" : "brand"}>{p.seed_type}</Badge>
                     </div>
                     <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-xs">
                       <div>

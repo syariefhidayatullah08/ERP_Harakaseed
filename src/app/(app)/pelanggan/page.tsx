@@ -78,7 +78,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/pelang
                       </div>
                     </td>
                     <td>
-                      <Badge tone={c.kind === "distributor" ? "green" : c.kind === "ekspor" ? "purple" : "blue"}>{CUSTOMER_KIND[c.kind] ?? c.kind}</Badge>
+                      <Badge tone={c.kind === "distributor" ? "brand" : c.kind === "ekspor" ? "purple" : "blue"}>{CUSTOMER_KIND[c.kind] ?? c.kind}</Badge>
                     </td>
                     <td className="text-xs">
                       <div>{c.contact_person || "—"}</div>

@@ -6,6 +6,7 @@ import { Badge, Card, DL, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { advanceProduction } from "@/actions/production";
 import { requireAccess } from "@/lib/session";
+import { Attachments } from "@/components/attachments";
 
 const FLOW = ["tanam", "panen", "prosesing", "uji_lab", "lulus"];
 
@@ -129,6 +130,7 @@ export default async function ProductionDetail({ params, searchParams }: PagePro
             </form>
           </Card>
         )}
+        <Attachments refType="production" refId={p.id} title="Foto & dokumen produksi" />
       </div>
     </>
   );

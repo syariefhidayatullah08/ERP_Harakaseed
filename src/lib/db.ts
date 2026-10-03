@@ -315,6 +315,21 @@ const SCHEMA_SQL = `
       created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
     );
 
+    CREATE TABLE IF NOT EXISTS attachments (
+      id SERIAL PRIMARY KEY,
+      ref_type TEXT NOT NULL,
+      ref_id INTEGER NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Lainnya',
+      note TEXT NOT NULL DEFAULT '',
+      pathname TEXT NOT NULL UNIQUE,
+      filename TEXT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT '',
+      size INTEGER NOT NULL DEFAULT 0,
+      uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_attachments_ref ON attachments(ref_type, ref_id);
+
     CREATE INDEX IF NOT EXISTS idx_lots_product ON lots(product_id);
     CREATE INDEX IF NOT EXISTS idx_moves_lot ON stock_moves(lot_id);
     CREATE INDEX IF NOT EXISTS idx_so_customer ON sales_orders(customer_id);

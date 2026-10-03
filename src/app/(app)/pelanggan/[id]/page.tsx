@@ -9,6 +9,7 @@ import { EmailCompose } from "@/components/email-compose";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { CustomerForm, type Customer } from "../customer-form";
 import { requireAccess } from "@/lib/session";
+import { Attachments } from "@/components/attachments";
 
 export default async function CustomerDetail({ params, searchParams }: PageProps<"/pelanggan/[id]">) {
   await requireAccess("pelanggan");
@@ -117,6 +118,7 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
           <Card title="Riwayat email">
             <EmailList rows={emails} empty="Belum ada korespondensi email dengan pelanggan ini." />
           </Card>
+          <Attachments refType="customer" refId={c.id} title="Dokumen pelanggan" />
         </div>
       </div>
     </>

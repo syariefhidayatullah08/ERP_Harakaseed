@@ -28,11 +28,13 @@ type Order = {
 
 export type PdfDoc = "invoice" | "sj";
 
-const GREEN = rgb(0.122, 0.373, 0.18);
-const INK = rgb(0.114, 0.165, 0.122);
-const MUTED = rgb(0.4, 0.46, 0.42);
-const LINE = rgb(0.89, 0.91, 0.87);
-const TINT = rgb(0.945, 0.969, 0.937);
+// Warna logo HARAKA: biru #0077a8 (versi gelap #00aeef agar terbaca), oranye #f08020
+const BRAND = rgb(0, 0.467, 0.659);
+const ORANGE = rgb(0.941, 0.502, 0.125);
+const INK = rgb(0.106, 0.153, 0.2);
+const MUTED = rgb(0.373, 0.42, 0.463);
+const LINE = rgb(0.89, 0.91, 0.933);
+const TINT = rgb(0.918, 0.969, 0.992);
 
 // Font standar PDF hanya mendukung WinAnsi; ganti karakter di luar itu agar tidak error.
 const clean = (s: string) =>
@@ -111,7 +113,7 @@ export async function orderPdf(soId: number, doc: PdfDoc = "invoice"): Promise<{
 
   // ---- Kop ----
   page.drawImage(logo, { x: M, y: y - 46, width: 46, height: 46 });
-  text(s("company_brand"), M + 56, y - 12, { size: 14, f: bold, color: GREEN });
+  text(s("company_brand"), M + 56, y - 12, { size: 14, f: bold, color: BRAND });
   text(s("company_name"), M + 56, y - 25, { size: 9, f: bold });
   let ay = y - 36;
   for (const l of wrap(s("company_address"), font, 7.5, 260)) {
@@ -119,10 +121,11 @@ export async function orderPdf(soId: number, doc: PdfDoc = "invoice"): Promise<{
     ay -= 9.5;
   }
   text(`${s("company_phone")}  ·  ${s("company_email")}`, M + 56, ay, { size: 7.5, color: MUTED });
-  text(title, W - M, y - 14, { size: 18, f: bold, color: GREEN, align: "right" });
+  text(title, W - M, y - 14, { size: 18, f: bold, color: BRAND, align: "right" });
   text(docNo, W - M, y - 30, { size: 10, align: "right" });
   y = Math.min(ay, y - 46) - 12;
-  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 2, color: GREEN });
+  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 2, color: BRAND });
+  page.drawLine({ start: { x: M, y: y - 3 }, end: { x: W - M, y: y - 3 }, thickness: 1, color: ORANGE });
   y -= 22;
 
   // ---- Pelanggan & info dokumen ----

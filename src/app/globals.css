@@ -3,20 +3,23 @@
 @theme inline {
   --font-sans: var(--font-jakarta);
   --font-mono: var(--font-geist-mono);
-  --color-brand-50: #f1f7ef;
-  --color-brand-100: #dcebd6;
-  --color-brand-200: #b9d7ad;
-  --color-brand-300: #8dbd7b;
-  --color-brand-500: #3f8a3a;
-  --color-brand-600: #2e7231;
-  --color-brand-700: #1f5f2e;
-  --color-brand-800: #1a4a26;
-  --color-brand-900: #12341b;
-  --color-harvest: #e8a33d;
-  --color-ink: #1d2a1f;
-  --color-muted: #66756a;
-  --color-line: #e3e9df;
-  --color-canvas: #f6f8f4;
+  --color-brand-50: #eaf7fd;
+  --color-brand-100: #cdeefb;
+  --color-brand-200: #9bdcf6;
+  --color-brand-300: #5cc6ef;
+  --color-brand-500: #00aeef;
+  --color-brand-600: #0091c9;
+  --color-brand-700: #0077a8;
+  --color-brand-800: #005f87;
+  --color-brand-900: #0a3b55;
+  --color-harvest: #f08020;
+  --color-ink: #1b2733;
+  --color-muted: #5f6b76;
+  --color-line: #e3e8ee;
+  --color-canvas: #f5f7fa;
+  /* Warna logo HARAKA: biru #00aeef, oranye #f08020, merah tulisan #f82828 */
+  --color-accent: #f08020;
+  --color-accent-600: #d96c0f;
 }
 
 body {

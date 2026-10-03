@@ -10,6 +10,7 @@ import { cancelOrder, confirmOrder, deleteDraft, emailOrderDocument, recordPayme
 import { productStock } from "@/lib/inventory";
 import { orderWhatsappMessages, waLink } from "@/lib/whatsapp";
 import { requireAccess } from "@/lib/session";
+import { Attachments } from "@/components/attachments";
 
 export default async function OrderDetail({ params, searchParams }: PageProps<"/penjualan/[id]">) {
   await requireAccess("penjualan");
@@ -210,6 +211,8 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
           <Card title="Email terkait pesanan ini">
             <EmailList rows={emails} empty="Belum ada email untuk pesanan ini." />
           </Card>
+
+          <Attachments refType="sales_order" refId={o.id} title="Bukti & lampiran pesanan" />
         </div>
 
         <div className="space-y-5">

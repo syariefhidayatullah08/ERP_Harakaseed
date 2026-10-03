@@ -94,7 +94,7 @@ export function Sidebar({
                 onClick={() => setOpen(false)}
                 className={`mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                   isActive(item.href)
-                    ? "bg-white/15 font-semibold text-white"
+                    ? "bg-white/15 font-semibold text-white shadow-[inset_3px_0_0_var(--color-accent)]"
                     : "text-brand-100 hover:bg-white/5 hover:text-white"
                 }`}
               >

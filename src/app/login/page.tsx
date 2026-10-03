@@ -18,7 +18,7 @@ export default function LoginPage() {
           <h1 className="text-4xl font-bold leading-tight">
             Quality you can
             <br />
-            plant with confidence.
+            plant with <span className="text-accent">confidence.</span>
           </h1>
           <p className="mt-4 max-w-md text-brand-200">
             Kelola produksi benih, lot &amp; mutu, penjualan ke distributor, dan komunikasi email pelanggan dalam satu

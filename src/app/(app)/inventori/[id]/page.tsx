@@ -6,6 +6,7 @@ import { Badge, Card, DL, Empty, Field, Flash, PageHeader } from "@/components/u
 import { SubmitButton } from "@/components/buttons";
 import { adjustLot } from "@/actions/inventory";
 import { requireAccess } from "@/lib/session";
+import { Attachments } from "@/components/attachments";
 
 const KIND: Record<string, string> = { masuk: "green", keluar: "blue", penyesuaian: "amber", retur: "purple" };
 
@@ -153,6 +154,7 @@ export default async function LotDetail({ params, searchParams }: PageProps<"/in
               </tbody>
             </table>
           </Card>
+          <Attachments refType="lot" refId={lot.id} title="Dokumen mutu & bukti" />
         </div>
       </div>
     </>

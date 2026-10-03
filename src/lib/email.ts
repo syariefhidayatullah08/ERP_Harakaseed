@@ -198,22 +198,22 @@ export function escapeHtml(s: string) {
 async function layout(title: string, body: string) {
   const settings = await getSettings();
   const s = (k: string) => escapeHtml(settings[k] ?? "");
-  return `<!doctype html><html><body style="margin:0;background:#f3f6f1;font-family:Segoe UI,Arial,sans-serif;color:#1d2a1f">
+  return `<!doctype html><html><body style="margin:0;background:#eef6fb;font-family:Segoe UI,Arial,sans-serif;color:#1b2733">
   <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0"><tr><td align="center">
-  <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #dfe7da">
-    <tr><td style="background:#fff;padding:20px 28px;border-bottom:4px solid #1f5f2e">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #dbe7ef">
+    <tr><td style="background:#fff;padding:20px 28px;border-bottom:4px solid #00aeef">
       ${
         APP_URL
           ? `<img src="${APP_URL}/logo-wordmark.png" alt="${s("company_brand")}" width="180" style="display:block;height:auto;border:0">`
-          : `<div style="font-size:20px;font-weight:700;letter-spacing:1px;color:#1f5f2e">${s("company_brand")}</div>`
+          : `<div style="font-size:20px;font-weight:700;letter-spacing:1px;color:#0077a8">${s("company_brand")}</div>`
       }
-      <div style="font-size:12px;color:#5b6b5d;margin-top:6px">${s("company_tagline")}</div>
+      <div style="font-size:12px;color:#5f6b76;margin-top:6px">${s("company_tagline")}</div>
     </td></tr>
     <tr><td style="padding:28px">
-      <h2 style="margin:0 0 16px;font-size:18px;color:#1f5f2e">${title}</h2>
+      <h2 style="margin:0 0 16px;font-size:18px;color:#0077a8">${title}</h2>
       ${body}
     </td></tr>
-    <tr><td style="background:#f7faf5;padding:16px 28px;font-size:12px;color:#5b6b5d;line-height:1.6">
+    <tr><td style="background:#f5f9fc;border-top:3px solid #f08020;padding:16px 28px;font-size:12px;color:#5f6b76;line-height:1.6">
       <b>${s("company_name")}</b><br>${s("company_address")}<br>
       Telp/WA ${s("company_phone")} · ${s("company_email")} · ${s("company_website")}
     </td></tr>
@@ -257,7 +257,7 @@ function itemsTable(o: OrderForEmail, items: ItemForEmail[]) {
   const rows = items
     .map(
       (i) => `<tr>
-      <td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(i.name)}<br><span style="color:#6b7a6d;font-size:12px">${escapeHtml(i.crop)} · ${escapeHtml(i.pack_size)}</span></td>
+      <td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(i.name)}<br><span style="color:#6b7785;font-size:12px">${escapeHtml(i.crop)} · ${escapeHtml(i.pack_size)}</span></td>
       <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${num(i.qty)}</td>
       <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${rupiah(i.price)}</td>
       <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${rupiah(i.qty * i.price)}</td></tr>`,
@@ -266,9 +266,9 @@ function itemsTable(o: OrderForEmail, items: ItemForEmail[]) {
   const disc = o.subtotal * (o.discount_pct / 100);
   const tax = (o.subtotal - disc) * (o.tax_pct / 100);
   const line = (label: string, value: string, bold = false) =>
-    `<tr><td colspan="3" style="padding:6px 8px;text-align:right;${bold ? "font-weight:700" : "color:#5b6b5d"}">${label}</td><td style="padding:6px 8px;text-align:right;${bold ? "font-weight:700" : ""}">${value}</td></tr>`;
+    `<tr><td colspan="3" style="padding:6px 8px;text-align:right;${bold ? "font-weight:700" : "color:#5f6b76"}">${label}</td><td style="padding:6px 8px;text-align:right;${bold ? "font-weight:700" : ""}">${value}</td></tr>`;
   return `<table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;border-collapse:collapse;margin:16px 0">
-    <tr style="background:#f3f6f1"><th style="padding:8px;text-align:left">Produk</th><th style="padding:8px;text-align:right">Qty</th><th style="padding:8px;text-align:right">Harga</th><th style="padding:8px;text-align:right">Jumlah</th></tr>
+    <tr style="background:#eef6fb"><th style="padding:8px;text-align:left">Produk</th><th style="padding:8px;text-align:right">Qty</th><th style="padding:8px;text-align:right">Harga</th><th style="padding:8px;text-align:right">Jumlah</th></tr>
     ${rows}
     ${line("Subtotal", rupiah(o.subtotal))}
     ${o.discount_pct ? line(`Diskon ${o.discount_pct}%`, "− " + rupiah(disc)) : ""}
@@ -287,7 +287,7 @@ export async function orderConfirmationEmail(o: OrderForEmail, items: ItemForEma
       `Pesanan ${o.so_no} telah dikonfirmasi`,
       `${greet(o)}<p>Terima kasih atas pesanan Anda tanggal ${tanggal(o.order_date)}. Pesanan sedang kami siapkan dengan rincian berikut:</p>
        ${itemsTable(o, items)}
-       ${o.notes ? `<p style="color:#5b6b5d">Catatan: ${escapeHtml(o.notes)}</p>` : ""}
+       ${o.notes ? `<p style="color:#5f6b76">Catatan: ${escapeHtml(o.notes)}</p>` : ""}
        <p>Kami akan mengabari Anda kembali saat barang dikirim.</p>`,
     ),
   };
@@ -299,8 +299,8 @@ export async function shippingEmail(o: OrderForEmail, items: ItemForEmail[]) {
     html: await layout(
       `Pesanan ${o.so_no} dalam pengiriman`,
       `${greet(o)}<p>Pesanan Anda telah dikirim.</p>
-       <table style="font-size:14px;margin:8px 0 4px"><tr><td style="color:#5b6b5d;padding-right:16px">Kurir</td><td><b>${escapeHtml(o.courier || "—")}</b></td></tr>
-       <tr><td style="color:#5b6b5d;padding-right:16px">No. Resi</td><td><b>${escapeHtml(o.tracking_no || "—")}</b></td></tr></table>
+       <table style="font-size:14px;margin:8px 0 4px"><tr><td style="color:#5f6b76;padding-right:16px">Kurir</td><td><b>${escapeHtml(o.courier || "—")}</b></td></tr>
+       <tr><td style="color:#5f6b76;padding-right:16px">No. Resi</td><td><b>${escapeHtml(o.tracking_no || "—")}</b></td></tr></table>
        ${itemsTable(o, items)}
        <p>Setiap kemasan dilengkapi nomor lot untuk ketertelusuran mutu benih.</p>`,
     ),
@@ -315,9 +315,9 @@ export async function invoiceEmail(o: OrderForEmail, items: ItemForEmail[]) {
       `Invoice ${o.invoice_no}`,
       `${greet(o)}<p>Berikut tagihan untuk pesanan <b>${o.so_no}</b>.</p>
        ${itemsTable(o, items)}
-       <table style="font-size:14px;margin:8px 0"><tr><td style="color:#5b6b5d;padding-right:16px">Sudah dibayar</td><td>${rupiah(o.paid)}</td></tr>
-       <tr><td style="color:#5b6b5d;padding-right:16px">Sisa tagihan</td><td><b>${rupiah(due)}</b></td></tr>
-       <tr><td style="color:#5b6b5d;padding-right:16px">Jatuh tempo</td><td><b>${tanggal(o.due_date)}</b></td></tr></table>
+       <table style="font-size:14px;margin:8px 0"><tr><td style="color:#5f6b76;padding-right:16px">Sudah dibayar</td><td>${rupiah(o.paid)}</td></tr>
+       <tr><td style="color:#5f6b76;padding-right:16px">Sisa tagihan</td><td><b>${rupiah(due)}</b></td></tr>
+       <tr><td style="color:#5f6b76;padding-right:16px">Jatuh tempo</td><td><b>${tanggal(o.due_date)}</b></td></tr></table>
        <p>Pembayaran dapat ditransfer ke:<br><b>${escapeHtml(await getSetting("bank_info"))}</b></p>
        <p>Invoice PDF terlampir. Mohon kirimkan bukti transfer dengan membalas email ini.</p>`,
     ),
@@ -361,7 +361,7 @@ export async function lowStockEmail(rows: { name: string; pack_size: string; sto
     html: await layout(
       "Stok di bawah batas minimum",
       `<p>Produk berikut perlu segera diproduksi / diisi ulang:</p>
-       <table width="100%" style="font-size:14px;border-collapse:collapse"><tr style="background:#f3f6f1"><th style="padding:6px 8px;text-align:left">Produk</th><th style="padding:6px 8px;text-align:right">Stok</th><th style="padding:6px 8px;text-align:right">Minimum</th></tr>${list}</table>`,
+       <table width="100%" style="font-size:14px;border-collapse:collapse"><tr style="background:#eef6fb"><th style="padding:6px 8px;text-align:left">Produk</th><th style="padding:6px 8px;text-align:right">Stok</th><th style="padding:6px 8px;text-align:right">Minimum</th></tr>${list}</table>`,
     ),
   };
 }
@@ -381,7 +381,7 @@ export async function purchaseOrderEmail(
     html: await layout(
       `Purchase Order ${po.po_no}`,
       `<p>Kepada Yth. ${escapeHtml(po.supplier_name)},</p><p>Dengan ini kami memesan barang berikut (tanggal ${tanggal(po.order_date)}):</p>
-       <table width="100%" style="font-size:14px;border-collapse:collapse;margin:12px 0"><tr style="background:#f3f6f1"><th style="padding:6px 8px;text-align:left">Barang</th><th style="padding:6px 8px;text-align:right">Qty</th><th style="padding:6px 8px;text-align:right">Harga</th><th style="padding:6px 8px;text-align:right">Jumlah</th></tr>${rows}
+       <table width="100%" style="font-size:14px;border-collapse:collapse;margin:12px 0"><tr style="background:#eef6fb"><th style="padding:6px 8px;text-align:left">Barang</th><th style="padding:6px 8px;text-align:right">Qty</th><th style="padding:6px 8px;text-align:right">Harga</th><th style="padding:6px 8px;text-align:right">Jumlah</th></tr>${rows}
        <tr><td colspan="3" style="padding:6px 8px;text-align:right;font-weight:700">Total</td><td style="padding:6px 8px;text-align:right;font-weight:700">${rupiah(po.total)}</td></tr></table>
        ${po.notes ? `<p>Catatan: ${escapeHtml(po.notes)}</p>` : ""}
        <p>Mohon konfirmasi ketersediaan dan estimasi pengiriman dengan membalas email ini.</p>`,

@@ -6,6 +6,7 @@ import { SubmitButton } from "@/components/buttons";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { sendPO, setPOStatus } from "@/actions/purchasing";
 import { requireAccess } from "@/lib/session";
+import { Attachments } from "@/components/attachments";
 
 export default async function PODetail({ params, searchParams }: PageProps<"/pembelian/[id]">) {
   await requireAccess("pembelian");
@@ -76,6 +77,7 @@ export default async function PODetail({ params, searchParams }: PageProps<"/pem
           <Card title="Email ke supplier">
             <EmailList rows={emails} empty="PO ini belum dikirim via email." />
           </Card>
+          <Attachments refType="purchase_order" refId={po.id} title="Nota & bukti pembelian" />
         </div>
         <div className="space-y-5">
           <Card title="Tindakan">
