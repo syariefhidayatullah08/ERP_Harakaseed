@@ -1,3 +1,4 @@
+import { toId } from "@/lib/form";
 import { notFound } from "next/navigation";
 import { all, get } from "@/lib/db";
 import { PO_STATUS, num, rupiah, tanggal } from "@/lib/format";
@@ -14,7 +15,7 @@ export default async function PODetail({ params, searchParams }: PageProps<"/pem
   const sp = await searchParams;
   const po = await get<{ id: number; po_no: string; supplier: string; email: string; phone: string; order_date: string; status: string; total: number; notes: string; received_at: string | null }>(
     "SELECT po.*, s.name supplier, s.email, s.phone FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = ?",
-    Number(id),
+    toId(id),
   );
   if (!po) notFound();
   const items = await all<{ id: number; description: string; qty: number; unit: string; price: number }>("SELECT * FROM po_items WHERE po_id = ?", po.id);

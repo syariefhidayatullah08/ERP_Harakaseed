@@ -1,3 +1,4 @@
+import { toId } from "@/lib/form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FileDown, MessageCircle, Printer } from "lucide-react";
@@ -23,7 +24,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
   }>(
     `SELECT so.*, c.name customer, c.contact_person, c.email, c.phone, c.city, c.address FROM sales_orders so
      JOIN customers c ON c.id = so.customer_id WHERE so.id = ?`,
-    Number(id),
+    toId(id),
   );
   if (!o) notFound();
 

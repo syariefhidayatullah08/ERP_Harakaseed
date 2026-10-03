@@ -87,7 +87,7 @@ export function OrderForm({ customers, products, defaultCustomer, today }: { cus
                           </option>
                           {products.map((x) => (
                             <option key={x.id} value={x.id}>
-                              {x.name} — {x.crop} ({x.pack_size})
+                              {x.name} — {x.crop}{x.pack_size ? ` (${x.pack_size})` : ""}{x.price ? "" : " · harga belum diisi"}
                             </option>
                           ))}
                         </select>

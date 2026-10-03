@@ -1,3 +1,4 @@
+import { toId } from "@/lib/form";
 import { currentUser } from "@/lib/session";
 import { canAccess } from "@/lib/access";
 import { orderPdf } from "@/lib/invoice-pdf";
@@ -9,7 +10,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/pdf/[id]">) 
   if (!canAccess(user.role, "penjualan")) return new Response("Forbidden", { status: 403 });
   const { id } = await ctx.params;
   const doc = new URL(request.url).searchParams.get("doc") === "sj" ? "sj" : "invoice";
-  const pdf = await orderPdf(Number(id), doc);
+  const pdf = await orderPdf(toId(id), doc);
   if (!pdf) return new Response("Pesanan tidak ditemukan", { status: 404 });
   return new Response(Buffer.from(pdf.bytes), {
     headers: {

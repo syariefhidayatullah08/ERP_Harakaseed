@@ -14,6 +14,10 @@ export type ProductStock = {
   min_stock: number;
   shelf_life_months: number;
   description: string;
+  harvest_age: string;
+  yield_potential: string;
+  fruit_weight: string;
+  image: string;
   active: number;
   stock: number;
   reserved: number;

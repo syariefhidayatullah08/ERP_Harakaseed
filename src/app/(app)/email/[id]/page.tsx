@@ -1,3 +1,4 @@
+import { toId } from "@/lib/form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { get, run } from "@/lib/db";
@@ -20,7 +21,7 @@ export default async function EmailDetail({ params, searchParams }: PageProps<"/
   const m = await get<{
     id: number; direction: string; from_addr: string; to_addr: string; subject: string; body_html: string; body_text: string;
     status: string; error: string; ref_type: string | null; ref_id: number | null; is_read: number; created_at: string;
-  }>("SELECT * FROM emails WHERE id = ?", Number(id));
+  }>("SELECT * FROM emails WHERE id = ?", toId(id));
   if (!m) notFound();
   if (m.direction === "in" && !m.is_read) await run("UPDATE emails SET is_read = 1 WHERE id = ?", m.id);
 

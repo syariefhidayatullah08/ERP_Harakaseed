@@ -39,7 +39,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
     showEmpty ? 1 : 0,
   );
   const value = stock.reduce((s, p) => s + p.stock * p.unit_price, 0);
-  const low = stock.filter((p) => p.stock < p.min_stock);
+  const low = stock.filter((p) => p.min_stock > 0 && p.stock < p.min_stock);
   const expired = lots.filter((l) => l.expiry_date < today() && l.qty_available > 0);
 
   return (
@@ -94,13 +94,13 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                       </Link>
                       <div className="text-xs text-muted">{p.crop}</div>
                     </td>
-                    <td>{p.pack_size}</td>
+                    <td>{p.pack_size || "—"}</td>
                     <td className="num">{num(p.stock)}</td>
                     <td className="num text-muted">{num(p.reserved)}</td>
                     <td className={`num font-semibold ${avail < 0 ? "text-red-700" : ""}`}>{num(avail)}</td>
                     <td className="num text-muted">{num(p.min_stock)}</td>
                     <td>
-                      {p.stock < p.min_stock ? <Badge tone="red">Rendah</Badge> : <Badge tone="green">Aman</Badge>}
+                      {p.min_stock > 0 && p.stock < p.min_stock ? <Badge tone="red">Rendah</Badge> : p.stock === 0 ? <Badge>Kosong</Badge> : <Badge tone="green">Aman</Badge>}
                     </td>
                   </tr>
                 );

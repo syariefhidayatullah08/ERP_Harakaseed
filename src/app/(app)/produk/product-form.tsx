@@ -3,7 +3,7 @@ import { SubmitButton } from "@/components/buttons";
 import { Field } from "@/components/ui";
 import type { ProductStock } from "@/lib/inventory";
 
-const CATEGORIES = ["Buah", "Cabai", "Jagung", "Sayuran Buah", "Sayuran Daun", "Kacang-kacangan", "Umbi", "Lainnya"];
+const CATEGORIES = ["Buah", "Cabai", "Sayuran Buah", "Sayuran Daun", "Kacang-kacangan", "Jagung", "Umbi", "Lainnya"];
 
 export function ProductForm({ product }: { product?: ProductStock }) {
   return (
@@ -32,8 +32,8 @@ export function ProductForm({ product }: { product?: ProductStock }) {
             <option value="OP">OP (Open Pollinated)</option>
           </select>
         </Field>
-        <Field label="Ukuran kemasan *">
-          <input name="pack_size" required defaultValue={product?.pack_size} className="input" placeholder="10 g / 50 butir" />
+        <Field label="Ukuran kemasan">
+          <input name="pack_size" defaultValue={product?.pack_size} className="input" placeholder="10 g / 50 butir" />
         </Field>
         <Field label="Harga jual per kemasan (Rp)">
           <input name="unit_price" type="number" min={0} defaultValue={product?.unit_price ?? 0} className="input" />
@@ -43,6 +43,17 @@ export function ProductForm({ product }: { product?: ProductStock }) {
         </Field>
         <Field label="Masa simpan (bulan)">
           <input name="shelf_life_months" type="number" min={1} defaultValue={product?.shelf_life_months ?? 18} className="input" />
+        </Field>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field label="Umur panen">
+          <input name="harvest_age" defaultValue={product?.harvest_age} className="input" placeholder="55–58 hari" />
+        </Field>
+        <Field label="Potensi hasil">
+          <input name="yield_potential" defaultValue={product?.yield_potential} className="input" placeholder="23–29 ton/ha" />
+        </Field>
+        <Field label="Bobot buah">
+          <input name="fruit_weight" defaultValue={product?.fruit_weight} className="input" placeholder="2,1–2,5 kg" />
         </Field>
       </div>
       <Field label="Deskripsi / keunggulan">

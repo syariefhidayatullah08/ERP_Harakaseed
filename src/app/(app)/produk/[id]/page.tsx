@@ -1,9 +1,11 @@
+import { toId } from "@/lib/form";
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { all } from "@/lib/db";
 import { productStock } from "@/lib/inventory";
 import { addDays, daysUntil, num, rupiah, tanggal, today } from "@/lib/format";
-import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
+import { Badge, Card, DL, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { ProductForm } from "../product-form";
 import { requireAccess } from "@/lib/session";
 
@@ -11,7 +13,7 @@ export default async function ProductDetail({ params, searchParams }: PageProps<
   await requireAccess("produk");
   const { id } = await params;
   const sp = await searchParams;
-  const [product] = await productStock("p.id = ?", Number(id));
+  const [product] = await productStock("p.id = ?", toId(id));
   if (!product) notFound();
 
   const lots = await all<{ id: number; lot_no: string; qty_initial: number; qty_available: number; germination: number; purity: number; expiry_date: string; prod_date: string }>(
@@ -27,16 +29,38 @@ export default async function ProductDetail({ params, searchParams }: PageProps<
 
   return (
     <>
-      <PageHeader title={product.name} subtitle={`${product.crop} · ${product.pack_size} · ${product.sku}`} back={{ href: "/produk", label: "Produk" }} />
+      <PageHeader title={product.name} subtitle={[product.crop, product.pack_size, product.sku].filter(Boolean).join(" · ")} back={{ href: "/produk", label: "Produk" }} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Stok layak jual" value={num(product.stock)} tone={product.stock < product.min_stock ? "danger" : "default"} hint={`Minimum ${num(product.min_stock)}`} />
+        <StatCard label="Stok layak jual" value={num(product.stock)} tone={product.min_stock > 0 && product.stock < product.min_stock ? "danger" : "default"} hint={`Minimum ${num(product.min_stock)}`} />
         <StatCard label="Dipesan (belum kirim)" value={num(product.reserved)} hint={`Tersedia ${num(product.stock - product.reserved)}`} />
         <StatCard label="Terjual 12 bulan" value={num(sold.qty)} hint="kemasan" />
         <StatCard label="Omzet 12 bulan" value={rupiah(sold.v)} />
       </div>
       <div className="grid gap-5 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+        <div className="space-y-5 lg:col-span-3">
+          <div className="card flex flex-col gap-5 p-5 sm:flex-row">
+            {product.image && (
+              <a href={product.image} target="_blank" rel="noopener noreferrer" className="relative mx-auto h-56 w-44 shrink-0 overflow-hidden rounded-lg bg-canvas sm:mx-0">
+                <Image src={product.image} alt={`Kemasan ${product.name}`} fill sizes="176px" className="object-cover" priority />
+              </a>
+            )}
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Badge tone={product.seed_type === "OP" ? "orange" : "brand"}>{product.seed_type}</Badge>
+                <Badge>{product.category}</Badge>
+                {!product.unit_price && <Badge tone="orange">Harga belum diisi</Badge>}
+              </div>
+              <DL
+                items={[
+                  ["Umur panen", product.harvest_age || "—"],
+                  ["Potensi hasil", product.yield_potential || "—"],
+                  ["Bobot buah", product.fruit_weight || "—"],
+                ]}
+              />
+              {product.description && <p className="text-sm leading-relaxed text-muted">{product.description}</p>}
+            </div>
+          </div>
           <ProductForm product={product} />
         </div>
         <Card

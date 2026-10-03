@@ -1,3 +1,4 @@
+import { toId } from "@/lib/form";
 import { get as getBlob } from "@vercel/blob";
 import { get } from "@/lib/db";
 import { currentUser } from "@/lib/session";
@@ -11,7 +12,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/files/[id]">
   const { id } = await ctx.params;
   const row = await get<{ ref_type: string; pathname: string; filename: string; content_type: string }>(
     "SELECT ref_type, pathname, filename, content_type FROM attachments WHERE id = ?",
-    Number(id),
+    toId(id),
   );
   if (!row || !isAttachmentRef(row.ref_type)) return new Response("Tidak ditemukan", { status: 404 });
   if (!canAccess(user.role, ATTACHMENT_REFS[row.ref_type].module)) return new Response("Forbidden", { status: 403 });

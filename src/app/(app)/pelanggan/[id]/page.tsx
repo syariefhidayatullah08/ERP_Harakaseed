@@ -1,3 +1,4 @@
+import { toId } from "@/lib/form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MessageCircle } from "lucide-react";
@@ -15,7 +16,7 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
   await requireAccess("pelanggan");
   const { id } = await params;
   const sp = await searchParams;
-  const c = await get<Customer>("SELECT * FROM customers WHERE id = ?", Number(id));
+  const c = await get<Customer>("SELECT * FROM customers WHERE id = ?", toId(id));
   if (!c) notFound();
 
   const orders = await all<{ id: number; so_no: string; order_date: string; status: string; total: number; paid: number; invoice_no: string | null; due_date: string | null }>(

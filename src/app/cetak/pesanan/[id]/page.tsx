@@ -1,3 +1,4 @@
+import { toId } from "@/lib/form";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { all, get, getSettings } from "@/lib/db";
@@ -19,7 +20,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
   }>(
     `SELECT so.*, c.name customer, c.contact_person, c.phone, c.address, c.city FROM sales_orders so
      JOIN customers c ON c.id = so.customer_id WHERE so.id = ?`,
-    Number(id),
+    toId(id),
   );
   if (!o) notFound();
   const items = await all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(

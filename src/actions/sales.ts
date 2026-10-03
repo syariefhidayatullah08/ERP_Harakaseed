@@ -14,6 +14,7 @@ import {
   orderConfirmationEmail,
   paymentReceiptEmail,
   reminderEmail,
+  emailConfigured,
   sendEmail,
   shippingEmail,
 } from "@/lib/email";
@@ -38,6 +39,12 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
   }
   if (!customerId) return { error: "Pilih pelanggan." };
   if (!lines.length) return { error: "Tambahkan minimal satu produk." };
+  if (lines.some((l) => !Number.isInteger(l.product_id) || !Number.isFinite(l.qty) || !Number.isFinite(l.price) || l.price < 0)) {
+    return { error: "Data item tidak valid." };
+  }
+  const known = await all<{ id: number }>("SELECT id FROM products WHERE active = 1 AND id = ANY(?::int[])", `{${lines.map((l) => l.product_id).join(",")}}`);
+  if (known.length !== new Set(lines.map((l) => l.product_id)).size) return { error: "Ada produk yang tidak ditemukan atau sudah nonaktif. Muat ulang halaman." };
+  if (!(await get("SELECT id FROM customers WHERE id = ?", customerId))) return { error: "Pelanggan tidak ditemukan." };
 
   const discountPct = numf(fd, "discount_pct");
   const taxPct = numf(fd, "tax_pct");
@@ -75,7 +82,7 @@ async function autoEmail(settingKey: string, soId: number, build: typeof orderCo
   if (!data) return "";
   if (!data.order.email) return "Pelanggan belum punya email — email tidak dikirim.";
   const mail = await build(data.order, data.items);
-  const attachments = pdf ? await orderPdfAttachment(soId, pdf) : undefined;
+  const attachments = pdf && emailConfigured() ? await orderPdfAttachment(soId, pdf) : undefined;
   const res = await sendEmail({ to: data.order.email, ...mail, refType, refId: soId, attachments });
   return res.ok ? `Email terkirim ke ${data.order.email}.` : `Email gagal: ${res.error}`;
 }
@@ -202,7 +209,7 @@ export async function emailOrderDocument(fd: FormData) {
   const build = builders[kind as keyof typeof builders];
   if (!build) redirect(withMsg(`/penjualan/${id}`, "Jenis dokumen tidak dikenal.", "error"));
   const pdf: PdfDoc | null = kind === "invoice" || kind === "pengingat" ? "invoice" : kind === "pengiriman" ? "sj" : null;
-  const attachments = pdf ? await orderPdfAttachment(id, pdf) : undefined;
+  const attachments = pdf && emailConfigured() ? await orderPdfAttachment(id, pdf) : undefined;
   const res = await sendEmail({ to, ...(await build()), refType: pdf === "invoice" ? "invoice" : "sales_order", refId: id, attachments });
   redirect(withMsg(`/penjualan/${id}`, res.ok ? `Email ${kind} terkirim ke ${to}.` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
 }
@@ -222,7 +229,7 @@ export async function sendOverdueReminders() {
       fail++;
       continue;
     }
-    const res = await sendEmail({ to: data.order.email, ...(await reminderEmail(data.order)), refType: "invoice", refId: o.id, attachments: await orderPdfAttachment(o.id) });
+    const res = await sendEmail({ to: data.order.email, ...(await reminderEmail(data.order)), refType: "invoice", refId: o.id, attachments: emailConfigured() ? await orderPdfAttachment(o.id) : undefined });
     if (res.ok) ok++;
     else fail++;
   }

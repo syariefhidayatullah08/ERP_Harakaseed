@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { Pool, types, type PoolClient } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
 import { hashPassword } from "./password";
+import { CATALOG } from "./catalog";
 
 // COUNT/SUM di Postgres bertipe bigint/numeric → kembalikan sebagai number, bukan string.
 types.setTypeParser(20, (v) => Number(v));
@@ -121,6 +122,16 @@ async function init() {
     await client.query(SCHEMA_SQL);
     const { rows } = await ex("SELECT COUNT(*) AS n FROM users");
     if (Number(rows[0].n) === 0) await seed(ex);
+    else {
+      const v = await ex("SELECT value FROM settings WHERE key = 'catalog_version'");
+      if (v.rows[0]?.value !== CATALOG_VERSION) {
+        await syncCatalog(ex);
+        await ex(
+          "INSERT INTO settings (key, value) VALUES ('catalog_version', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+          CATALOG_VERSION,
+        );
+      }
+    }
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK");
@@ -131,6 +142,33 @@ async function init() {
 }
 
 type Ex = (sql: string, ...p: Param[]) => Promise<{ rows: Record<string, unknown>[] }>;
+
+/** Naikkan bila CATALOG berubah agar database yang sudah berjalan ikut diperbarui sekali. */
+const CATALOG_VERSION = "2";
+
+/**
+ * Samakan produk dengan katalog resmi. Varietas yang sudah ada hanya diperbarui datanya dari katalog
+ * (komoditas, kategori, deskripsi, spesifikasi, foto); SKU, kemasan, harga, dan stok minimum yang
+ * sudah diisi pengguna tidak disentuh. Varietas yang belum ada ditambahkan.
+ */
+async function syncCatalog(ex: Ex) {
+  for (const c of CATALOG) {
+    const found = await ex("SELECT id FROM products WHERE upper(name) = upper(?)", c.name);
+    if (found.rows.length) {
+      await ex(
+        `UPDATE products SET crop = ?, category = ?, seed_type = ?, description = ?, harvest_age = ?, yield_potential = ?, fruit_weight = ?, image = ?
+         WHERE id = ?`,
+        c.crop, c.category, c.seedType, c.description, c.harvestAge, c.yieldPotential, c.fruitWeight, c.image, Number(found.rows[0].id),
+      );
+    } else {
+      await ex(
+        `INSERT INTO products (sku, name, crop, category, seed_type, pack_size, unit_price, min_stock, description, harvest_age, yield_potential, fruit_weight, image)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (sku) DO NOTHING`,
+        c.sku, c.name, c.crop, c.category, c.seedType, c.packSize, c.price, c.minStock, c.description, c.harvestAge, c.yieldPotential, c.fruitWeight, c.image,
+      );
+    }
+  }
+}
 
 const SCHEMA_SQL = `
     CREATE TABLE IF NOT EXISTS users (
@@ -334,22 +372,14 @@ const SCHEMA_SQL = `
     CREATE INDEX IF NOT EXISTS idx_moves_lot ON stock_moves(lot_id);
     CREATE INDEX IF NOT EXISTS idx_so_customer ON sales_orders(customer_id);
     CREATE INDEX IF NOT EXISTS idx_emails_ref ON emails(ref_type, ref_id);
+
+    -- Spesifikasi varietas dari katalog resmi (v2)
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS harvest_age TEXT NOT NULL DEFAULT '';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS yield_potential TEXT NOT NULL DEFAULT '';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS fruit_weight TEXT NOT NULL DEFAULT '';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT NOT NULL DEFAULT '';
   `;
 
-const PRODUCTS: [string, string, string, string, string, string, number, number, string][] = [
-  ["HKS-KNT-50", "KENTA F1", "Semangka Tanpa Biji", "Buah", "F1 Hibrida", "50 butir", 185000, 200, "Semangka seedless, daging merah renyah, kulit kuat untuk distribusi jarak jauh."],
-  ["HKS-DRA-10", "DIARA F1", "Melon Daging Oranye", "Buah", "F1 Hibrida", "10 g", 165000, 200, "Melon jaring daging oranye, manis tinggi, tahan simpan."],
-  ["HKS-BNT-10", "BIANTARA F1", "Cabai Merah Keriting", "Cabai", "F1 Hibrida", "10 g", 145000, 400, "Cabai keriting produktif, adaptif dataran rendah–menengah."],
-  ["HKS-MRS-250", "MARISA F1", "Jagung Manis", "Jagung", "F1 Hibrida", "250 g", 95000, 300, "Jagung manis tongkol besar, kadar gula tinggi."],
-  ["HKS-MEI-25", "MEILI F1", "Mentimun", "Sayuran Buah", "F1 Hibrida", "25 g", 85000, 300, "Mentimun segar, buah lurus seragam, hijau cerah."],
-  ["HKS-SHW-10", "SAHWA F1", "Tomat Salad Dataran Rendah", "Sayuran Buah", "F1 Hibrida", "10 g", 135000, 250, "Tomat salad tahan panas untuk dataran rendah."],
-  ["HKS-JNU-10", "JANU F1", "Terong Ungu", "Sayuran Buah", "F1 Hibrida", "10 g", 75000, 250, "Terong ungu mengkilap, buah panjang seragam."],
-  ["HKS-VDA-25", "VEDA F1", "Pare", "Sayuran Buah", "F1 Hibrida", "25 g", 70000, 200, "Pare hijau produktif, bintil rapat."],
-  ["HKS-VNT-100", "VINETA", "Kacang Panjang Biji Hitam", "Kacang-kacangan", "OP", "100 g", 35000, 500, "Kacang panjang biji hitam, polong panjang dan renyah."],
-  ["HKS-LMN-250", "LUMINA", "Buncis", "Kacang-kacangan", "OP", "250 g", 45000, 300, "Buncis tegak, polong lurus dan lembut."],
-  ["HKS-SDY-25", "SENDAYU", "Sawi Manis", "Sayuran Daun", "OP", "25 g", 25000, 400, "Sawi manis cepat panen, daun lebar."],
-  ["HKS-CLM-5", "CALLINA MADU", "Pepaya Premium", "Buah", "OP", "5 g", 55000, 150, "Pepaya Callina rasa madu, daging tebal oranye kemerahan."],
-];
 
 async function seed(ex: Ex) {
   await ex(
@@ -372,15 +402,11 @@ async function seed(ex: Ex) {
     auto_email_order: "1",
     auto_email_shipping: "1",
     auto_email_invoice: "1",
+    catalog_version: CATALOG_VERSION,
   };
   for (const [k, v] of Object.entries(settings)) await ex("INSERT INTO settings (key, value) VALUES (?, ?)", k, v);
 
-  for (const p of PRODUCTS) {
-    await ex(
-      "INSERT INTO products (sku, name, crop, category, seed_type, pack_size, unit_price, min_stock, description) VALUES (?,?,?,?,?,?,?,?,?)",
-      ...p,
-    );
-  }
+  await syncCatalog(ex);
 
   if (process.env.SEED_DEMO !== "0") await seedDemo(ex);
 }
@@ -419,7 +445,8 @@ async function seedDemo(ex: Ex) {
   await ex("INSERT INTO suppliers (name, category) VALUES (?, ?)", "Supplier Fungisida Seed Treatment (Contoh)", "Bahan Perlakuan Benih");
 
   // Lot awal per produk
-  const products = (await ex("SELECT id, sku, min_stock, unit_price FROM products ORDER BY id")).rows as {
+  const products = (await ex("SELECT id, sku, name, min_stock, unit_price FROM products WHERE unit_price > 0 ORDER BY id")).rows as {
+    name: string;
     id: number;
     sku: string;
     min_stock: number;
@@ -441,11 +468,11 @@ async function seedDemo(ex: Ex) {
 
   await ex(
     "INSERT INTO productions (code, product_id, grower_id, area_ha, plant_date, est_harvest, status, notes) VALUES (?,?,?,?,?,?,?,?)",
-    `PRD-${today.getFullYear()}-0001`, products[2].id, growers[0], 1.5, addDays(-60), addDays(30), "tanam", "Produksi benih cabai musim kemarau",
+    `PRD-${today.getFullYear()}-0001`, products.find((p) => p.name === "BIANTARA F1")!.id, growers[0], 1.5, addDays(-60), addDays(30), "tanam", "Produksi benih cabai musim kemarau",
   );
   await ex(
     "INSERT INTO productions (code, product_id, grower_id, area_ha, plant_date, est_harvest, harvest_kg, status, notes) VALUES (?,?,?,?,?,?,?,?,?)",
-    `PRD-${today.getFullYear()}-0002`, products[0].id, growers[2], 2.0, addDays(-110), addDays(-10), 42, "uji_lab", "Menunggu hasil uji daya kecambah",
+    `PRD-${today.getFullYear()}-0002`, products.find((p) => p.name === "KENTA F1")!.id, growers[2], 2.0, addDays(-110), addDays(-10), 42, "uji_lab", "Menunggu hasil uji daya kecambah",
   );
 
   // Pesanan contoh 6 bulan terakhir

@@ -18,6 +18,9 @@ function read(fd: FormData) {
     min_stock: numf(fd, "min_stock"),
     shelf_life_months: numf(fd, "shelf_life_months") || 18,
     description: str(fd, "description"),
+    harvest_age: str(fd, "harvest_age"),
+    yield_potential: str(fd, "yield_potential"),
+    fruit_weight: str(fd, "fruit_weight"),
     active: fd.get("active") ? 1 : 0,
   };
 }
@@ -27,19 +30,23 @@ export async function saveProduct(fd: FormData) {
   const id = numf(fd, "id");
   const p = read(fd);
   const back = id ? `/produk/${id}` : "/produk/baru";
-  if (!p.sku || !p.name || !p.crop || !p.pack_size) redirect(withMsg(back, "SKU, nama, komoditas, dan kemasan wajib diisi.", "error"));
+  if (!p.sku || !p.name || !p.crop) redirect(withMsg(back, "SKU, nama, dan komoditas wajib diisi.", "error"));
   const dup = await get<{ id: number }>("SELECT id FROM products WHERE sku = ? AND id != ?", p.sku, id);
   if (dup) redirect(withMsg(back, `SKU ${p.sku} sudah dipakai.`, "error"));
 
   if (id) {
     await run(
-      `UPDATE products SET sku=?, name=?, crop=?, category=?, seed_type=?, pack_size=?, unit_price=?, min_stock=?, shelf_life_months=?, description=?, active=? WHERE id=?`,
-      p.sku, p.name, p.crop, p.category, p.seed_type, p.pack_size, p.unit_price, p.min_stock, p.shelf_life_months, p.description, p.active, id,
+      `UPDATE products SET sku=?, name=?, crop=?, category=?, seed_type=?, pack_size=?, unit_price=?, min_stock=?, shelf_life_months=?, description=?,
+       harvest_age=?, yield_potential=?, fruit_weight=?, active=? WHERE id=?`,
+      p.sku, p.name, p.crop, p.category, p.seed_type, p.pack_size, p.unit_price, p.min_stock, p.shelf_life_months, p.description,
+      p.harvest_age, p.yield_potential, p.fruit_weight, p.active, id,
     );
   } else {
     await run(
-      `INSERT INTO products (sku, name, crop, category, seed_type, pack_size, unit_price, min_stock, shelf_life_months, description, active) VALUES (?,?,?,?,?,?,?,?,?,?,1)`,
+      `INSERT INTO products (sku, name, crop, category, seed_type, pack_size, unit_price, min_stock, shelf_life_months, description, harvest_age, yield_potential, fruit_weight, active)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
       p.sku, p.name, p.crop, p.category, p.seed_type, p.pack_size, p.unit_price, p.min_stock, p.shelf_life_months, p.description,
+      p.harvest_age, p.yield_potential, p.fruit_weight,
     );
   }
   revalidatePath("/produk");
