@@ -1,6 +1,6 @@
 # ERP Haraka Seed
 
-Sistem ERP untuk **PT Benih Haraka Sejahtera (HARAKA SEED)**, produsen benih hortikultura di Jember. Dibangun dengan Next.js 16 dan SQLite bawaan Node.js (tanpa server database terpisah), dan terhubung ke email lewat SMTP dan IMAP.
+Sistem ERP untuk **PT Benih Haraka Sejahtera (HARAKA SEED)**, produsen benih hortikultura di Jember. Dibangun dengan Next.js 16 dan Postgres (Neon), di-deploy di Vercel, dan terhubung ke email lewat SMTP dan IMAP.
 
 ## Modul
 
@@ -26,19 +26,22 @@ Sistem ERP untuk **PT Benih Haraka Sejahtera (HARAKA SEED)**, produsen benih hor
 
 Semua email memakai kop HARAKA SEED dan tercatat di menu Email. Email yang gagal juga dicatat beserta alasannya.
 
-## Menjalankan
+## Menjalankan secara lokal
 
-Butuh **Node.js 24** (memakai `node:sqlite` bawaan).
+Butuh **Node.js 22+** dan Vercel CLI (`npm i -g vercel`).
 
 ```bash
 npm install
-cp .env.example .env.local   # lalu isi nilainya
-npm run dev                  # http://localhost:3000
+vercel link          # hubungkan ke project haraka-erp
+vercel env pull      # ambil DATABASE_URL dkk. ke .env.local
+npm run dev          # http://localhost:3000
 ```
 
-Login awal: `ADMIN_EMAIL` / `ADMIN_PASSWORD` dari `.env.local`. Jika tidak diisi, default-nya `admin@harakaseeds.com` / `haraka123`. **Segera ganti kata sandi** di menu Pengaturan.
+> **Penting:** environment Development memakai database yang sama dengan Production. Agar uji coba lokal tidak mengubah data asli, jalankan dengan schema terpisah: `DB_SCHEMA=dev npm run dev`. Hapus schema uji dengan `node --env-file=.env.local scripts/drop-schema.mjs dev`.
 
-Database dibuat otomatis di `data/haraka.db` dan sudah berisi data contoh (pelanggan dan supplier bertanda "(Contoh)", pesanan 6 bulan, lot awal). Harga produk hanya perkiraan, jadi sesuaikan di menu Produk. Untuk mulai dengan data asli, buka **Pengaturan → Hapus data contoh & transaksi**, atau set `SEED_DEMO=0` sebelum database pertama kali dibuat.
+Tabel dibuat otomatis saat aplikasi pertama kali dibuka dan langsung diisi data contoh (pelanggan dan supplier bertanda "(Contoh)", pesanan 6 bulan, lot awal). Harga produk hanya perkiraan, jadi sesuaikan di menu Produk. Untuk mulai dengan data asli, buka **Pengaturan → Hapus data contoh & transaksi**.
+
+Login awal memakai `ADMIN_EMAIL` / `ADMIN_PASSWORD` dari environment. Lokal tanpa variabel itu, default-nya `admin@harakaseeds.com` / `haraka123`. **Segera ganti kata sandi** di menu Pengaturan.
 
 ### Menghubungkan Gmail
 1. Login ke akun Google perusahaan, lalu aktifkan **Verifikasi 2 Langkah**.
@@ -49,18 +52,20 @@ Database dibuat otomatis di `data/haraka.db` dan sudah berisi data contoh (pelan
 
 Untuk email domain sendiri (Zoho, cPanel, Outlook), isi juga `SMTP_HOST`, `SMTP_PORT`, `IMAP_HOST`, dan `IMAP_PORT`.
 
-### Produksi (server kantor / VPS)
-```bash
-npm run build
-npm start          # port 3000
-```
-Rajin backup file `data/haraka.db`. Jika diakses lewat HTTP biasa (tanpa HTTPS) dari jaringan kantor, set `INSECURE_COOKIE=1` agar login berfungsi. Disarankan tetap memakai HTTPS.
+## Deploy (Vercel)
 
-> Catatan: aplikasi ini menyimpan data di file SQLite lokal, jadi perlu server dengan disk permanen (PC kantor, VPS, Railway, Fly.io). Aplikasi ini tidak cocok untuk hosting serverless seperti Vercel tanpa mengganti database ke Postgres.
+Project Vercel `haraka-erp` terhubung ke repo GitHub ini: setiap push ke `main` otomatis deploy ke production, dan setiap branch/PR mendapat URL preview. Database Neon Postgres dipasang lewat Vercel Marketplace.
+
+Variabel environment di Vercel: `DATABASE_URL` (otomatis dari Neon), `SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`. Untuk email, tambahkan:
+```bash
+vercel env add EMAIL_USER production
+vercel env add EMAIL_PASS production --sensitive
+vercel --prod        # atau push ke main
+```
 
 ## Struktur
 ```
-src/lib/db.ts          skema, migrasi, data awal
+src/lib/db.ts          koneksi Postgres, transaksi, skema, data awal
 src/lib/inventory.ts   stok, alokasi FEFO, lot
 src/lib/email.ts       SMTP/IMAP + template email
 src/actions/*.ts       server actions per modul

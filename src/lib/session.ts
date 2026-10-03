@@ -5,7 +5,13 @@ import { redirect } from "next/navigation";
 import { get } from "./db";
 
 export const SESSION_COOKIE = "haraka_session";
-const SECRET = process.env.SESSION_SECRET ?? "haraka-dev-secret-ganti-di-.env";
+const SECRET =
+  process.env.SESSION_SECRET ??
+  (process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview"
+    ? (() => {
+        throw new Error("SESSION_SECRET wajib diisi di environment Vercel.");
+      })()
+    : "haraka-dev-secret-ganti-di-.env");
 
 export type SessionUser = { id: number; name: string; email: string; role: string };
 
@@ -33,7 +39,7 @@ function readToken(token: string | undefined): number | null {
 export async function currentUser(): Promise<SessionUser | null> {
   const id = readToken((await cookies()).get(SESSION_COOKIE)?.value);
   if (!id) return null;
-  return get<SessionUser>("SELECT id, name, email, role FROM users WHERE id = ?", id) ?? null;
+  return await get<SessionUser>("SELECT id, name, email, role FROM users WHERE id = ?", id) ?? null;
 }
 
 export async function requireUser(): Promise<SessionUser> {

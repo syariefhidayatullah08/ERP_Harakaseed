@@ -15,16 +15,16 @@ const REF_LINK: Record<string, (id: number) => string> = {
 export default async function EmailDetail({ params, searchParams }: PageProps<"/email/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const m = get<{
+  const m = await get<{
     id: number; direction: string; from_addr: string; to_addr: string; subject: string; body_html: string; body_text: string;
     status: string; error: string; ref_type: string | null; ref_id: number | null; is_read: number; created_at: string;
   }>("SELECT * FROM emails WHERE id = ?", Number(id));
   if (!m) notFound();
-  if (m.direction === "in" && !m.is_read) run("UPDATE emails SET is_read = 1 WHERE id = ?", m.id);
+  if (m.direction === "in" && !m.is_read) await run("UPDATE emails SET is_read = 1 WHERE id = ?", m.id);
 
   const inbound = m.direction === "in";
   const replyTo = inbound ? (m.from_addr.match(/<([^>]+)>/)?.[1] ?? m.from_addr) : m.to_addr;
-  const customer = get<{ id: number; name: string }>("SELECT id, name FROM customers WHERE email != '' AND lower(email) = lower(?)", replyTo);
+  const customer = await get<{ id: number; name: string }>("SELECT id, name FROM customers WHERE email != '' AND lower(email) = lower(?)", replyTo);
   const quoted = (m.body_text || "")
     .split("\n")
     .slice(0, 30)

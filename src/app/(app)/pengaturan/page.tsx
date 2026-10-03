@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CheckCircle2, XCircle } from "lucide-react";
-import { all, getSetting } from "@/lib/db";
+import { all, getSettings } from "@/lib/db";
 import { emailInfo } from "@/lib/email";
 import { requireUser } from "@/lib/session";
 import { tanggal } from "@/lib/format";
@@ -15,8 +15,9 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
   const sp = await searchParams;
   const me = await requireUser();
   const info = emailInfo();
-  const users = all<{ id: number; name: string; email: string; role: string; created_at: string }>("SELECT * FROM users ORDER BY id");
-  const s = (k: string) => getSetting(k);
+  const users = await all<{ id: number; name: string; email: string; role: string; created_at: string }>("SELECT * FROM users ORDER BY id");
+  const settings = await getSettings();
+  const s = (k: string) => settings[k] ?? "";
   const isAdmin = me.role === "admin";
 
   return (

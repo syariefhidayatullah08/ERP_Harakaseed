@@ -6,8 +6,8 @@ import { OrderForm } from "./order-form";
 
 export default async function NewOrderPage({ searchParams }: PageProps<"/penjualan/baru">) {
   const sp = await searchParams;
-  const customers = all<{ id: number; name: string; city: string; email: string }>("SELECT id, name, city, email FROM customers ORDER BY name");
-  const products = productStock("p.active = 1").map((p) => ({
+  const customers = await all<{ id: number; name: string; city: string; email: string }>("SELECT id, name, city, email FROM customers ORDER BY name");
+  const products = (await productStock("p.active = 1")).map((p) => ({
     id: p.id,
     name: p.name,
     crop: p.crop,

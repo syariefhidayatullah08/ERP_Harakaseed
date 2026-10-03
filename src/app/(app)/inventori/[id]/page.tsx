@@ -11,7 +11,7 @@ const KIND: Record<string, string> = { masuk: "green", keluar: "blue", penyesuai
 export default async function LotDetail({ params, searchParams }: PageProps<"/inventori/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const lot = get<{
+  const lot = await get<{
     id: number; lot_no: string; product_id: number; name: string; crop: string; pack_size: string; qty_initial: number; qty_available: number;
     germination: number; purity: number; moisture: number; prod_date: string; expiry_date: string; location: string; production_id: number | null; prd_code: string | null; grower: string | null;
   }>(
@@ -24,11 +24,11 @@ export default async function LotDetail({ params, searchParams }: PageProps<"/in
   );
   if (!lot) notFound();
 
-  const moves = all<{ id: number; kind: string; qty: number; ref: string; note: string; created_at: string }>(
+  const moves = await all<{ id: number; kind: string; qty: number; ref: string; note: string; created_at: string }>(
     "SELECT * FROM stock_moves WHERE lot_id = ? ORDER BY id DESC",
     lot.id,
   );
-  const shipments = all<{ so_id: number; so_no: string; customer: string; city: string; qty: number; shipped_at: string }>(
+  const shipments = await all<{ so_id: number; so_no: string; customer: string; city: string; qty: number; shipped_at: string }>(
     `SELECT so.id so_id, so.so_no, c.name customer, c.city, a.qty, so.shipped_at FROM so_allocations a
      JOIN so_items i ON i.id = a.so_item_id JOIN sales_orders so ON so.id = i.so_id JOIN customers c ON c.id = so.customer_id
      WHERE a.lot_id = ? ORDER BY so.shipped_at DESC`,

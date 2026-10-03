@@ -10,20 +10,20 @@ import { CustomerForm, type Customer } from "../customer-form";
 export default async function CustomerDetail({ params, searchParams }: PageProps<"/pelanggan/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const c = get<Customer>("SELECT * FROM customers WHERE id = ?", Number(id));
+  const c = await get<Customer>("SELECT * FROM customers WHERE id = ?", Number(id));
   if (!c) notFound();
 
-  const orders = all<{ id: number; so_no: string; order_date: string; status: string; total: number; paid: number; invoice_no: string | null; due_date: string | null }>(
+  const orders = await all<{ id: number; so_no: string; order_date: string; status: string; total: number; paid: number; invoice_no: string | null; due_date: string | null }>(
     "SELECT * FROM sales_orders WHERE customer_id = ? ORDER BY order_date DESC, id DESC",
     c.id,
   );
   const valid = orders.filter((o) => o.status !== "draft" && o.status !== "batal");
   const revenue = valid.reduce((s, o) => s + o.total, 0);
   const outstanding = valid.filter((o) => o.invoice_no).reduce((s, o) => s + (o.total - o.paid), 0);
-  const emails = all<EmailRow>(
+  const emails = await all<EmailRow>(
     `SELECT * FROM emails WHERE (ref_type = 'customer' AND ref_id = ?)
        OR (ref_type IN ('sales_order','invoice') AND ref_id IN (SELECT id FROM sales_orders WHERE customer_id = ?))
-       OR (? != '' AND (lower(to_addr) LIKE ? OR lower(from_addr) LIKE ?))
+       OR (? != '' AND (lower(to_addr) ILIKE ? OR lower(from_addr) ILIKE ?))
      ORDER BY created_at DESC LIMIT 30`,
     c.id,
     c.id,

@@ -10,10 +10,10 @@ export const metadata: Metadata = { title: "Pembelian" };
 
 export default async function PurchasingPage({ searchParams }: PageProps<"/pembelian">) {
   const sp = await searchParams;
-  const pos = all<{ id: number; po_no: string; supplier: string; order_date: string; status: string; total: number }>(
+  const pos = await all<{ id: number; po_no: string; supplier: string; order_date: string; status: string; total: number }>(
     "SELECT po.*, s.name supplier FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id ORDER BY po.id DESC",
   );
-  const suppliers = all<{ id: number; name: string; category: string; email: string; phone: string }>("SELECT * FROM suppliers ORDER BY name");
+  const suppliers = await all<{ id: number; name: string; category: string; email: string; phone: string }>("SELECT * FROM suppliers ORDER BY name");
 
   return (
     <>

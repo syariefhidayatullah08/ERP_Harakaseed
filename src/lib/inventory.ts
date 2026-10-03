@@ -1,5 +1,5 @@
 import "server-only";
-import { all, get, run } from "./db";
+import { all, get, insert, run } from "./db";
 import { today } from "./format";
 
 export type ProductStock = {
@@ -20,8 +20,8 @@ export type ProductStock = {
 };
 
 /** Stok layak jual = lot yang belum kadaluarsa. Reserved = qty pesanan dikonfirmasi yang belum dikirim. */
-export function productStock(where = "1=1", ...params: (string | number)[]): ProductStock[] {
-  return all<ProductStock>(
+export async function productStock(where = "1=1", ...params: (string | number)[]): Promise<ProductStock[]> {
+  return await all<ProductStock>(
     `SELECT p.*,
        COALESCE((SELECT SUM(qty_available) FROM lots l WHERE l.product_id = p.id AND l.expiry_date >= ?), 0) AS stock,
        COALESCE((SELECT SUM(i.qty) FROM so_items i JOIN sales_orders so ON so.id = i.so_id
@@ -32,20 +32,21 @@ export function productStock(where = "1=1", ...params: (string | number)[]): Pro
   );
 }
 
-export function lowStockProducts() {
-  return productStock("p.active = 1").filter((p) => p.stock < p.min_stock);
+export async function lowStockProducts() {
+  return (await productStock("p.active = 1")).filter((p) => p.stock < p.min_stock);
 }
 
 /**
  * Alokasi stok FEFO (First Expired, First Out) untuk satu baris pesanan.
  * Mengurangi qty_available lot, mencatat stock_moves dan so_allocations.
- * Harus dipanggil di dalam transaksi.
+ * Harus dipanggil di dalam transaksi (lot dikunci FOR UPDATE agar tidak terjual ganda).
  */
-export function allocateFefo(soItemId: number, productId: number, qty: number, ref: string) {
-  const lots = all<{ id: number; lot_no: string; qty_available: number }>(
+export async function allocateFefo(soItemId: number, productId: number, qty: number, ref: string) {
+  const lots = await all<{ id: number; lot_no: string; qty_available: number }>(
     `SELECT id, lot_no, qty_available FROM lots
      WHERE product_id = ? AND qty_available > 0 AND expiry_date >= ?
-     ORDER BY expiry_date, id`,
+     ORDER BY expiry_date, id
+     FOR UPDATE`,
     productId,
     today(),
   );
@@ -53,9 +54,9 @@ export function allocateFefo(soItemId: number, productId: number, qty: number, r
   for (const lot of lots) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, lot.qty_available);
-    run("UPDATE lots SET qty_available = qty_available - ? WHERE id = ?", take, lot.id);
-    run("INSERT INTO so_allocations (so_item_id, lot_id, qty) VALUES (?,?,?)", soItemId, lot.id, take);
-    run(
+    await run("UPDATE lots SET qty_available = qty_available - ? WHERE id = ?", take, lot.id);
+    await run("INSERT INTO so_allocations (so_item_id, lot_id, qty) VALUES (?,?,?)", soItemId, lot.id, take);
+    await run(
       "INSERT INTO stock_moves (lot_id, product_id, kind, qty, ref, note) VALUES (?,?, 'keluar', ?, ?, 'Pengiriman pesanan')",
       lot.id,
       productId,
@@ -65,32 +66,32 @@ export function allocateFefo(soItemId: number, productId: number, qty: number, r
     remaining -= take;
   }
   if (remaining > 0) {
-    const p = get<{ name: string }>("SELECT name FROM products WHERE id = ?", productId);
+    const p = await get<{ name: string }>("SELECT name FROM products WHERE id = ?", productId);
     throw new Error(`Stok ${p?.name ?? "produk"} tidak cukup (kurang ${remaining}).`);
   }
 }
 
 /** Kembalikan stok yang sudah dialokasikan (mis. pesanan terkirim dibatalkan). */
-export function releaseAllocations(soId: number, ref: string) {
-  const allocs = all<{ id: number; lot_id: number; qty: number; product_id: number }>(
+export async function releaseAllocations(soId: number, ref: string) {
+  const allocs = await all<{ id: number; lot_id: number; qty: number; product_id: number }>(
     `SELECT a.id, a.lot_id, a.qty, i.product_id FROM so_allocations a
      JOIN so_items i ON i.id = a.so_item_id WHERE i.so_id = ?`,
     soId,
   );
   for (const a of allocs) {
-    run("UPDATE lots SET qty_available = qty_available + ? WHERE id = ?", a.qty, a.lot_id);
-    run(
+    await run("UPDATE lots SET qty_available = qty_available + ? WHERE id = ?", a.qty, a.lot_id);
+    await run(
       "INSERT INTO stock_moves (lot_id, product_id, kind, qty, ref, note) VALUES (?,?, 'retur', ?, ?, 'Pembatalan pesanan')",
       a.lot_id,
       a.product_id,
       a.qty,
       ref,
     );
-    run("DELETE FROM so_allocations WHERE id = ?", a.id);
+    await run("DELETE FROM so_allocations WHERE id = ?", a.id);
   }
 }
 
-export function createLot(input: {
+export async function createLot(input: {
   lotNo: string;
   productId: number;
   productionId?: number | null;
@@ -103,7 +104,7 @@ export function createLot(input: {
   location: string;
   note: string;
 }) {
-  const r = run(
+  const lotId = await insert(
     `INSERT INTO lots (lot_no, product_id, production_id, qty_initial, qty_available, germination, purity, moisture, prod_date, expiry_date, location)
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     input.lotNo,
@@ -118,8 +119,7 @@ export function createLot(input: {
     input.expiryDate,
     input.location,
   );
-  const lotId = Number(r.lastInsertRowid);
-  run(
+  await run(
     "INSERT INTO stock_moves (lot_id, product_id, kind, qty, ref, note) VALUES (?,?, 'masuk', ?, ?, ?)",
     lotId,
     input.productId,

@@ -11,10 +11,10 @@ export default async function ReportsPage({ searchParams }: PageProps<"/laporan"
   const sp = await searchParams;
   const to = String(sp.to ?? today());
   const from = String(sp.from ?? `${to.slice(0, 4)}-01-01`);
-  const byProduct = salesByProduct(from, to);
-  const byCustomer = salesByCustomer(from, to);
-  const byMonth = salesByMonth(from, to);
-  const byCity = salesByCity(from, to);
+  const byProduct = await salesByProduct(from, to);
+  const byCustomer = await salesByCustomer(from, to);
+  const byMonth = await salesByMonth(from, to);
+  const byCity = await salesByCity(from, to);
   const revenue = byMonth.reduce((s, m) => s + m.revenue, 0);
   const orders = byMonth.reduce((s, m) => s + m.orders, 0);
   const paid = byMonth.reduce((s, m) => s + m.paid, 0);

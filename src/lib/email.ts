@@ -2,8 +2,8 @@ import "server-only";
 import nodemailer from "nodemailer";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
-import { all, get, getSetting, run } from "./db";
-import { num, rupiah, tanggal } from "./format";
+import { all, get, getSetting, getSettings, run } from "./db";
+import { nowWib, num, rupiah, tanggal } from "./format";
 
 /*
  * Koneksi email memakai SMTP (kirim) dan IMAP (kotak masuk).
@@ -55,7 +55,7 @@ export type SendResult = { ok: boolean; status: string; error?: string };
 
 /** Kirim email dan catat ke tabel emails, berhasil maupun gagal. */
 export async function sendEmail(input: SendInput): Promise<SendResult> {
-  const brand = getSetting("company_brand", "HARAKA SEED");
+  const brand = await getSetting("company_brand", "HARAKA SEED");
   const from = cfg.from || `${brand} <${cfg.user}>`;
   const text = htmlToText(input.html);
 
@@ -86,7 +86,7 @@ export async function sendEmail(input: SendInput): Promise<SendResult> {
     }
   }
 
-  run(
+  await run(
     `INSERT INTO emails (direction, message_id, from_addr, to_addr, subject, body_html, body_text, status, error, ref_type, ref_id, is_read)
      VALUES ('out', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     messageId,
@@ -137,13 +137,13 @@ export async function syncInbox(limit = 40): Promise<{ ok: boolean; added: numbe
           if (!msg.source) continue;
           const parsed = await simpleParser(msg.source);
           const messageId = parsed.messageId ?? `uid-${msg.uid}@${cfg.imapHost}`;
-          if (get("SELECT id FROM emails WHERE message_id = ?", messageId)) continue;
+          if (await get("SELECT id FROM emails WHERE message_id = ?", messageId)) continue;
           const fromAddr = parsed.from?.value?.[0]?.address ?? "";
           const fromName = parsed.from?.value?.[0]?.name ?? "";
           const customer = fromAddr
-            ? get<{ id: number }>("SELECT id FROM customers WHERE lower(email) = lower(?)", fromAddr)
+            ? await get<{ id: number }>("SELECT id FROM customers WHERE lower(email) = lower(?)", fromAddr)
             : undefined;
-          run(
+          await run(
             `INSERT INTO emails (direction, message_id, from_addr, to_addr, subject, body_html, body_text, status, ref_type, ref_id, is_read, created_at)
              VALUES ('in', ?, ?, ?, ?, ?, ?, 'diterima', ?, ?, ?, ?)`,
             messageId,
@@ -155,7 +155,7 @@ export async function syncInbox(limit = 40): Promise<{ ok: boolean; added: numbe
             customer ? "customer" : null,
             customer?.id ?? null,
             msg.flags?.has("\\Seen") ? 1 : 0,
-            toLocalDateTime(parsed.date ?? new Date()),
+            nowWib(parsed.date ?? new Date()),
           );
           added++;
         }
@@ -171,10 +171,6 @@ export async function syncInbox(limit = 40): Promise<{ ok: boolean; added: numbe
     } catch {}
     return { ok: false, added, error: e instanceof Error ? e.message : String(e) };
   }
-}
-
-function toLocalDateTime(d: Date) {
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace("T", " ");
 }
 
 function htmlToText(html: string) {
@@ -195,8 +191,9 @@ export function escapeHtml(s: string) {
 
 /* ------------------------------ Template email ------------------------------ */
 
-function layout(title: string, body: string) {
-  const s = (k: string) => escapeHtml(getSetting(k));
+async function layout(title: string, body: string) {
+  const settings = await getSettings();
+  const s = (k: string) => escapeHtml(settings[k] ?? "");
   return `<!doctype html><html><body style="margin:0;background:#f3f6f1;font-family:Segoe UI,Arial,sans-serif;color:#1d2a1f">
   <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0"><tr><td align="center">
   <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #dfe7da">
@@ -235,13 +232,13 @@ type OrderForEmail = {
 
 type ItemForEmail = { name: string; crop: string; pack_size: string; qty: number; price: number };
 
-export function loadOrderForEmail(soId: number) {
-  const order = get<OrderForEmail & { email: string }>(
+export async function loadOrderForEmail(soId: number) {
+  const order = await get<OrderForEmail & { email: string }>(
     `SELECT so.*, c.name AS customer_name, c.contact_person, c.email
      FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?`,
     soId,
   );
-  const items = all<ItemForEmail>(
+  const items = await all<ItemForEmail>(
     `SELECT p.name, p.crop, p.pack_size, i.qty, i.price FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ?`,
     soId,
   );
@@ -275,10 +272,10 @@ function itemsTable(o: OrderForEmail, items: ItemForEmail[]) {
 const greet = (o: OrderForEmail) =>
   `<p>Yth. ${escapeHtml(o.contact_person || o.customer_name)},</p>`;
 
-export function orderConfirmationEmail(o: OrderForEmail, items: ItemForEmail[]) {
+export async function orderConfirmationEmail(o: OrderForEmail, items: ItemForEmail[]) {
   return {
-    subject: `Konfirmasi Pesanan ${o.so_no} — ${getSetting("company_brand")}`,
-    html: layout(
+    subject: `Konfirmasi Pesanan ${o.so_no} — ${await getSetting("company_brand")}`,
+    html: await layout(
       `Pesanan ${o.so_no} telah dikonfirmasi`,
       `${greet(o)}<p>Terima kasih atas pesanan Anda tanggal ${tanggal(o.order_date)}. Pesanan sedang kami siapkan dengan rincian berikut:</p>
        ${itemsTable(o, items)}
@@ -288,10 +285,10 @@ export function orderConfirmationEmail(o: OrderForEmail, items: ItemForEmail[]) 
   };
 }
 
-export function shippingEmail(o: OrderForEmail, items: ItemForEmail[]) {
+export async function shippingEmail(o: OrderForEmail, items: ItemForEmail[]) {
   return {
     subject: `Pesanan ${o.so_no} telah dikirim`,
-    html: layout(
+    html: await layout(
       `Pesanan ${o.so_no} dalam pengiriman`,
       `${greet(o)}<p>Pesanan Anda telah dikirim.</p>
        <table style="font-size:14px;margin:8px 0 4px"><tr><td style="color:#5b6b5d;padding-right:16px">Kurir</td><td><b>${escapeHtml(o.courier || "—")}</b></td></tr>
@@ -302,28 +299,28 @@ export function shippingEmail(o: OrderForEmail, items: ItemForEmail[]) {
   };
 }
 
-export function invoiceEmail(o: OrderForEmail, items: ItemForEmail[]) {
+export async function invoiceEmail(o: OrderForEmail, items: ItemForEmail[]) {
   const due = o.total - o.paid;
   return {
-    subject: `Invoice ${o.invoice_no} — ${getSetting("company_brand")}`,
-    html: layout(
+    subject: `Invoice ${o.invoice_no} — ${await getSetting("company_brand")}`,
+    html: await layout(
       `Invoice ${o.invoice_no}`,
       `${greet(o)}<p>Berikut tagihan untuk pesanan <b>${o.so_no}</b>.</p>
        ${itemsTable(o, items)}
        <table style="font-size:14px;margin:8px 0"><tr><td style="color:#5b6b5d;padding-right:16px">Sudah dibayar</td><td>${rupiah(o.paid)}</td></tr>
        <tr><td style="color:#5b6b5d;padding-right:16px">Sisa tagihan</td><td><b>${rupiah(due)}</b></td></tr>
        <tr><td style="color:#5b6b5d;padding-right:16px">Jatuh tempo</td><td><b>${tanggal(o.due_date)}</b></td></tr></table>
-       <p>Pembayaran dapat ditransfer ke:<br><b>${escapeHtml(getSetting("bank_info"))}</b></p>
+       <p>Pembayaran dapat ditransfer ke:<br><b>${escapeHtml(await getSetting("bank_info"))}</b></p>
        <p>Mohon kirimkan bukti transfer dengan membalas email ini.</p>`,
     ),
   };
 }
 
-export function paymentReceiptEmail(o: OrderForEmail, amount: number) {
+export async function paymentReceiptEmail(o: OrderForEmail, amount: number) {
   const due = o.total - o.paid;
   return {
     subject: `Pembayaran diterima — ${o.invoice_no ?? o.so_no}`,
-    html: layout(
+    html: await layout(
       "Terima kasih, pembayaran diterima",
       `${greet(o)}<p>Kami telah menerima pembayaran sebesar <b>${rupiah(amount)}</b> untuk ${o.invoice_no ?? o.so_no}.</p>
        <p>${due <= 0 ? "Tagihan ini sudah <b>LUNAS</b>." : `Sisa tagihan: <b>${rupiah(due)}</b>.`}</p>`,
@@ -331,20 +328,20 @@ export function paymentReceiptEmail(o: OrderForEmail, amount: number) {
   };
 }
 
-export function reminderEmail(o: OrderForEmail) {
+export async function reminderEmail(o: OrderForEmail) {
   return {
     subject: `Pengingat pembayaran ${o.invoice_no}`,
-    html: layout(
+    html: await layout(
       "Pengingat pembayaran",
       `${greet(o)}<p>Kami ingin mengingatkan bahwa invoice <b>${o.invoice_no}</b> sebesar <b>${rupiah(o.total - o.paid)}</b>
        jatuh tempo pada <b>${tanggal(o.due_date)}</b>.</p>
-       <p>Pembayaran dapat ditransfer ke:<br><b>${escapeHtml(getSetting("bank_info"))}</b></p>
+       <p>Pembayaran dapat ditransfer ke:<br><b>${escapeHtml(await getSetting("bank_info"))}</b></p>
        <p>Abaikan email ini bila pembayaran sudah dilakukan. Terima kasih.</p>`,
     ),
   };
 }
 
-export function lowStockEmail(rows: { name: string; pack_size: string; stock: number; min_stock: number }[]) {
+export async function lowStockEmail(rows: { name: string; pack_size: string; stock: number; min_stock: number }[]) {
   const list = rows
     .map(
       (r) =>
@@ -353,7 +350,7 @@ export function lowStockEmail(rows: { name: string; pack_size: string; stock: nu
     .join("");
   return {
     subject: `[ERP] Peringatan stok rendah — ${rows.length} produk`,
-    html: layout(
+    html: await layout(
       "Stok di bawah batas minimum",
       `<p>Produk berikut perlu segera diproduksi / diisi ulang:</p>
        <table width="100%" style="font-size:14px;border-collapse:collapse"><tr style="background:#f3f6f1"><th style="padding:6px 8px;text-align:left">Produk</th><th style="padding:6px 8px;text-align:right">Stok</th><th style="padding:6px 8px;text-align:right">Minimum</th></tr>${list}</table>`,
@@ -361,7 +358,7 @@ export function lowStockEmail(rows: { name: string; pack_size: string; stock: nu
   };
 }
 
-export function purchaseOrderEmail(
+export async function purchaseOrderEmail(
   po: { po_no: string; order_date: string; supplier_name: string; total: number; notes: string },
   items: { description: string; qty: number; unit: string; price: number }[],
 ) {
@@ -372,8 +369,8 @@ export function purchaseOrderEmail(
     )
     .join("");
   return {
-    subject: `Purchase Order ${po.po_no} — ${getSetting("company_name")}`,
-    html: layout(
+    subject: `Purchase Order ${po.po_no} — ${await getSetting("company_name")}`,
+    html: await layout(
       `Purchase Order ${po.po_no}`,
       `<p>Kepada Yth. ${escapeHtml(po.supplier_name)},</p><p>Dengan ini kami memesan barang berikut (tanggal ${tanggal(po.order_date)}):</p>
        <table width="100%" style="font-size:14px;border-collapse:collapse;margin:12px 0"><tr style="background:#f3f6f1"><th style="padding:6px 8px;text-align:left">Barang</th><th style="padding:6px 8px;text-align:right">Qty</th><th style="padding:6px 8px;text-align:right">Harga</th><th style="padding:6px 8px;text-align:right">Jumlah</th></tr>${rows}
@@ -384,9 +381,9 @@ export function purchaseOrderEmail(
   };
 }
 
-export function customEmail(subject: string, message: string) {
+export async function customEmail(subject: string, message: string) {
   return {
     subject,
-    html: layout(escapeHtml(subject), escapeHtml(message).replace(/\n/g, "<br>")),
+    html: await layout(escapeHtml(subject), escapeHtml(message).replace(/\n/g, "<br>")),
   };
 }

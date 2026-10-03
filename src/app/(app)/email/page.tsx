@@ -28,14 +28,14 @@ export default async function EmailPage({ searchParams }: PageProps<"/email">) {
   const rows =
     tab === "tulis"
       ? []
-      : all<EmailRow>(
-          `SELECT * FROM emails WHERE ${where} AND (subject LIKE ? OR from_addr LIKE ? OR to_addr LIKE ?) ORDER BY created_at DESC, id DESC LIMIT 200`,
+      : await all<EmailRow>(
+          `SELECT * FROM emails WHERE ${where} AND (subject ILIKE ? OR from_addr ILIKE ? OR to_addr ILIKE ?) ORDER BY created_at DESC, id DESC LIMIT 200`,
           `%${q}%`,
           `%${q}%`,
           `%${q}%`,
         );
-  const failed = get<{ n: number }>("SELECT COUNT(*) n FROM emails WHERE direction = 'out' AND status = 'gagal'")!.n;
-  const customers = all<{ email: string; name: string }>("SELECT email, name FROM customers WHERE email != '' ORDER BY name");
+  const failed = (await get<{ n: number }>("SELECT COUNT(*) n FROM emails WHERE direction = 'out' AND status = 'gagal'"))!.n;
+  const customers = await all<{ email: string; name: string }>("SELECT email, name FROM customers WHERE email != '' ORDER BY name");
 
   return (
     <>

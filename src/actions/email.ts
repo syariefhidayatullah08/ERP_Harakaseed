@@ -17,7 +17,7 @@ export async function composeEmail(fd: FormData) {
   const back = safeBack(str(fd, "back") || "/email?tab=terkirim");
   if (!to || !subject || !message) redirect(withMsg(back, "Tujuan, subjek, dan pesan wajib diisi.", "error"));
   const refId = numf(fd, "ref_id");
-  const res = await sendEmail({ to, ...customEmail(subject, message), refType: str(fd, "ref_type") || undefined, refId: refId || undefined });
+  const res = await sendEmail({ to, ...(await customEmail(subject, message)), refType: str(fd, "ref_type") || undefined, refId: refId || undefined });
   revalidatePath("/email");
   redirect(withMsg(back, res.ok ? `Email terkirim ke ${to}.` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
 }
@@ -35,10 +35,10 @@ export async function testEmail() {
   await requireUser();
   const check = await verifySmtp();
   if (!check.ok) redirect(withMsg("/pengaturan", `Koneksi SMTP gagal: ${check.error}`, "error"));
-  const to = getSetting("alert_email") || getSetting("company_email");
+  const to = await getSetting("alert_email") || await getSetting("company_email");
   const res = await sendEmail({
     to,
-    ...customEmail("Tes koneksi email ERP Haraka Seed", "Jika Anda menerima email ini, koneksi email ERP sudah berfungsi dengan baik."),
+    ...(await customEmail("Tes koneksi email ERP Haraka Seed", "Jika Anda menerima email ini, koneksi email ERP sudah berfungsi dengan baik.")),
     refType: "test",
   });
   redirect(withMsg("/pengaturan", res.ok ? `Email tes terkirim ke ${to}.` : `Gagal: ${res.error}`, res.ok ? "msg" : "error"));

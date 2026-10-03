@@ -12,15 +12,15 @@ const STAGES = ["tanam", "panen", "prosesing", "uji_lab"];
 
 export default async function ProductionPage({ searchParams }: PageProps<"/produksi">) {
   const sp = await searchParams;
-  const rows = all<{
+  const rows = await all<{
     id: number; code: string; name: string; crop: string; grower: string | null; area_ha: number; plant_date: string; est_harvest: string | null;
     harvest_kg: number | null; status: string;
   }>(
     `SELECT pr.*, p.name, p.crop, g.name grower FROM productions pr JOIN products p ON p.id = pr.product_id
      LEFT JOIN growers g ON g.id = pr.grower_id ORDER BY pr.id DESC`,
   );
-  const products = all<{ id: number; name: string; crop: string }>("SELECT id, name, crop FROM products WHERE active = 1 ORDER BY name");
-  const growers = all<{ id: number; name: string; village: string }>("SELECT id, name, village FROM growers ORDER BY name");
+  const products = await all<{ id: number; name: string; crop: string }>("SELECT id, name, crop FROM products WHERE active = 1 ORDER BY name");
+  const growers = await all<{ id: number; name: string; village: string }>("SELECT id, name, village FROM growers ORDER BY name");
   const active = rows.filter((r) => STAGES.includes(r.status));
   const done = rows.filter((r) => !STAGES.includes(r.status));
 

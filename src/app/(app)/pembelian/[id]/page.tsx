@@ -9,13 +9,13 @@ import { sendPO, setPOStatus } from "@/actions/purchasing";
 export default async function PODetail({ params, searchParams }: PageProps<"/pembelian/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const po = get<{ id: number; po_no: string; supplier: string; email: string; phone: string; order_date: string; status: string; total: number; notes: string; received_at: string | null }>(
+  const po = await get<{ id: number; po_no: string; supplier: string; email: string; phone: string; order_date: string; status: string; total: number; notes: string; received_at: string | null }>(
     "SELECT po.*, s.name supplier, s.email, s.phone FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = ?",
     Number(id),
   );
   if (!po) notFound();
-  const items = all<{ id: number; description: string; qty: number; unit: string; price: number }>("SELECT * FROM po_items WHERE po_id = ?", po.id);
-  const emails = all<EmailRow>("SELECT * FROM emails WHERE ref_type = 'purchase_order' AND ref_id = ? ORDER BY id DESC", po.id);
+  const items = await all<{ id: number; description: string; qty: number; unit: string; price: number }>("SELECT * FROM po_items WHERE po_id = ?", po.id);
+  const emails = await all<EmailRow>("SELECT * FROM emails WHERE ref_type = 'purchase_order' AND ref_id = ? ORDER BY id DESC", po.id);
   const st = PO_STATUS[po.status];
 
   const statusBtn = (status: string, label: string, cls = "btn-secondary w-full") => (

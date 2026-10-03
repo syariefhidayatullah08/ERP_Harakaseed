@@ -12,7 +12,7 @@ import { productStock } from "@/lib/inventory";
 export default async function OrderDetail({ params, searchParams }: PageProps<"/penjualan/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const o = get<{
+  const o = await get<{
     id: number; so_no: string; customer_id: number; customer: string; contact_person: string; email: string; phone: string; city: string; address: string;
     order_date: string; status: string; discount_pct: number; tax_pct: number; subtotal: number; total: number; paid: number;
     invoice_no: string | null; due_date: string | null; shipped_at: string | null; courier: string; tracking_no: string; notes: string;
@@ -23,21 +23,21 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
   );
   if (!o) notFound();
 
-  const items = all<{ id: number; product_id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
+  const items = await all<{ id: number; product_id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
     "SELECT i.*, p.name, p.crop, p.pack_size FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ?",
     o.id,
   );
-  const allocs = all<{ so_item_id: number; lot_id: number; lot_no: string; qty: number }>(
+  const allocs = await all<{ so_item_id: number; lot_id: number; lot_no: string; qty: number }>(
     `SELECT a.so_item_id, a.lot_id, l.lot_no, a.qty FROM so_allocations a JOIN lots l ON l.id = a.lot_id
      JOIN so_items i ON i.id = a.so_item_id WHERE i.so_id = ?`,
     o.id,
   );
-  const payments = all<{ id: number; pay_date: string; amount: number; method: string; note: string }>(
+  const payments = await all<{ id: number; pay_date: string; amount: number; method: string; note: string }>(
     "SELECT * FROM payments WHERE so_id = ? ORDER BY pay_date",
     o.id,
   );
-  const emails = all<EmailRow>("SELECT * FROM emails WHERE ref_type IN ('sales_order','invoice') AND ref_id = ? ORDER BY id DESC", o.id);
-  const stock = o.status === "dikonfirmasi" ? productStock() : [];
+  const emails = await all<EmailRow>("SELECT * FROM emails WHERE ref_type IN ('sales_order','invoice') AND ref_id = ? ORDER BY id DESC", o.id);
+  const stock = o.status === "dikonfirmasi" ? await productStock() : [];
   const shortages = items
     .map((i) => ({ name: i.name, need: i.qty, have: stock.find((s) => s.id === i.product_id)?.stock ?? 0 }))
     .filter((s) => o.status === "dikonfirmasi" && s.have < s.need);

@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Petani Mitra" };
 
 export default async function GrowersPage({ searchParams }: PageProps<"/mitra">) {
   const sp = await searchParams;
-  const rows = all<{ id: number; name: string; village: string; phone: string; area_ha: number; batches: number; active: number; harvest: number }>(
+  const rows = await all<{ id: number; name: string; village: string; phone: string; area_ha: number; batches: number; active: number; harvest: number }>(
     `SELECT g.*,
        (SELECT COUNT(*) FROM productions p WHERE p.grower_id = g.id) batches,
        (SELECT COUNT(*) FROM productions p WHERE p.grower_id = g.id AND p.status IN ('tanam','panen','prosesing','uji_lab')) active,

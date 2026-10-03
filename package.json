@@ -9,11 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@vercel/functions": "^3.9.11",
     "imapflow": "^2.2.1",
     "lucide-react": "^1.49.0",
     "mailparser": "^3.9.33",
     "next": "16.3.8",
     "nodemailer": "^10.0.13",
+    "pg": "^8.23.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1"
@@ -23,6 +25,7 @@
     "@types/mailparser": "^3.9.0",
     "@types/node": "^24.19.1",
     "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

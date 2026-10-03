@@ -2,25 +2,26 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { all } from "@/lib/db";
 import { productStock } from "@/lib/inventory";
-import { daysUntil, num, rupiah, tanggal } from "@/lib/format";
+import { addDays, daysUntil, num, rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { ProductForm } from "../product-form";
 
 export default async function ProductDetail({ params, searchParams }: PageProps<"/produk/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const product = productStock("p.id = ?", Number(id))[0];
+  const [product] = await productStock("p.id = ?", Number(id));
   if (!product) notFound();
 
-  const lots = all<{ id: number; lot_no: string; qty_initial: number; qty_available: number; germination: number; purity: number; expiry_date: string; prod_date: string }>(
+  const lots = await all<{ id: number; lot_no: string; qty_initial: number; qty_available: number; germination: number; purity: number; expiry_date: string; prod_date: string }>(
     "SELECT * FROM lots WHERE product_id = ? ORDER BY expiry_date DESC",
     product.id,
   );
-  const sold = all<{ qty: number; v: number }>(
+  const [sold] = await all<{ qty: number; v: number }>(
     `SELECT COALESCE(SUM(i.qty),0) qty, COALESCE(SUM(i.qty*i.price),0) v FROM so_items i JOIN sales_orders so ON so.id = i.so_id
-     WHERE i.product_id = ? AND so.status NOT IN ('draft','batal') AND so.order_date >= date('now','-365 days')`,
+     WHERE i.product_id = ? AND so.status NOT IN ('draft','batal') AND so.order_date >= ?`,
     product.id,
-  )[0];
+    addDays(today(), -365),
+  );
 
   return (
     <>

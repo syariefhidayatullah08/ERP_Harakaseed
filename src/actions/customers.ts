@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { get, nextNumber, run } from "@/lib/db";
+import { get, insert, nextNumber, run } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 
@@ -24,20 +24,20 @@ export async function saveCustomer(fd: FormData) {
   if (c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) redirect(withMsg(back, "Format email tidak valid.", "error"));
 
   if (id) {
-    run(
+    await run(
       "UPDATE customers SET name=?, kind=?, contact_person=?, email=?, phone=?, city=?, address=?, payment_terms=? WHERE id=?",
       c.name, c.kind, c.contact_person, c.email, c.phone, c.city, c.address, c.payment_terms, id,
     );
     revalidatePath("/pelanggan");
     redirect(withMsg(`/pelanggan/${id}`, "Data pelanggan diperbarui."));
   }
-  const last = get<{ n: number }>("SELECT COUNT(*) n FROM customers")!.n;
+  const last = (await get<{ n: number }>("SELECT COUNT(*) n FROM customers"))!.n;
   let code = `CUST-${String(last + 1).padStart(3, "0")}`;
-  while (get("SELECT id FROM customers WHERE code = ?", code)) code = nextNumber("CUST", "customers", "code");
-  const r = run(
+  while (await get("SELECT id FROM customers WHERE code = ?", code)) code = await nextNumber("CUST", "customers", "code");
+  const newId = await insert(
     "INSERT INTO customers (code, name, kind, contact_person, email, phone, city, address, payment_terms) VALUES (?,?,?,?,?,?,?,?,?)",
     code, c.name, c.kind, c.contact_person, c.email, c.phone, c.city, c.address, c.payment_terms,
   );
   revalidatePath("/pelanggan");
-  redirect(withMsg(`/pelanggan/${r.lastInsertRowid}`, `Pelanggan ${c.name} ditambahkan.`));
+  redirect(withMsg(`/pelanggan/${newId}`, `Pelanggan ${c.name} ditambahkan.`));
 }

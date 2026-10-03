@@ -27,8 +27,8 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const sp = await searchParams;
   const productFilter = Number(sp.product ?? 0);
   const showEmpty = sp.all === "1";
-  const stock = productStock("p.active = 1");
-  const lots = all<LotRow>(
+  const stock = await productStock("p.active = 1");
+  const lots = await all<LotRow>(
     `SELECT l.*, p.name, p.pack_size FROM lots l JOIN products p ON p.id = l.product_id
      WHERE (? = 0 OR l.product_id = ?) AND (? = 1 OR l.qty_available > 0)
      ORDER BY l.expiry_date`,

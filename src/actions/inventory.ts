@@ -15,12 +15,12 @@ export async function createLotAction(fd: FormData) {
   const qty = Math.round(numf(fd, "qty"));
   const lotNo = str(fd, "lot_no").toUpperCase();
   const prodDate = str(fd, "prod_date");
-  const product = get<{ shelf_life_months: number }>("SELECT shelf_life_months FROM products WHERE id = ?", productId);
+  const product = await get<{ shelf_life_months: number }>("SELECT shelf_life_months FROM products WHERE id = ?", productId);
   if (!product || qty <= 0 || !lotNo || !prodDate) redirect(withMsg("/inventori", "Lengkapi produk, nomor lot, tanggal, dan qty.", "error"));
-  if (get("SELECT id FROM lots WHERE lot_no = ?", lotNo)) redirect(withMsg("/inventori", `Nomor lot ${lotNo} sudah ada.`, "error"));
+  if (await get("SELECT id FROM lots WHERE lot_no = ?", lotNo)) redirect(withMsg("/inventori", `Nomor lot ${lotNo} sudah ada.`, "error"));
 
-  tx(() =>
-    createLot({
+  await tx(async () =>
+    await createLot({
       lotNo,
       productId,
       qty,
@@ -42,15 +42,15 @@ export async function adjustLot(fd: FormData) {
   const lotId = numf(fd, "lot_id");
   const delta = Math.round(numf(fd, "delta"));
   const reason = str(fd, "reason");
-  const lot = get<{ id: number; product_id: number; lot_no: string; qty_available: number }>("SELECT * FROM lots WHERE id = ?", lotId);
+  const lot = await get<{ id: number; product_id: number; lot_no: string; qty_available: number }>("SELECT * FROM lots WHERE id = ?", lotId);
   const back = `/inventori/${lotId}`;
   if (!lot || delta === 0) redirect(withMsg(back, "Isi jumlah penyesuaian (positif/negatif).", "error"));
   if (lot.qty_available + delta < 0) redirect(withMsg(back, "Penyesuaian membuat stok minus.", "error"));
   if (!reason) redirect(withMsg(back, "Alasan penyesuaian wajib diisi.", "error"));
 
-  tx(() => {
-    run("UPDATE lots SET qty_available = qty_available + ? WHERE id = ?", delta, lotId);
-    run(
+  await tx(async () => {
+    await run("UPDATE lots SET qty_available = qty_available + ? WHERE id = ?", delta, lotId);
+    await run(
       "INSERT INTO stock_moves (lot_id, product_id, kind, qty, ref, note) VALUES (?,?, 'penyesuaian', ?, ?, ?)",
       lotId,
       lot.product_id,
@@ -65,10 +65,10 @@ export async function adjustLot(fd: FormData) {
 
 export async function sendLowStockAlert() {
   await requireUser();
-  const rows = lowStockProducts();
+  const rows = await lowStockProducts();
   if (!rows.length) redirect(withMsg("/inventori", "Semua stok di atas minimum, tidak ada yang perlu dikirim."));
-  const to = getSetting("alert_email");
-  const mail = lowStockEmail(rows);
+  const to = await getSetting("alert_email");
+  const mail = await lowStockEmail(rows);
   const res = await sendEmail({ to, ...mail, refType: "alert" });
   redirect(
     withMsg("/inventori", res.ok ? `Peringatan stok rendah dikirim ke ${to}.` : `Gagal mengirim email: ${res.error}`, res.ok ? "msg" : "error"),

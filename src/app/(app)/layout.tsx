@@ -5,7 +5,7 @@ import { logout } from "@/actions/auth";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
-  const unread = get<{ n: number }>("SELECT COUNT(*) AS n FROM emails WHERE direction = 'in' AND is_read = 0")?.n ?? 0;
+  const unread = (await get<{ n: number }>("SELECT COUNT(*) AS n FROM emails WHERE direction = 'in' AND is_read = 0"))?.n ?? 0;
   return (
     <div className="min-h-screen">
       <Sidebar user={user} unread={unread} logout={logout} />

@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const from = url.searchParams.get("from") ?? `${today().slice(0, 4)}-01-01`;
   const to = url.searchParams.get("to") ?? today();
 
-  const data: Record<string, () => Record<string, unknown>[]> = {
+  const data: Record<string, () => Promise<Record<string, unknown>[]>> = {
     penjualan: () => salesLines(from, to),
     produk: () => salesByProduct(from, to),
     pelanggan: () => salesByCustomer(from, to),
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   if (!build) return new Response("Jenis laporan tidak dikenal", { status: 400 });
 
   // BOM agar Excel membaca UTF-8 dengan benar
-  const csv = "﻿" + toCsv(build());
+  const csv = "﻿" + toCsv(await build());
   const name = type === "stok" ? `stok-${today()}.csv` : `${type}-${from}_${to}.csv`;
   return new Response(csv, {
     headers: {

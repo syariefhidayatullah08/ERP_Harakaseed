@@ -3,26 +3,31 @@ export const rupiah = (n: number) =>
 
 export const num = (n: number) => new Intl.NumberFormat("id-ID").format(n || 0);
 
+// Server Vercel berjalan di UTC; tanggal bisnis selalu mengikuti WIB (Asia/Jakarta).
+const TZ = "Asia/Jakarta";
+
+/** Tanggal "YYYY-MM-DD" atau waktu "YYYY-MM-DD HH:MM:SS" (sudah WIB) → "2 Okt 2026". */
 export const tanggal = (s?: string | null) =>
   s
-    ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(
-        new Date(s.length === 10 ? s + "T00:00:00" : s.replace(" ", "T")),
+    ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(
+        new Date(s.slice(0, 10) + "T00:00:00Z"),
       )
     : "—";
 
-export const today = () => {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
+export const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+
+/** Waktu sekarang di WIB, format "YYYY-MM-DD HH:MM:SS". */
+export const nowWib = (d = new Date()) =>
+  new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(d);
 
 export const addDays = (date: string, days: number) => {
-  const d = new Date(date + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const d = new Date(date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 };
 
 export const daysUntil = (date: string) =>
-  Math.round((new Date(date + "T00:00:00").getTime() - new Date(today() + "T00:00:00").getTime()) / 86400000);
+  Math.round((new Date(date + "T00:00:00Z").getTime() - new Date(today() + "T00:00:00Z").getTime()) / 86400000);
 
 export const SO_STATUS: Record<string, { label: string; tone: string }> = {
   draft: { label: "Draft", tone: "gray" },

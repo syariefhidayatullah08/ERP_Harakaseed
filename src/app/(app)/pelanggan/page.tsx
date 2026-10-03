@@ -10,7 +10,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/pelang
   const sp = await searchParams;
   const q = String(sp.q ?? "").trim();
   const kind = String(sp.kind ?? "");
-  const rows = all<{
+  const rows = await all<{
     id: number; code: string; name: string; kind: string; contact_person: string; email: string; phone: string; city: string;
     orders: number; revenue: number; outstanding: number; last_order: string | null;
   }>(
@@ -20,7 +20,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/pelang
        (SELECT COALESCE(SUM(total - paid),0) FROM sales_orders so WHERE so.customer_id = c.id AND so.invoice_no IS NOT NULL AND so.status != 'batal') outstanding,
        (SELECT MAX(order_date) FROM sales_orders so WHERE so.customer_id = c.id) last_order
      FROM customers c
-     WHERE (c.name LIKE ? OR c.city LIKE ? OR c.email LIKE ? OR c.code LIKE ?) AND (? = '' OR c.kind = ?)
+     WHERE (c.name ILIKE ? OR c.city ILIKE ? OR c.email ILIKE ? OR c.code ILIKE ?) AND (? = '' OR c.kind = ?)
      ORDER BY revenue DESC, c.name`,
     `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, kind, kind,
   );

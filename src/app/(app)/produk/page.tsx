@@ -9,8 +9,8 @@ export const metadata: Metadata = { title: "Produk" };
 export default async function ProductsPage({ searchParams }: PageProps<"/produk">) {
   const sp = await searchParams;
   const q = String(sp.q ?? "").trim();
-  const products = productStock(
-    "(p.name LIKE ? OR p.crop LIKE ? OR p.sku LIKE ?)",
+  const products = await productStock(
+    "(p.name ILIKE ? OR p.crop ILIKE ? OR p.sku ILIKE ?)",
     `%${q}%`,
     `%${q}%`,
     `%${q}%`,

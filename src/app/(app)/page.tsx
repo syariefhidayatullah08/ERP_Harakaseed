@@ -7,45 +7,51 @@ import { Badge, Card, Empty, PageHeader, StatCard } from "@/components/ui";
 import { BarChart, RankBars } from "@/components/bar-chart";
 import { emailConfigured } from "@/lib/email";
 
-export default function Dashboard() {
+export default async function Dashboard() {
   const t = today();
   const monthStart = t.slice(0, 8) + "01";
   const lastMonthStart = (() => {
     const d = new Date(t + "T00:00:00");
     d.setDate(1);
     d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 10);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
   })();
 
-  const salesThis = get<{ v: number; n: number }>(
+  const salesThis = (await get<{ v: number; n: number }>(
     "SELECT COALESCE(SUM(total),0) v, COUNT(*) n FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ?",
     monthStart,
-  )!;
-  const salesLast = get<{ v: number }>(
+  ))!;
+  const salesLast = (await get<{ v: number }>(
     "SELECT COALESCE(SUM(total),0) v FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ? AND order_date < ?",
     lastMonthStart,
     monthStart,
-  )!;
-  const receivable = get<{ v: number; overdue: number }>(
+  ))!;
+  const receivable = (await get<{ v: number; overdue: number }>(
     `SELECT COALESCE(SUM(total - paid),0) v,
             COALESCE(SUM(CASE WHEN due_date < ? THEN total - paid ELSE 0 END),0) overdue
      FROM sales_orders WHERE invoice_no IS NOT NULL AND status != 'batal' AND paid < total`,
     t,
-  )!;
-  const toShip = get<{ n: number }>("SELECT COUNT(*) n FROM sales_orders WHERE status = 'dikonfirmasi'")!.n;
-  const low = lowStockProducts();
-  const expiring = all<{ id: number; lot_no: string; name: string; qty_available: number; expiry_date: string }>(
+  ))!;
+  const toShip = (await get<{ n: number }>("SELECT COUNT(*) n FROM sales_orders WHERE status = 'dikonfirmasi'"))!.n;
+  const low = await lowStockProducts();
+  const expiring = await all<{ id: number; lot_no: string; name: string; qty_available: number; expiry_date: string }>(
     `SELECT l.id, l.lot_no, p.name, l.qty_available, l.expiry_date FROM lots l JOIN products p ON p.id = l.product_id
      WHERE l.qty_available > 0 AND l.expiry_date BETWEEN ? AND ? ORDER BY l.expiry_date`,
     t,
     addDays(t, 90),
   );
 
-  const months = all<{ m: string; v: number; n: number }>(
+  const windowStart = (() => {
+    const d = new Date(t + "T00:00:00");
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 11);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  })();
+  const months = await all<{ m: string; v: number; n: number }>(
     `SELECT substr(order_date,1,7) m, SUM(total) v, COUNT(*) n FROM sales_orders
-     WHERE status NOT IN ('draft','batal') AND order_date >= date(?, 'start of month', '-11 months')
+     WHERE status NOT IN ('draft','batal') AND order_date >= ?
      GROUP BY m`,
-    t,
+    windowStart,
   );
   const chart = Array.from({ length: 12 }, (_, i) => {
     const d = new Date(t + "T00:00:00");
@@ -60,20 +66,20 @@ export default function Dashboard() {
     };
   });
 
-  const top = all<{ name: string; crop: string; v: number }>(
+  const top = await all<{ name: string; crop: string; v: number }>(
     `SELECT p.name, p.crop, SUM(i.qty * i.price) v FROM so_items i
      JOIN sales_orders so ON so.id = i.so_id JOIN products p ON p.id = i.product_id
-     WHERE so.status NOT IN ('draft','batal') AND so.order_date >= date(?, '-90 days')
+     WHERE so.status NOT IN ('draft','batal') AND so.order_date >= ?
      GROUP BY p.id ORDER BY v DESC LIMIT 6`,
-    t,
+    addDays(t, -90),
   );
 
-  const recent = all<{ id: number; so_no: string; customer: string; order_date: string; status: string; total: number; paid: number }>(
+  const recent = await all<{ id: number; so_no: string; customer: string; order_date: string; status: string; total: number; paid: number }>(
     `SELECT so.id, so.so_no, c.name customer, so.order_date, so.status, so.total, so.paid
      FROM sales_orders so JOIN customers c ON c.id = so.customer_id ORDER BY so.id DESC LIMIT 7`,
   );
 
-  const inbox = all<{ id: number; from_addr: string; subject: string; created_at: string; is_read: number }>(
+  const inbox = await all<{ id: number; from_addr: string; subject: string; created_at: string; is_read: number }>(
     "SELECT id, from_addr, subject, created_at, is_read FROM emails WHERE direction = 'in' ORDER BY created_at DESC LIMIT 5",
   );
 

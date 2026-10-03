@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { all, get, getSetting } from "@/lib/db";
+import { all, get, getSettings } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { num, rupiah, tanggal } from "@/lib/format";
 import { PrintButton } from "@/components/buttons";
@@ -10,7 +10,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
   const { id } = await params;
   const sp = await searchParams;
   const deliveryNote = sp.doc === "sj";
-  const o = get<{
+  const o = await get<{
     id: number; so_no: string; customer: string; contact_person: string; phone: string; address: string; city: string; order_date: string;
     subtotal: number; discount_pct: number; tax_pct: number; total: number; paid: number; invoice_no: string | null; due_date: string | null;
     shipped_at: string | null; courier: string; tracking_no: string; notes: string;
@@ -20,16 +20,17 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
     Number(id),
   );
   if (!o) notFound();
-  const items = all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
+  const items = await all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
     "SELECT i.*, p.name, p.crop, p.pack_size FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ?",
     o.id,
   );
-  const lots = all<{ so_item_id: number; lot_no: string; qty: number; expiry_date: string }>(
+  const lots = await all<{ so_item_id: number; lot_no: string; qty: number; expiry_date: string }>(
     `SELECT a.so_item_id, l.lot_no, a.qty, l.expiry_date FROM so_allocations a JOIN lots l ON l.id = a.lot_id
      JOIN so_items i ON i.id = a.so_item_id WHERE i.so_id = ?`,
     o.id,
   );
-  const s = (k: string) => getSetting(k);
+  const settings = await getSettings();
+  const s = (k: string) => settings[k] ?? "";
   const title = deliveryNote ? "SURAT JALAN" : o.invoice_no ? "INVOICE" : "PESANAN PENJUALAN";
   const docNo = deliveryNote ? `SJ/${o.so_no}` : o.invoice_no ?? o.so_no;
   const discount = o.subtotal * (o.discount_pct / 100);

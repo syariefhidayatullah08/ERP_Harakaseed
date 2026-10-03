@@ -11,7 +11,7 @@ const FLOW = ["tanam", "panen", "prosesing", "uji_lab", "lulus"];
 export default async function ProductionDetail({ params, searchParams }: PageProps<"/produksi/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const p = get<{
+  const p = await get<{
     id: number; code: string; product_id: number; name: string; crop: string; pack_size: string; grower: string | null; village: string | null;
     area_ha: number; plant_date: string; est_harvest: string | null; harvest_kg: number | null; status: string; notes: string; sku: string;
   }>(
@@ -20,7 +20,7 @@ export default async function ProductionDetail({ params, searchParams }: PagePro
     Number(id),
   );
   if (!p) notFound();
-  const lots = all<{ id: number; lot_no: string; qty_initial: number; germination: number }>("SELECT * FROM lots WHERE production_id = ?", p.id);
+  const lots = await all<{ id: number; lot_no: string; qty_initial: number; germination: number }>("SELECT * FROM lots WHERE production_id = ?", p.id);
   const idx = FLOW.indexOf(p.status);
   const next = idx >= 0 && idx < FLOW.length - 1 ? FLOW[idx + 1] : null;
 

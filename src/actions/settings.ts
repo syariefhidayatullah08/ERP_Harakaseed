@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { db, get, run, setSetting, tx } from "@/lib/db";
+import { exec, get, run, setSetting, tx } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { str, withMsg } from "@/lib/form";
 import { hashPassword, verifyPassword } from "@/lib/password";
@@ -28,8 +28,8 @@ async function requireAdmin() {
 
 export async function saveSettings(fd: FormData) {
   await requireAdmin();
-  for (const k of TEXT_KEYS) if (fd.has(k)) setSetting(k, str(fd, k));
-  if (fd.get("toggles")) for (const k of TOGGLES) setSetting(k, fd.get(k) ? "1" : "0");
+  for (const k of TEXT_KEYS) if (fd.has(k)) await setSetting(k, str(fd, k));
+  if (fd.get("toggles")) for (const k of TOGGLES) await setSetting(k, fd.get(k) ? "1" : "0");
   revalidatePath("/", "layout");
   redirect(withMsg("/pengaturan", "Pengaturan disimpan."));
 }
@@ -39,8 +39,8 @@ export async function addUser(fd: FormData) {
   const email = str(fd, "email").toLowerCase();
   const password = str(fd, "password");
   if (!email || password.length < 8) redirect(withMsg("/pengaturan", "Email wajib dan kata sandi minimal 8 karakter.", "error"));
-  if (get("SELECT id FROM users WHERE email = ?", email)) redirect(withMsg("/pengaturan", "Email sudah terdaftar.", "error"));
-  run(
+  if (await get("SELECT id FROM users WHERE email = ?", email)) redirect(withMsg("/pengaturan", "Email sudah terdaftar.", "error"));
+  await run(
     "INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)",
     str(fd, "name") || email,
     email,
@@ -54,10 +54,10 @@ export async function changePassword(fd: FormData) {
   const user = await requireUser();
   const current = str(fd, "current");
   const next = str(fd, "next");
-  const row = get<{ password_hash: string }>("SELECT password_hash FROM users WHERE id = ?", user.id)!;
+  const row = (await get<{ password_hash: string }>("SELECT password_hash FROM users WHERE id = ?", user.id))!;
   if (!verifyPassword(current, row.password_hash)) redirect(withMsg("/pengaturan", "Kata sandi lama salah.", "error"));
   if (next.length < 8) redirect(withMsg("/pengaturan", "Kata sandi baru minimal 8 karakter.", "error"));
-  run("UPDATE users SET password_hash = ? WHERE id = ?", hashPassword(next), user.id);
+  await run("UPDATE users SET password_hash = ? WHERE id = ?", hashPassword(next), user.id);
   redirect(withMsg("/pengaturan", "Kata sandi diganti."));
 }
 
@@ -65,8 +65,8 @@ export async function changePassword(fd: FormData) {
 export async function clearTransactions(fd: FormData) {
   await requireAdmin();
   if (str(fd, "confirm") !== "HAPUS") redirect(withMsg("/pengaturan", "Ketik HAPUS untuk konfirmasi.", "error"));
-  tx(() => {
-    db.exec(`
+  await tx(async () => {
+    await exec(`
       DELETE FROM so_allocations; DELETE FROM payments; DELETE FROM so_items; DELETE FROM sales_orders;
       DELETE FROM stock_moves; DELETE FROM lots; DELETE FROM productions; DELETE FROM growers;
       DELETE FROM po_items; DELETE FROM purchase_orders; DELETE FROM suppliers; DELETE FROM customers; DELETE FROM emails;

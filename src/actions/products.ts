@@ -28,16 +28,16 @@ export async function saveProduct(fd: FormData) {
   const p = read(fd);
   const back = id ? `/produk/${id}` : "/produk/baru";
   if (!p.sku || !p.name || !p.crop || !p.pack_size) redirect(withMsg(back, "SKU, nama, komoditas, dan kemasan wajib diisi.", "error"));
-  const dup = get<{ id: number }>("SELECT id FROM products WHERE sku = ? AND id != ?", p.sku, id);
+  const dup = await get<{ id: number }>("SELECT id FROM products WHERE sku = ? AND id != ?", p.sku, id);
   if (dup) redirect(withMsg(back, `SKU ${p.sku} sudah dipakai.`, "error"));
 
   if (id) {
-    run(
+    await run(
       `UPDATE products SET sku=?, name=?, crop=?, category=?, seed_type=?, pack_size=?, unit_price=?, min_stock=?, shelf_life_months=?, description=?, active=? WHERE id=?`,
       p.sku, p.name, p.crop, p.category, p.seed_type, p.pack_size, p.unit_price, p.min_stock, p.shelf_life_months, p.description, p.active, id,
     );
   } else {
-    run(
+    await run(
       `INSERT INTO products (sku, name, crop, category, seed_type, pack_size, unit_price, min_stock, shelf_life_months, description, active) VALUES (?,?,?,?,?,?,?,?,?,?,1)`,
       p.sku, p.name, p.crop, p.category, p.seed_type, p.pack_size, p.unit_price, p.min_stock, p.shelf_life_months, p.description,
     );

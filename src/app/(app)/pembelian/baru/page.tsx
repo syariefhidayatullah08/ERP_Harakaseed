@@ -6,7 +6,7 @@ import { createPO } from "@/actions/purchasing";
 
 export default async function NewPOPage({ searchParams }: PageProps<"/pembelian/baru">) {
   const sp = await searchParams;
-  const suppliers = all<{ id: number; name: string; category: string }>("SELECT id, name, category FROM suppliers ORDER BY name");
+  const suppliers = await all<{ id: number; name: string; category: string }>("SELECT id, name, category FROM suppliers ORDER BY name");
   return (
     <>
       <PageHeader title="Purchase order baru" back={{ href: "/pembelian", label: "Pembelian" }} />

@@ -19,19 +19,19 @@ export default async function SalesPage({ searchParams }: PageProps<"/penjualan"
   const status = String(sp.status ?? "");
   const q = String(sp.q ?? "").trim();
 
-  const rows = all<Row>(
+  const rows = await all<Row>(
     `SELECT so.*, c.name customer, c.city, c.email FROM sales_orders so JOIN customers c ON c.id = so.customer_id
-     WHERE (? = '' OR so.status = ?) AND (so.so_no LIKE ? OR c.name LIKE ? OR COALESCE(so.invoice_no,'') LIKE ?)
+     WHERE (? = '' OR so.status = ?) AND (so.so_no ILIKE ? OR c.name ILIKE ? OR COALESCE(so.invoice_no,'') ILIKE ?)
      ORDER BY so.order_date DESC, so.id DESC LIMIT 300`,
     status, status, `%${q}%`, `%${q}%`, `%${q}%`,
   );
-  const receivables = all<Row>(
+  const receivables = await all<Row>(
     `SELECT so.*, c.name customer, c.city, c.email FROM sales_orders so JOIN customers c ON c.id = so.customer_id
      WHERE so.invoice_no IS NOT NULL AND so.status != 'batal' AND so.paid < so.total ORDER BY so.due_date`,
   );
   const t = today();
   const overdue = receivables.filter((r) => r.due_date && r.due_date < t);
-  const counts = all<{ status: string; n: number }>("SELECT status, COUNT(*) n FROM sales_orders GROUP BY status");
+  const counts = await all<{ status: string; n: number }>("SELECT status, COUNT(*) n FROM sales_orders GROUP BY status");
   const count = (s: string) => counts.find((c) => c.status === s)?.n ?? 0;
 
   const tabLink = (key: string, label: string, n?: number, st = "") => {
