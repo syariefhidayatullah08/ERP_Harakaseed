@@ -20,6 +20,10 @@ const cfg = {
   imapPort: Number(process.env.IMAP_PORT ?? 993),
 };
 
+/** URL publik aplikasi, dipakai untuk gambar logo di email (klien email tidak bisa memuat file lokal). */
+const APP_URL =
+  process.env.APP_URL ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "");
+
 export function emailConfigured() {
   return Boolean(cfg.user && cfg.pass);
 }
@@ -197,9 +201,13 @@ async function layout(title: string, body: string) {
   return `<!doctype html><html><body style="margin:0;background:#f3f6f1;font-family:Segoe UI,Arial,sans-serif;color:#1d2a1f">
   <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0"><tr><td align="center">
   <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #dfe7da">
-    <tr><td style="background:#1f5f2e;color:#fff;padding:20px 28px">
-      <div style="font-size:20px;font-weight:700;letter-spacing:1px">${s("company_brand")}</div>
-      <div style="font-size:12px;opacity:.85">${s("company_tagline")}</div>
+    <tr><td style="background:#fff;padding:20px 28px;border-bottom:4px solid #1f5f2e">
+      ${
+        APP_URL
+          ? `<img src="${APP_URL}/logo-wordmark.png" alt="${s("company_brand")}" width="180" style="display:block;height:auto;border:0">`
+          : `<div style="font-size:20px;font-weight:700;letter-spacing:1px;color:#1f5f2e">${s("company_brand")}</div>`
+      }
+      <div style="font-size:12px;color:#5b6b5d;margin-top:6px">${s("company_tagline")}</div>
     </td></tr>
     <tr><td style="padding:28px">
       <h2 style="margin:0 0 16px;font-size:18px;color:#1f5f2e">${title}</h2>

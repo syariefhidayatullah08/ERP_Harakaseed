@@ -9,7 +9,9 @@ export default function LoginPage() {
     <main className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-brand-900 p-12 text-white lg:flex">
         <div className="flex items-center gap-3">
-          <Image src="/logo.svg" alt="" width={44} height={44} />
+          <span className="inline-flex rounded-xl bg-white p-2">
+            <Image src="/logo-emblem.png" alt="Logo Haraka" width={40} height={40} />
+          </span>
           <div className="font-bold tracking-widest">HARAKA SEED</div>
         </div>
         <div>
@@ -28,7 +30,7 @@ export default function LoginPage() {
       <div className="flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
-            <Image src="/logo.svg" alt="" width={44} height={44} />
+            <Image src="/logo-wordmark.png" alt="HARAKA SEED" width={194} height={48} priority />
           </div>
           <h2 className="text-2xl font-bold">Masuk ke ERP</h2>
           <p className="mb-6 mt-1 text-sm text-muted">Gunakan akun yang diberikan administrator.</p>

@@ -46,7 +46,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
       <div className="mx-auto max-w-[210mm] bg-white p-10 text-sm shadow-sm print:p-0 print:shadow-none">
         <header className="flex items-start justify-between border-b-2 border-brand-700 pb-5">
           <div className="flex gap-3">
-            <Image src="/logo.svg" alt="" width={52} height={52} />
+            <Image src="/logo-emblem.png" alt="Logo Haraka" width={52} height={53} />
             <div>
               <div className="text-lg font-bold tracking-wider text-brand-800">{s("company_brand")}</div>
               <div className="font-semibold">{s("company_name")}</div>

@@ -56,7 +56,10 @@ export function Sidebar({
     <>
       <div className="no-print sticky top-0 z-30 flex items-center justify-between bg-brand-900 px-4 py-3 lg:hidden">
         <div className="flex items-center gap-2 text-sm font-bold tracking-wider text-white">
-          <Image src="/logo.svg" alt="" width={28} height={28} /> HARAKA SEED
+          <span className="inline-flex rounded-md bg-white p-1">
+            <Image src="/logo.png" alt="Logo Haraka" width={22} height={22} />
+          </span>{" "}
+          HARAKA SEED
         </div>
         <button onClick={() => setOpen(!open)} className="text-white" aria-label="Menu">
           {open ? <X /> : <Menu />}
@@ -69,7 +72,9 @@ export function Sidebar({
         }`}
       >
         <Link href="/" className="flex items-center gap-3 px-5 py-5" onClick={() => setOpen(false)}>
-          <Image src="/logo.svg" alt="" width={36} height={36} />
+          <span className="inline-flex rounded-lg bg-white p-1.5">
+            <Image src="/logo.png" alt="Logo Haraka" width={28} height={28} />
+          </span>
           <div>
             <div className="text-sm font-bold tracking-wider text-white">HARAKA SEED</div>
             <div className="text-[11px] text-brand-200">Enterprise Resource Planning</div>
