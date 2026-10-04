@@ -78,10 +78,12 @@ export async function changePassword(fd: FormData) {
 export async function clearTransactions(fd: FormData) {
   await requireOwner();
   if (str(fd, "confirm") !== "HAPUS") redirect(withMsg(BACK, "Ketik HAPUS untuk konfirmasi.", "error"));
-  const files = await all<{ pathname: string }>("SELECT pathname FROM attachments WHERE ref_type <> 'employee'");
+  // Lampiran data SDM dan sistem mutu ISO bukan data contoh; jangan ikut dihapus.
+  const KEEP = "('employee','audit','finding','qdoc')";
+  const files = await all<{ pathname: string }>(`SELECT pathname FROM attachments WHERE ref_type NOT IN ${KEEP}`);
   await tx(async () => {
     await exec(`
-      DELETE FROM attachments WHERE ref_type <> 'employee';
+      DELETE FROM attachments WHERE ref_type NOT IN ${KEEP};
       DELETE FROM complaints; DELETE FROM lot_tests;
       DELETE FROM so_allocations; DELETE FROM payments; DELETE FROM so_items; DELETE FROM sales_orders;
       DELETE FROM stock_moves; DELETE FROM lots; DELETE FROM productions; DELETE FROM growers;

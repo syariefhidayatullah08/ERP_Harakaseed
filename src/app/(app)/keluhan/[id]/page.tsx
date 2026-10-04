@@ -2,15 +2,15 @@ import { notFound } from "next/navigation";
 import { all, get } from "@/lib/db";
 import { toId } from "@/lib/form";
 import { num, tanggal } from "@/lib/format";
-import { COMPLAINT_SEVERITY, COMPLAINT_STATUS } from "@/lib/mutu";
+import { COMPLAINT_SEVERITY, COMPLAINT_STATUS } from "@/lib/keluhan";
 import { Badge, Card, DL, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { Attachments } from "@/components/attachments";
-import { updateComplaint } from "@/actions/mutu";
+import { updateComplaint } from "@/actions/keluhan";
 import { requireAccess } from "@/lib/session";
 
-export default async function ComplaintPage({ params, searchParams }: PageProps<"/mutu/[id]">) {
-  await requireAccess("mutu");
+export default async function ComplaintPage({ params, searchParams }: PageProps<"/keluhan/[id]">) {
+  await requireAccess("keluhan");
   const { id } = await params;
   const sp = await searchParams;
   const k = await get<{
@@ -45,7 +45,7 @@ export default async function ComplaintPage({ params, searchParams }: PageProps<
           </span>
         }
         subtitle={`${k.category} · dilaporkan ${tanggal(k.report_date)}${k.reporter ? ` · dicatat oleh ${k.reporter}` : ""}`}
-        back={{ href: "/mutu", label: "Mutu" }}
+        back={{ href: "/keluhan", label: "Keluhan Pelanggan" }}
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="grid gap-5 lg:grid-cols-3">

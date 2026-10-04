@@ -10,7 +10,8 @@ export const MODULES = {
   produksi: "Produksi Benih",
   mitra: "Petani Mitra",
   qc: "Lab / QC",
-  mutu: "Mutu",
+  mutu: "Mutu & Audit ISO",
+  keluhan: "Keluhan Pelanggan",
   pembelian: "Pembelian",
   sdm: "SDM / Karyawan",
   pengguna: "Akun Pengguna",
@@ -31,7 +32,8 @@ export const MODULE_HINT: Record<Module, string> = {
   produksi: "Batch tanam → panen → prosesing",
   mitra: "Petani penangkar",
   qc: "Uji laboratorium, daya kecambah, kelulusan lot",
-  mutu: "Keluhan pelanggan, investigasi & tindakan",
+  mutu: "Audit ISO 9001, temuan & tindakan perbaikan (CAPA), pengendalian dokumen",
+  keluhan: "Keluhan pelanggan, penggantian, penelusuran lot",
   pembelian: "Supplier & purchase order",
   sdm: "Data karyawan per divisi",
   pengguna: "Membuat & mengelola akun login ERP",
@@ -45,7 +47,7 @@ export const DIVISIONS = {
   lab_qc: { label: "Lab / QC", description: "Uji laboratorium & kelulusan lot" },
   warehouse: { label: "Warehouse", description: "Stok gudang, lot, dan pengiriman barang" },
   admin_sdm: { label: "Admin / SDM", description: "Karyawan, akun pengguna, pembelian, administrasi" },
-  mutu: { label: "Mutu", description: "Keluhan pelanggan & penjaminan mutu" },
+  mutu: { label: "Mutu", description: "Sistem manajemen mutu ISO: audit, temuan, dokumen" },
   marketing: { label: "Marketing", description: "Pesanan, pelanggan, komunikasi email" },
 } as const;
 
@@ -62,7 +64,7 @@ export const DEFAULT_ACCESS: Record<Exclude<Division, "owner">, Module[]> = {
   warehouse: ["inventori", "pengiriman", "produk", "laporan"],
   admin_sdm: ["sdm", "pengguna", "pembelian", "pelanggan", "email", "laporan"],
   mutu: ["mutu", "produk", "laporan"],
-  marketing: ["penjualan", "pelanggan", "produk", "email", "laporan"],
+  marketing: ["penjualan", "pelanggan", "keluhan", "produk", "email", "laporan"],
 };
 
 export type AccessMatrix = Partial<Record<Division, Module[]>>;

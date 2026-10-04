@@ -10,8 +10,12 @@ export const ATTACHMENT_REFS = {
   lot: { module: ["inventori", "qc"], paths: (id: number) => [`/inventori/${id}`, `/qc/lot/${id}`] },
   production: { module: ["produksi", "qc"], paths: (id: number) => [`/produksi/${id}`, `/qc`] },
   purchase_order: { module: ["pembelian"], paths: (id: number) => [`/pembelian/${id}`] },
-  complaint: { module: ["mutu"], paths: (id: number) => [`/mutu/${id}`] },
+  complaint: { module: ["keluhan"], paths: (id: number) => [`/keluhan/${id}`] },
   employee: { module: ["sdm"], paths: (id: number) => [`/sdm/${id}`] },
+  audit: { module: ["mutu"], paths: (id: number) => [`/mutu/audit/${id}`] },
+  // Temuan: Mutu + divisi penanggung jawab (dicek tambahan di lib/attachment-access.ts).
+  finding: { module: ["mutu"], paths: (id: number) => [`/temuan/${id}`, `/temuan`] },
+  qdoc: { module: ["mutu"], paths: (id: number) => [`/mutu/dokumen/${id}`] },
 } satisfies Record<string, { module: Module[]; paths: (id: number) => string[] }>;
 
 export type AttachmentRef = keyof typeof ATTACHMENT_REFS;
@@ -27,6 +31,9 @@ export const ATTACHMENT_CATEGORIES: Record<AttachmentRef, string[]> = {
   purchase_order: ["Nota / faktur supplier", "Bukti transfer", "Foto barang diterima", "Lainnya"],
   complaint: ["Foto keluhan dari pelanggan", "Hasil investigasi", "Berita acara penggantian", "Lainnya"],
   employee: ["KTP", "Kontrak kerja", "Ijazah / sertifikat", "Lainnya"],
+  audit: ["Rencana / jadwal audit", "Daftar periksa (checklist)", "Laporan audit", "Sertifikat ISO", "Daftar hadir", "Lainnya"],
+  finding: ["Bukti ketidaksesuaian", "Analisis akar masalah", "Bukti tindakan perbaikan", "Bukti verifikasi", "Lainnya"],
+  qdoc: ["Dokumen berlaku (PDF)", "File sumber (Word/Excel)", "Dokumen lama / revisi sebelumnya", "Lainnya"],
 };
 
 export const ALLOWED_CONTENT_TYPES = [

@@ -8,7 +8,8 @@ import { BarChart, RankBars } from "@/components/bar-chart";
 import { emailConfigured } from "@/lib/email";
 import { can, requireUser, type SessionUser } from "@/lib/session";
 import { divisionLabel } from "@/lib/access";
-import { COMPLAINT_SEVERITY, COMPLAINT_STATUS } from "@/lib/mutu";
+import { COMPLAINT_SEVERITY, COMPLAINT_STATUS } from "@/lib/keluhan";
+import { FINDING_CATEGORY, FINDING_STATUS } from "@/lib/mutu";
 
 export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
@@ -329,12 +330,27 @@ async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?
     const quarantine = await count("SELECT COUNT(*) n FROM lots WHERE qc_status = 'karantina' AND qty_available > 0");
     cards.push({ label: "Lot dikarantina", value: quarantine, href: "/qc?tab=lot", tone: quarantine ? "danger" : "default" });
   }
-  const complaints = has("mutu")
+  const complaints = has("keluhan")
     ? await all<{ id: number; code: string; category: string; severity: string; status: string }>(
         "SELECT id, code, category, severity, status FROM complaints WHERE status <> 'selesai' ORDER BY CASE severity WHEN 'tinggi' THEN 0 WHEN 'sedang' THEN 1 ELSE 2 END, id DESC LIMIT 8",
       )
     : [];
-  if (has("mutu")) cards.push({ label: "Keluhan terbuka", value: complaints.length, href: "/mutu", tone: complaints.some((c) => c.severity === "tinggi") ? "danger" : complaints.length ? "warn" : "default" });
+  // Temuan audit: Mutu melihat semua, divisi lain hanya yang ditujukan ke divisinya.
+  const findings = await all<{ id: number; code: string; category: string; status: string; due_date: string | null; description: string }>(
+    `SELECT id, code, category, status, due_date, description FROM findings
+     WHERE status <> 'ditutup' AND (? = 1 OR division = ?) ORDER BY due_date LIMIT 8`,
+    has("mutu") ? 1 : 0,
+    user.role,
+  );
+  if (has("mutu")) {
+    cards.push({ label: "Audit terjadwal", value: await count("SELECT COUNT(*) n FROM audits WHERE status = 'rencana' AND start_date >= ?", t), href: "/mutu" });
+    cards.push({ label: "Temuan menunggu verifikasi", value: await count("SELECT COUNT(*) n FROM findings WHERE status = 'ditanggapi'"), href: "/mutu?tab=temuan" });
+  }
+  if (findings.length) {
+    const late = findings.filter((f) => f.due_date && f.due_date < t).length;
+    cards.push({ label: has("mutu") ? "Temuan terbuka" : "Temuan audit untuk divisi Anda", value: findings.length, hint: late ? `${late} lewat tenggat` : undefined, href: "/temuan", tone: late ? "danger" : "warn" });
+  }
+  if (has("keluhan")) cards.push({ label: "Keluhan pelanggan terbuka", value: complaints.length, href: "/keluhan", tone: complaints.some((c) => c.severity === "tinggi") ? "danger" : complaints.length ? "warn" : "default" });
   if (has("pembelian")) cards.push({ label: "PO menunggu barang", value: await count("SELECT COUNT(*) n FROM purchase_orders WHERE status = 'dipesan'"), href: "/pembelian" });
   if (has("sdm")) cards.push({ label: "Karyawan aktif", value: await count("SELECT COUNT(*) n FROM employees WHERE status = 'aktif'"), href: "/sdm" });
   if (has("pengguna")) cards.push({ label: "Akun belum pernah login", value: await count("SELECT COUNT(*) n FROM users WHERE active = 1 AND last_login IS NULL"), href: "/pengguna" });
@@ -406,7 +422,7 @@ async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?
             <ul className="divide-y divide-line text-sm">
               {complaints.map((c) => (
                 <li key={c.id}>
-                  <Link href={`/mutu/${c.id}`} className="flex items-center justify-between gap-2 px-5 py-2.5 hover:bg-brand-50/50">
+                  <Link href={`/keluhan/${c.id}`} className="flex items-center justify-between gap-2 px-5 py-2.5 hover:bg-brand-50/50">
                     <span className="min-w-0">
                       <span className="font-medium">{c.code}</span> <span className="truncate text-xs text-muted">· {c.category}</span>
                     </span>
@@ -414,6 +430,26 @@ async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?
                       <Badge tone={COMPLAINT_SEVERITY[c.severity]?.tone}>{COMPLAINT_SEVERITY[c.severity]?.label}</Badge>
                       <Badge tone={COMPLAINT_STATUS[c.status]?.tone}>{COMPLAINT_STATUS[c.status]?.label}</Badge>
                     </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+        {findings.length > 0 && (
+          <Card title="Temuan audit yang harus ditindaklanjuti">
+            <ul className="divide-y divide-line text-sm">
+              {findings.map((f) => (
+                <li key={f.id}>
+                  <Link href={`/temuan/${f.id}`} className="block px-5 py-2.5 hover:bg-brand-50/50">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium">{f.code}</span>
+                      <Badge tone={FINDING_CATEGORY[f.category]?.tone}>{FINDING_CATEGORY[f.category]?.label}</Badge>
+                      <Badge tone={FINDING_STATUS[f.status]?.tone}>{FINDING_STATUS[f.status]?.label}</Badge>
+                    </div>
+                    <div className="truncate text-xs text-muted">
+                      tenggat {tanggal(f.due_date)} · {f.description}
+                    </div>
                   </Link>
                 </li>
               ))}

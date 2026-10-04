@@ -26,6 +26,8 @@ import {
   ShieldCheck,
   IdCard,
   KeyRound,
+  MessageSquareWarning,
+  ClipboardCheck,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean } | { section: string };
@@ -35,6 +37,7 @@ const NAV: NavItem[] = [
   { section: "Penjualan & Keuangan" },
   { href: "/penjualan", label: "Penjualan", icon: ShoppingCart },
   { href: "/pelanggan", label: "Pelanggan", icon: Users },
+  { href: "/keluhan", label: "Keluhan Pelanggan", icon: MessageSquareWarning },
   { href: "/keuangan", label: "Keuangan", icon: Wallet },
   { section: "Operasional" },
   { href: "/pengiriman", label: "Pengiriman", icon: PackageCheck },
@@ -42,13 +45,14 @@ const NAV: NavItem[] = [
   { href: "/produksi", label: "Produksi Benih", icon: Tractor },
   { href: "/mitra", label: "Petani Mitra", icon: Wheat },
   { href: "/qc", label: "Lab / QC", icon: FlaskConical },
-  { href: "/mutu", label: "Mutu", icon: ShieldCheck },
+  { href: "/mutu", label: "Mutu & Audit ISO", icon: ShieldCheck },
   { href: "/pembelian", label: "Pembelian", icon: Truck },
   { href: "/produk", label: "Produk / Varietas", icon: Sprout },
   { section: "Organisasi" },
   { href: "/sdm", label: "SDM / Karyawan", icon: IdCard },
   { href: "/pengguna", label: "Akun Pengguna", icon: KeyRound },
   { section: "Lainnya" },
+  { href: "/temuan", label: "Temuan Audit", icon: ClipboardCheck },
   { href: "/email", label: "Email", icon: Mail, badge: true },
   { href: "/laporan", label: "Laporan", icon: BarChart3 },
   { href: "/pengaturan", label: "Pengaturan", icon: Settings },

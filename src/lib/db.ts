@@ -425,6 +425,57 @@ const SCHEMA_SQL = `
       created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
     );
 
+    -- Mutu (ISO 9001): audit, temuan/CAPA, pengendalian dokumen
+    CREATE TABLE IF NOT EXISTS audits (
+      id SERIAL PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      audit_type TEXT NOT NULL,
+      standard TEXT NOT NULL DEFAULT 'ISO 9001:2015',
+      title TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT '',
+      auditor TEXT NOT NULL DEFAULT '',
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      status TEXT NOT NULL DEFAULT 'rencana',
+      summary TEXT NOT NULL DEFAULT '',
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE TABLE IF NOT EXISTS findings (
+      id SERIAL PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      audit_id INTEGER REFERENCES audits(id) ON DELETE SET NULL,
+      source TEXT NOT NULL DEFAULT 'audit',
+      clause TEXT NOT NULL DEFAULT '',
+      division TEXT NOT NULL,
+      category TEXT NOT NULL,
+      description TEXT NOT NULL,
+      root_cause TEXT NOT NULL DEFAULT '',
+      correction TEXT NOT NULL DEFAULT '',
+      corrective_action TEXT NOT NULL DEFAULT '',
+      due_date TEXT,
+      status TEXT NOT NULL DEFAULT 'terbuka',
+      verification TEXT NOT NULL DEFAULT '',
+      responded_at TEXT,
+      closed_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_findings_division ON findings(division, status);
+    CREATE TABLE IF NOT EXISTS quality_docs (
+      id SERIAL PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      doc_type TEXT NOT NULL,
+      division TEXT NOT NULL,
+      revision TEXT NOT NULL DEFAULT '00',
+      effective_date TEXT,
+      review_date TEXT,
+      status TEXT NOT NULL DEFAULT 'berlaku',
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+
     -- SDM: data karyawan
     CREATE TABLE IF NOT EXISTS employees (
       id SERIAL PRIMARY KEY,

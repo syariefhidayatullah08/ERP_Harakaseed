@@ -3,6 +3,7 @@ import { hasAny, type Module } from "@/lib/access";
 import { today } from "@/lib/format";
 import {
   complaintLines,
+  findingLines,
   productionLines,
   qcLines,
   salesByCustomer,
@@ -27,7 +28,8 @@ const EXPORTS: Record<string, { need: Module | Module[]; build: (r: Range) => Pr
   "gudang-pergerakan": { need: "inventori", build: (r) => stockMovementReport(r.from, r.to) },
   produksi: { need: "produksi", build: (r) => productionLines(r.from, r.to) },
   qc: { need: "qc", build: (r) => qcLines(r.from, r.to) },
-  mutu: { need: "mutu", build: (r) => complaintLines(r.from, r.to) },
+  mutu: { need: "mutu", build: (r) => findingLines(r.from, r.to) },
+  keluhan: { need: "keluhan", build: (r) => complaintLines(r.from, r.to) },
   sdm: { need: "sdm", build: () => sdmLines() },
 };
 

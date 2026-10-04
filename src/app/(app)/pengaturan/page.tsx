@@ -186,7 +186,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
         <Card title="Mulai dengan data asli">
           <form action={clearTransactions} className="space-y-3 p-5 text-sm">
             <p className="text-muted">
-              Hapus semua transaksi & data contoh (pesanan, pelanggan, supplier, petani, lot, produksi, uji lab, keluhan, email, lampiran). Produk, pengaturan, akun pengguna, dan
+              Hapus semua transaksi & data contoh (pesanan, pelanggan, supplier, petani, lot, produksi, uji lab, keluhan, email, lampiran). Produk, pengaturan, akun pengguna, audit & dokumen mutu, dan
               data karyawan tetap.
             </p>
             <Field label='Ketik "HAPUS" untuk konfirmasi'>

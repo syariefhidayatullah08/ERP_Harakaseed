@@ -5,6 +5,7 @@ import { Download } from "lucide-react";
 import { CUSTOMER_KIND, num, rupiah, today } from "@/lib/format";
 import {
   complaintReport,
+  mutuReport,
   productionReport,
   qcReport,
   salesByCity,
@@ -28,7 +29,8 @@ const TABS: { key: string; label: string; need: Module | Module[] }[] = [
   { key: "produksi", label: "Produksi", need: "produksi" },
   { key: "qc", label: "Lab / QC", need: "qc" },
   { key: "gudang", label: "Gudang", need: "inventori" },
-  { key: "mutu", label: "Mutu", need: "mutu" },
+  { key: "mutu", label: "Mutu & Audit", need: "mutu" },
+  { key: "keluhan", label: "Keluhan Pelanggan", need: "keluhan" },
   { key: "sdm", label: "SDM", need: "sdm" },
 ];
 
@@ -116,7 +118,8 @@ export default async function ReportsPage({ searchParams }: PageProps<"/laporan"
           {tab === "produksi" && <ProductionReport from={from} to={to} exportLink={exportLink} />}
           {tab === "qc" && <QcReport from={from} to={to} exportLink={exportLink} />}
           {tab === "gudang" && <WarehouseReport from={from} to={to} exportLink={exportLink} />}
-          {tab === "mutu" && <MutuReport from={from} to={to} exportLink={exportLink} />}
+          {tab === "mutu" && <AuditReport from={from} to={to} exportLink={exportLink} />}
+          {tab === "keluhan" && <MutuReport from={from} to={to} exportLink={exportLink} />}
           {tab === "sdm" && <SdmReport exportLink={exportLink} />}
         </>
       )}
@@ -287,6 +290,7 @@ async function WarehouseReport({ from, to, exportLink }: P) {
   );
 }
 
+/** Keluhan pelanggan (modul Keluhan). */
 async function MutuReport({ from, to, exportLink }: P) {
   const { byCategory, byProduct } = await complaintReport(from, to);
   const total = byCategory.reduce((s, c) => s + c.total, 0);
@@ -299,11 +303,43 @@ async function MutuReport({ from, to, exportLink }: P) {
         <StatCard label="Selesai" value={num(total - open)} />
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="Per kategori" className="overflow-hidden" actions={exportLink("mutu", "Detail keluhan CSV")}>
+        <Card title="Per kategori" className="overflow-hidden" actions={exportLink("keluhan", "Detail keluhan CSV")}>
           <Table head={["Kategori", "Jumlah", "Terbuka", "Rata-rata selesai (hari)"]} rows={byCategory.map((c) => [c.category, c.total, c.terbuka, c.avg_days ?? "—"])} />
         </Card>
         <Card title="Varietas paling banyak dikeluhkan">
           <div className="p-5">{byProduct.length ? <RankBars rows={byProduct.map((p) => ({ label: p.name, value: p.total }))} format={(n) => `${n} keluhan`} /> : <Empty>—</Empty>}</div>
+        </Card>
+      </div>
+    </>
+  );
+}
+
+/** Sistem manajemen mutu: audit & temuan per divisi. */
+async function AuditReport({ from, to, exportLink }: P) {
+  const { audits, byDivision, byClause } = await mutuReport(from, to);
+  const total = byDivision.reduce((s, d) => s + d.total, 0);
+  const open = byDivision.reduce((s, d) => s + d.terbuka, 0);
+  const late = byDivision.reduce((s, d) => s + d.telat, 0);
+  return (
+    <>
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Audit" value={num(audits.reduce((s, a) => s + a.total, 0))} />
+        <StatCard label="Temuan" value={num(total)} hint={`${byDivision.reduce((s, d) => s + d.mayor, 0)} mayor`} />
+        <StatCard label="Masih terbuka" value={num(open)} tone={open ? "warn" : "default"} />
+        <StatCard label="Lewat tenggat" value={num(late)} tone={late ? "danger" : "default"} />
+      </div>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card title="Temuan per divisi" className="overflow-hidden lg:col-span-2" actions={exportLink("mutu", "Detail temuan CSV")}>
+          <Table
+            head={["Divisi", "Temuan", "Mayor", "Minor", "Terbuka", "Telat", "Rata-rata tutup (hari)"]}
+            rows={byDivision.map((d) => [divisionLabel(d.division), d.total, d.mayor, d.minor, d.terbuka, d.telat, d.avg_days ?? "—"])}
+          />
+        </Card>
+        <Card title="Audit per jenis" className="overflow-hidden">
+          <Table head={["Jenis", "Jumlah", "Selesai"]} rows={audits.map((a) => [a.audit_type, a.total, a.selesai])} />
+        </Card>
+        <Card title="Klausul paling sering">
+          <div className="p-5">{byClause.length ? <RankBars rows={byClause.map((c) => ({ label: c.clause, value: c.total }))} format={(n) => `${n} temuan`} /> : <Empty>—</Empty>}</div>
         </Card>
       </div>
     </>

@@ -160,6 +160,42 @@ export async function complaintLines(from: string, to: string): Promise<Rows> {
   );
 }
 
+export async function mutuReport(from: string, to: string) {
+  const audits = await all<{ audit_type: string; total: number; selesai: number }>(
+    `SELECT audit_type, COUNT(*) total, COUNT(*) FILTER (WHERE status = 'selesai') selesai
+     FROM audits WHERE start_date BETWEEN ? AND ? GROUP BY audit_type ORDER BY total DESC`,
+    from,
+    to,
+  );
+  const byDivision = await all<{ division: string; total: number; mayor: number; minor: number; terbuka: number; telat: number; avg_days: number | null }>(
+    `SELECT division, COUNT(*) total,
+            COUNT(*) FILTER (WHERE category = 'mayor') mayor, COUNT(*) FILTER (WHERE category = 'minor') minor,
+            COUNT(*) FILTER (WHERE status <> 'ditutup') terbuka,
+            COUNT(*) FILTER (WHERE status <> 'ditutup' AND due_date < to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD')) telat,
+            ROUND(AVG((closed_at::date - substr(created_at,1,10)::date)) FILTER (WHERE closed_at IS NOT NULL), 1) avg_days
+     FROM findings WHERE substr(created_at,1,10) BETWEEN ? AND ? GROUP BY division ORDER BY total DESC`,
+    from,
+    to,
+  );
+  const byClause = await all<{ clause: string; total: number }>(
+    `SELECT COALESCE(NULLIF(clause,''),'(tanpa klausul)') clause, COUNT(*) total FROM findings
+     WHERE substr(created_at,1,10) BETWEEN ? AND ? GROUP BY 1 ORDER BY total DESC LIMIT 10`,
+    from,
+    to,
+  );
+  return { audits, byDivision, byClause };
+}
+
+export async function findingLines(from: string, to: string): Promise<Rows> {
+  return await all(
+    `SELECT f.code, a.code audit, a.title audit_judul, f.clause, f.division, f.category, f.description, f.root_cause, f.corrective_action,
+            f.due_date, f.status, f.verification, f.closed_at
+     FROM findings f LEFT JOIN audits a ON a.id = f.audit_id WHERE substr(f.created_at,1,10) BETWEEN ? AND ? ORDER BY f.code`,
+    from,
+    to,
+  );
+}
+
 export async function sdmReport() {
   return await all<{ division: string; aktif: number; nonaktif: number; akun: number }>(
     `SELECT d.division,

@@ -1,89 +1,114 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { all } from "@/lib/db";
-import { tanggal, today } from "@/lib/format";
-import { COMPLAINT_CATEGORIES, COMPLAINT_SEVERITY, COMPLAINT_STATUS } from "@/lib/mutu";
-import { Badge, Card, Empty, Field, Flash, PageHeader, StatCard } from "@/components/ui";
-import { SubmitButton } from "@/components/buttons";
-import { createComplaint } from "@/actions/mutu";
+import { addDays, daysUntil, tanggal, today } from "@/lib/format";
+import { divisionLabel } from "@/lib/access";
+import { AUDIT_STATUS, DOC_STATUS, FINDING_CATEGORY, FINDING_STATUS } from "@/lib/mutu";
+import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { requireAccess } from "@/lib/session";
+import { AuditForm, DocForm, FindingForm, type Audit, type QualityDoc } from "./forms";
 
-export const metadata: Metadata = { title: "Mutu" };
+export const metadata: Metadata = { title: "Mutu & Audit ISO" };
+
+type Finding = { id: number; code: string; audit_code: string | null; clause: string; division: string; category: string; status: string; due_date: string | null; description: string };
 
 export default async function MutuPage({ searchParams }: PageProps<"/mutu">) {
   await requireAccess("mutu");
   const sp = await searchParams;
-  const status = String(sp.status ?? "terbuka");
-  const rows = await all<{ id: number; code: string; report_date: string; customer: string | null; product: string | null; lot_no: string | null; category: string; severity: string; status: string; closed_at: string | null }>(
-    `SELECT k.id, k.code, k.report_date, k.category, k.severity, k.status, k.closed_at, c.name customer, p.name product, l.lot_no
-     FROM complaints k LEFT JOIN customers c ON c.id = k.customer_id LEFT JOIN products p ON p.id = k.product_id LEFT JOIN lots l ON l.id = k.lot_id
-     WHERE (? = 'semua' OR (? = 'terbuka' AND k.status <> 'selesai') OR k.status = ?)
-     ORDER BY CASE k.severity WHEN 'tinggi' THEN 0 WHEN 'sedang' THEN 1 ELSE 2 END, k.report_date DESC`,
-    status, status, status,
+  const tab = ["temuan", "dokumen"].includes(String(sp.tab)) ? String(sp.tab) : "audit";
+  const t = today();
+
+  const audits = await all<Audit & { findings: number; open: number }>(
+    `SELECT a.*, (SELECT COUNT(*) FROM findings f WHERE f.audit_id = a.id) findings,
+            (SELECT COUNT(*) FROM findings f WHERE f.audit_id = a.id AND f.status <> 'ditutup') open
+     FROM audits a ORDER BY a.start_date DESC`,
   );
-  const counts = await all<{ status: string; n: number }>("SELECT status, COUNT(*) n FROM complaints GROUP BY status");
-  const n = (s: string) => counts.find((c) => c.status === s)?.n ?? 0;
-  const open = counts.filter((c) => c.status !== "selesai").reduce((s, c) => s + c.n, 0);
-  const customers = await all<{ id: number; name: string }>("SELECT id, name FROM customers ORDER BY name");
-  const products = await all<{ id: number; name: string }>("SELECT id, name FROM products ORDER BY name");
+  const findings = await all<Finding>(
+    `SELECT f.id, f.code, f.clause, f.division, f.category, f.status, f.due_date, f.description, a.code audit_code
+     FROM findings f LEFT JOIN audits a ON a.id = f.audit_id
+     ORDER BY (f.status = 'ditutup'), CASE f.category WHEN 'mayor' THEN 0 WHEN 'minor' THEN 1 ELSE 2 END, f.due_date`,
+  );
+  const docs = await all<QualityDoc>("SELECT * FROM quality_docs ORDER BY (status = 'kadaluarsa'), code");
+
+  const open = findings.filter((f) => f.status !== "ditutup");
+  const overdue = open.filter((f) => f.due_date && f.due_date < t);
+  const toReview = docs.filter((d) => d.status === "berlaku" && d.review_date && d.review_date <= addDays(t, 30));
+  const upcoming = audits.filter((a) => a.status === "rencana" && a.start_date >= t);
+
+  const tabs = [
+    ["audit", `Audit (${audits.length})`],
+    ["temuan", `Temuan & CAPA (${open.length} terbuka)`],
+    ["dokumen", `Dokumen mutu (${docs.length})`],
+  ];
 
   return (
     <>
-      <PageHeader title="Mutu" subtitle="Keluhan pelanggan, investigasi, dan tindakan perbaikan" />
+      <PageHeader title="Mutu & Audit ISO" subtitle="Sistem manajemen mutu ISO 9001:2015: audit, temuan & tindakan perbaikan, pengendalian dokumen" />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Keluhan terbuka" value={open} tone={open ? "warn" : "default"} />
-        <StatCard label="Investigasi" value={n("investigasi")} />
-        <StatCard label="Tindakan perbaikan" value={n("tindakan")} />
-        <StatCard label="Selesai" value={n("selesai")} />
+        <StatCard label="Audit terjadwal" value={upcoming.length} hint={upcoming[0] ? `berikutnya ${tanggal(upcoming[0].start_date)}` : "belum ada jadwal"} />
+        <StatCard
+          label="Temuan terbuka"
+          value={open.length}
+          hint={`${open.filter((f) => f.category === "mayor").length} mayor`}
+          tone={open.some((f) => f.category === "mayor") ? "danger" : open.length ? "warn" : "default"}
+        />
+        <StatCard label="Lewat tenggat" value={overdue.length} tone={overdue.length ? "danger" : "default"} />
+        <StatCard label="Dokumen perlu ditinjau" value={toReview.length} hint="≤ 30 hari" tone={toReview.length ? "warn" : "default"} />
       </div>
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <div className="mb-3 flex gap-1 overflow-x-auto border-b border-line">
-            {[["terbuka", "Terbuka"], ...Object.entries(COMPLAINT_STATUS).map(([k, v]) => [k, v.label]), ["semua", "Semua"]].map(([k, label]) => (
-              <Link
-                key={k}
-                href={`/mutu?status=${k}`}
-                className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm ${status === k ? "border-brand-700 font-semibold text-brand-800" : "border-transparent text-muted hover:text-ink"}`}
-              >
-                {label}
-              </Link>
-            ))}
-          </div>
-          <Card className="overflow-hidden">
-            {rows.length ? (
+
+      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
+        {tabs.map(([k, label]) => (
+          <Link
+            key={k}
+            href={k === "audit" ? "/mutu" : `/mutu?tab=${k}`}
+            className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm ${tab === k ? "border-brand-700 font-semibold text-brand-800" : "border-transparent text-muted hover:text-ink"}`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
+      {tab === "audit" && (
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Card className="overflow-hidden lg:col-span-2">
+            {audits.length ? (
               <div className="overflow-x-auto">
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Keluhan</th>
-                      <th>Pelanggan / produk</th>
-                      <th>Tingkat</th>
+                      <th>Audit</th>
+                      <th>Jenis & standar</th>
+                      <th>Tanggal</th>
+                      <th className="num">Temuan</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.id}>
+                    {audits.map((a) => (
+                      <tr key={a.id}>
                         <td>
-                          <Link href={`/mutu/${r.id}`} className="font-medium text-brand-700 hover:underline">
-                            {r.code}
+                          <Link href={`/mutu/audit/${a.id}`} className="font-medium text-brand-700 hover:underline">
+                            {a.title}
                           </Link>
                           <div className="text-xs text-muted">
-                            {tanggal(r.report_date)} · {r.category}
+                            {a.code}
+                            {a.auditor && ` · ${a.auditor}`}
                           </div>
                         </td>
-                        <td className="text-sm">
-                          {r.customer ?? "—"}
-                          <div className="text-xs text-muted">
-                            {r.product ?? "—"} {r.lot_no && <span className="font-mono">· {r.lot_no}</span>}
-                          </div>
+                        <td className="text-xs">
+                          {a.audit_type}
+                          <div className="text-muted">{a.standard}</div>
+                        </td>
+                        <td className="whitespace-nowrap text-xs">
+                          {tanggal(a.start_date)}
+                          {a.end_date && a.end_date !== a.start_date && ` – ${tanggal(a.end_date)}`}
+                        </td>
+                        <td className="num">
+                          {a.findings} {a.open > 0 && <span className="text-xs text-red-700">({a.open} terbuka)</span>}
                         </td>
                         <td>
-                          <Badge tone={COMPLAINT_SEVERITY[r.severity]?.tone}>{COMPLAINT_SEVERITY[r.severity]?.label}</Badge>
-                        </td>
-                        <td>
-                          <Badge tone={COMPLAINT_STATUS[r.status]?.tone}>{COMPLAINT_STATUS[r.status]?.label}</Badge>
+                          <Badge tone={AUDIT_STATUS[a.status]?.tone}>{AUDIT_STATUS[a.status]?.label}</Badge>
                         </td>
                       </tr>
                     ))}
@@ -91,63 +116,116 @@ export default async function MutuPage({ searchParams }: PageProps<"/mutu">) {
                 </table>
               </div>
             ) : (
-              <Empty>Tidak ada keluhan pada filter ini.</Empty>
+              <Empty>Belum ada audit. Jadwalkan audit internal pertama di samping.</Empty>
             )}
           </Card>
+          <Card title="Jadwalkan audit">
+            <AuditForm />
+          </Card>
         </div>
-        <Card title="Catat keluhan baru">
-          <form action={createComplaint} className="space-y-3 p-5">
-            <Field label="Tanggal laporan">
-              <input name="report_date" type="date" defaultValue={today()} className="input" />
-            </Field>
-            <Field label="Pelanggan">
-              <select name="customer_id" defaultValue="" className="input">
-                <option value="">— tidak diketahui —</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="No. lot (dari kemasan, bila ada)">
-              <input name="lot_no" className="input font-mono uppercase" placeholder="L2026001-KNT" />
-            </Field>
-            <Field label="Varietas (bila lot tidak diketahui)">
-              <select name="product_id" defaultValue="" className="input">
-                <option value="">—</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Kategori *">
-                <select name="category" required className="input">
-                  {COMPLAINT_CATEGORIES.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Tingkat">
-                <select name="severity" defaultValue="sedang" className="input">
-                  {Object.entries(COMPLAINT_SEVERITY).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <Field label="Uraian keluhan *">
-              <textarea name="description" rows={4} required className="input" placeholder="Apa yang dilaporkan pelanggan, lokasi tanam, luas, jumlah kemasan…" />
-            </Field>
-            <SubmitButton className="btn-primary w-full">Simpan keluhan</SubmitButton>
-          </form>
-        </Card>
-      </div>
+      )}
+
+      {tab === "temuan" && (
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Card className="overflow-hidden lg:col-span-2">
+            {findings.length ? (
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Temuan</th>
+                      <th>Divisi</th>
+                      <th>Tenggat</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {findings.map((f) => {
+                      const late = f.status !== "ditutup" && f.due_date && f.due_date < t;
+                      return (
+                        <tr key={f.id}>
+                          <td className="max-w-md">
+                            <Link href={`/temuan/${f.id}`} className="font-medium text-brand-700 hover:underline">
+                              {f.code}
+                            </Link>{" "}
+                            <Badge tone={FINDING_CATEGORY[f.category]?.tone}>{FINDING_CATEGORY[f.category]?.label}</Badge>
+                            <div className="truncate text-xs text-muted">
+                              {[f.audit_code, f.clause].filter(Boolean).join(" · ")} {f.description}
+                            </div>
+                          </td>
+                          <td className="text-sm">{divisionLabel(f.division)}</td>
+                          <td className="whitespace-nowrap text-xs">
+                            {tanggal(f.due_date)} {late && f.due_date && <Badge tone="red">telat {-daysUntil(f.due_date)} hr</Badge>}
+                          </td>
+                          <td>
+                            <Badge tone={FINDING_STATUS[f.status]?.tone}>{FINDING_STATUS[f.status]?.label}</Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>Belum ada temuan.</Empty>
+            )}
+          </Card>
+          <Card title="Catat temuan di luar audit">
+            <FindingForm />
+          </Card>
+        </div>
+      )}
+
+      {tab === "dokumen" && (
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Card className="overflow-hidden lg:col-span-2">
+            {docs.length ? (
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Dokumen</th>
+                      <th>Divisi</th>
+                      <th>Rev.</th>
+                      <th>Tinjau ulang</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {docs.map((d) => (
+                      <tr key={d.id}>
+                        <td>
+                          <Link href={`/mutu/dokumen/${d.id}`} className="font-mono text-xs font-medium text-brand-700 hover:underline">
+                            {d.code}
+                          </Link>
+                          <div className="text-sm">{d.title}</div>
+                          <div className="text-xs text-muted">{d.doc_type}</div>
+                        </td>
+                        <td className="text-sm">{divisionLabel(d.division)}</td>
+                        <td className="font-mono text-xs">{d.revision}</td>
+                        <td className="whitespace-nowrap text-xs">
+                          {tanggal(d.review_date)}{" "}
+                          {d.status === "berlaku" && d.review_date && d.review_date <= addDays(t, 30) && (
+                            <Badge tone={d.review_date < t ? "red" : "amber"}>{d.review_date < t ? "lewat" : "segera"}</Badge>
+                          )}
+                        </td>
+                        <td>
+                          <Badge tone={DOC_STATUS[d.status]?.tone}>{DOC_STATUS[d.status]?.label}</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>Belum ada dokumen terdaftar. Daftarkan manual mutu, SOP, IK, dan formulir di samping.</Empty>
+            )}
+          </Card>
+          <Card title="Daftarkan dokumen">
+            <DocForm />
+          </Card>
+        </div>
+      )}
     </>
   );
 }

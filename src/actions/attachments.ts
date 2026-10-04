@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { del, head } from "@vercel/blob";
 import { get, insert, run } from "@/lib/db";
-import { requireAccess } from "@/lib/session";
+import { requireUser } from "@/lib/session";
+import { canUseAttachments } from "@/lib/attachment-access";
 import { numf, str, withMsg } from "@/lib/form";
 import { ATTACHMENT_CATEGORIES, ATTACHMENT_REFS, isAttachmentRef } from "@/lib/attachments";
 
@@ -19,7 +20,8 @@ export async function registerAttachment(input: {
 }): Promise<{ ok: boolean; error?: string }> {
   if (!isAttachmentRef(input.refType)) return { ok: false, error: "Dokumen tujuan tidak valid." };
   const ref = ATTACHMENT_REFS[input.refType];
-  const user = await requireAccess(ref.module);
+  const user = await requireUser();
+  if (!Number.isInteger(input.refId) || !(await canUseAttachments(user, input.refType, input.refId))) return { ok: false, error: "Tidak punya akses ke dokumen ini." };
   if (!input.pathname.startsWith(`evidence/${input.refType}/${input.refId}/`)) return { ok: false, error: "Lokasi file tidak valid." };
 
   // Pastikan file benar-benar ada di Blob, dan ambil ukuran & tipe dari sumbernya (bukan dari browser).
@@ -52,7 +54,8 @@ export async function deleteAttachment(fd: FormData) {
   const row = await get<{ ref_type: string; ref_id: number; pathname: string; filename: string }>("SELECT * FROM attachments WHERE id = ?", id);
   if (!row || !isAttachmentRef(row.ref_type)) redirect(withMsg("/", "Lampiran tidak ditemukan.", "error"));
   const ref = ATTACHMENT_REFS[row.ref_type];
-  await requireAccess(ref.module);
+  const user = await requireUser();
+  if (!(await canUseAttachments(user, row.ref_type, row.ref_id))) redirect(withMsg("/", "Tidak punya akses ke lampiran ini.", "error"));
   await del(row.pathname);
   await run("DELETE FROM attachments WHERE id = ?", id);
   for (const p of ref.paths(row.ref_id)) revalidatePath(p);

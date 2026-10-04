@@ -9,11 +9,11 @@ Setiap karyawan login dengan **email pribadinya**. Hak akses mengikuti divisi; d
 | Divisi | Modul bawaan |
 |---|---|
 | **Owner (Keuangan)** | Semua modul, termasuk Keuangan (pembayaran, piutang, invoice, omzet) dan pengaturan perusahaan |
-| **Marketing** | Penjualan, Pelanggan, Produk, Email, Laporan penjualan (jumlah kemasan, tanpa omzet) |
+| **Marketing** | Penjualan, Pelanggan, Keluhan Pelanggan, Produk, Email, Laporan penjualan (jumlah kemasan, tanpa omzet) |
 | **Warehouse** | Gudang & Lot, Pengiriman (tanpa harga), Produk, Laporan gudang |
 | **Produksi** | Produksi Benih, Petani Mitra, Produk, Laporan produksi |
 | **Lab / QC** | Antrian uji lab, kelulusan & karantina lot, Produk, Laporan QC |
-| **Mutu** | Keluhan pelanggan & ketertelusuran lot, Produk, Laporan mutu |
+| **Mutu** | Audit ISO 9001 (internal/eksternal/surveilan), temuan & CAPA, pengendalian dokumen mutu, Produk, Laporan mutu |
 | **Admin / SDM** | Karyawan, Akun Pengguna, Pembelian, Pelanggan, Email, Laporan SDM |
 
 Owner bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. Modul Keuangan terkunci khusus Owner. Akses dicek di setiap halaman, aksi, dan unduhan, jadi bukan sekadar menu yang disembunyikan.
@@ -32,11 +32,13 @@ Owner bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. Mo
 | **Gudang & Lot** | Stok per lot dengan data mutu, kadaluarsa, penyesuaian stok, ketertelusuran |
 | **Produksi Benih** | Tanam → panen → prosesing → serah ke Lab/QC |
 | **Lab / QC** | Uji daya kecambah/kemurnian/kadar air; lulus → lot masuk stok; uji ulang; lot gagal dikarantina (tidak bisa dijual) |
-| **Mutu** | Keluhan pelanggan, investigasi, tindakan perbaikan, daftar penerima lot yang sama |
+| **Mutu & Audit ISO** | Jadwal & laporan audit, temuan per klausul ISO 9001 → divisi penanggung jawab mengisi akar masalah & tindakan → Mutu memverifikasi & menutup (notifikasi email di tiap langkah). Daftar dokumen mutu (SOP, IK, formulir) dengan revisi & jadwal tinjau |
+| **Temuan Audit** | Setiap divisi melihat & menjawab temuan untuk divisinya sendiri |
+| **Keluhan Pelanggan** | (Marketing) keluhan, investigasi, penggantian, daftar penerima lot yang sama |
 | **SDM** | Data karyawan per divisi, terhubung ke akun ERP |
 | **Petani Mitra / Pembelian / Produk** | Penangkar, PO ke supplier, 38 varietas katalog resmi dengan foto kemasan |
 | **Email** | Kotak masuk perusahaan (IMAP), terkirim, gagal, tulis, balas |
-| **Laporan** | Tab per divisi (Keuangan, Penjualan, Produksi, Lab/QC, Gudang, Mutu, SDM), semua bisa diunduh CSV |
+| **Laporan** | Tab per divisi (Keuangan, Penjualan, Produksi, Lab/QC, Gudang, Mutu & Audit, Keluhan, SDM), semua bisa diunduh CSV |
 | **Pengaturan** | Akun saya (semua). Owner: hak akses divisi, profil perusahaan, email otomatis, hapus data contoh |
 
 ### Email otomatis
