@@ -5,6 +5,7 @@ import { Card, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { saveGrower } from "@/actions/production";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Petani Mitra" };
 
@@ -20,7 +21,7 @@ export default async function GrowersPage({ searchParams }: PageProps<"/mitra">)
   );
   return (
     <>
-      <PageHeader title="Petani Mitra" subtitle="Petani penangkar benih yang bermitra dengan Haraka Seed" />
+      <PageHeader title="Petani Mitra" subtitle="Petani penangkar benih yang bermitra dengan Haraka Seed" actions={<ExportMenu type="mitra" />} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="overflow-hidden lg:col-span-2">

@@ -12,6 +12,7 @@
     "@vercel/blob": "^2.8.0",
     "@vercel/functions": "^3.9.11",
     "docx": "^9.8.1",
+    "exceljs": "^4.4.0",
     "imapflow": "^2.2.1",
     "lucide-react": "^1.49.0",
     "mailparser": "^3.9.33",

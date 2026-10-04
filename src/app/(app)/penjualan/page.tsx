@@ -4,6 +4,7 @@ import { all } from "@/lib/db";
 import { paymentStatus, rupiah, SO_STATUS, tanggal } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader } from "@/components/ui";
 import { can, requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Penjualan" };
 
@@ -41,11 +42,14 @@ export default async function SalesPage({ searchParams }: PageProps<"/penjualan"
         title="Penjualan"
         subtitle={finance ? "Pesanan dan pengiriman. Piutang & pembayaran ada di menu Keuangan." : "Pesanan pelanggan dan status pengiriman"}
         actions={
-          can(user, "penjualan") && (
+          <>
+            <ExportMenu type="pesanan" />
+            {can(user, "penjualan") && (
             <Link href="/penjualan/baru" className="btn-accent">
               + Pesanan baru
             </Link>
-          )
+          )}
+          </>
         }
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />

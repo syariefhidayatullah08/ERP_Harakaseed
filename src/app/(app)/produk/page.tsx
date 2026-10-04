@@ -5,6 +5,7 @@ import { productStock } from "@/lib/inventory";
 import { num, rupiah } from "@/lib/format";
 import { Badge, Flash, PageHeader } from "@/components/ui";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Produk" };
 
@@ -29,9 +30,12 @@ export default async function ProductsPage({ searchParams }: PageProps<"/produk"
         title="Produk / Varietas"
         subtitle={`${all.length} varietas benih · ${all.filter((p) => p.seed_type !== "OP").length} F1 Hibrida, ${all.filter((p) => p.seed_type === "OP").length} OP`}
         actions={
-          <Link href="/produk/baru" className="btn-accent">
+          <>
+            <ExportMenu type="produk" />
+            {<Link href="/produk/baru" className="btn-accent">
             + Produk baru
-          </Link>
+          </Link>}
+          </>
         }
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />

@@ -6,6 +6,7 @@ import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui
 import { SubmitButton } from "@/components/buttons";
 import { sendOverdueReminders } from "@/actions/sales";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Keuangan" };
 
@@ -96,7 +97,7 @@ export default async function FinancePage({ searchParams }: PageProps<"/keuangan
           </div>
         </Card>
 
-        <Card title="Piutang per invoice" className="overflow-hidden lg:col-span-2">
+        <Card title="Piutang per invoice" className="overflow-hidden lg:col-span-2" actions={<ExportMenu type="piutang" compact />}>
           {receivables.length ? (
             <div className="overflow-x-auto">
               <table className="table">
@@ -140,7 +141,7 @@ export default async function FinancePage({ searchParams }: PageProps<"/keuangan
         </Card>
       </div>
 
-      <Card title="Pembayaran masuk · 90 hari" className="overflow-hidden">
+      <Card title="Pembayaran masuk · 90 hari" className="overflow-hidden" actions={<ExportMenu type="pembayaran" compact />}>
         {payments.length ? (
           <div className="overflow-x-auto">
             <table className="table">

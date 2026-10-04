@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Download } from "lucide-react";
 import { CUSTOMER_KIND, num, rupiah, today } from "@/lib/format";
 import {
   complaintReport,
@@ -20,6 +19,7 @@ import { divisionLabel, hasAny, type Module } from "@/lib/access";
 import { Card, Empty, PageHeader, StatCard } from "@/components/ui";
 import { BarChart, RankBars } from "@/components/bar-chart";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Laporan" };
 
@@ -73,15 +73,12 @@ export default async function ReportsPage({ searchParams }: PageProps<"/laporan"
   const to = valid(sp.to) ?? today();
   const from = valid(sp.from) ?? `${to.slice(0, 4)}-01-01`;
   const qs = `from=${from}&to=${to}`;
-  const exportLink = (type: string, label = "Unduh CSV") => (
-    <a href={`/api/export?type=${type}&${qs}`} className="btn-secondary btn-sm">
-      <Download size={13} /> {label}
-    </a>
-  );
+  // Unduh tabel laporan dalam Excel / PDF / Word sesuai periode yang dipilih.
+  const exportLink = (type: string) => <ExportMenu type={type} from={from} to={to} compact />;
 
   return (
     <>
-      <PageHeader title="Laporan" subtitle={`Laporan ${divisionLabel(user.role)} · semua tabel bisa diunduh sebagai CSV (Excel)`} />
+      <PageHeader title="Laporan" subtitle={`Laporan ${divisionLabel(user.role)} · semua tabel bisa diunduh sebagai Excel, PDF, atau Word`} />
       {tabs.length === 0 ? (
         <Card>
           <Empty>Divisi Anda belum punya laporan yang bisa ditampilkan.</Empty>

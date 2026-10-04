@@ -6,6 +6,7 @@ import { Badge, Card, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { deleteUser, inviteUser, sendUserLink, updateUser } from "@/actions/users";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Akun Pengguna" };
 
@@ -22,7 +23,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
 
   return (
     <>
-      <PageHeader title="Akun Pengguna" subtitle="Setiap karyawan login dengan email pribadinya. Hak akses mengikuti divisi." />
+      <PageHeader title="Akun Pengguna" subtitle="Setiap karyawan login dengan email pribadinya. Hak akses mengikuti divisi." actions={<ExportMenu type="pengguna" />} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="grid gap-5 lg:grid-cols-3">
         <Card title={`Pengguna (${users.length})`} className="overflow-hidden lg:col-span-2">

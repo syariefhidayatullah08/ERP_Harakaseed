@@ -6,6 +6,7 @@ import { Badge, Card, Empty, Field, Flash, PageHeader, StatCard } from "@/compon
 import { SubmitButton } from "@/components/buttons";
 import { labDecision, saveQcStandard } from "@/actions/qc";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Lab / QC" };
 
@@ -35,7 +36,7 @@ export default async function QcPage({ searchParams }: PageProps<"/qc">) {
 
   return (
     <>
-      <PageHeader title="Lab / QC" subtitle={`Uji laboratorium benih dan kelulusan lot · standar minimum daya kecambah ${minDk}%`} />
+      <PageHeader title="Lab / QC" subtitle={`Uji laboratorium benih dan kelulusan lot · standar minimum daya kecambah ${minDk}%`} actions={<ExportMenu type="qc" />} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">

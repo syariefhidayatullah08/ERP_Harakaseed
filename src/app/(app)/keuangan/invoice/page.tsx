@@ -5,6 +5,7 @@ import { all } from "@/lib/db";
 import { rupiah, tanggal } from "@/lib/format";
 import { Card, Empty, Flash, PageHeader } from "@/components/ui";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Invoice Manual" };
 
@@ -28,9 +29,12 @@ export default async function ManualInvoicesPage({ searchParams }: PageProps<"/k
         subtitle="Invoice dengan template resmi Haraka (logo, KAN, terbilang, rekening). Unduh PDF atau Word, lalu cetak."
         back={{ href: "/keuangan", label: "Keuangan" }}
         actions={
-          <Link href="/keuangan/invoice/baru" className="btn-accent">
+          <>
+            <ExportMenu type="invoice-manual" />
+            {<Link href="/keuangan/invoice/baru" className="btn-accent">
             + Buat invoice
-          </Link>
+          </Link>}
+          </>
         }
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />

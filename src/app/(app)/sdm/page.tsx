@@ -6,6 +6,7 @@ import { DIVISIONS, type Division } from "@/lib/access";
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { can, requireAccess } from "@/lib/session";
 import { EmployeeForm, type Employee } from "./employee-form";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "SDM / Karyawan" };
 
@@ -24,7 +25,7 @@ export default async function SdmPage({ searchParams }: PageProps<"/sdm">) {
 
   return (
     <>
-      <PageHeader title="SDM / Karyawan" subtitle="Data karyawan per divisi" />
+      <PageHeader title="SDM / Karyawan" subtitle="Data karyawan per divisi" actions={<ExportMenu type="sdm" />} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Karyawan aktif" value={active} />

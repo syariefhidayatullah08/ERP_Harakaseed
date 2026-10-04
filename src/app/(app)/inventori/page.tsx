@@ -7,6 +7,7 @@ import { Badge, Card, Field, Flash, PageHeader, StatCard } from "@/components/ui
 import { SubmitButton } from "@/components/buttons";
 import { createLotAction, sendLowStockAlert } from "@/actions/inventory";
 import { can, requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Inventori" };
 
@@ -69,7 +70,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         <StatCard label="Lot kadaluarsa (masih ada sisa)" value={expired.length} tone={expired.length ? "warn" : "default"} hint="Tidak dihitung sebagai stok jual" />
       </div>
 
-      <Card title="Stok per varietas" className="mb-5 overflow-hidden">
+      <Card title="Stok per varietas" className="mb-5 overflow-hidden" actions={<ExportMenu type="stok-varietas" compact />}>
         <div className="overflow-x-auto">
           <table className="table">
             <thead>

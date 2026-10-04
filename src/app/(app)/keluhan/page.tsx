@@ -7,6 +7,7 @@ import { Badge, Card, Empty, Field, Flash, PageHeader, StatCard } from "@/compon
 import { SubmitButton } from "@/components/buttons";
 import { createComplaint } from "@/actions/keluhan";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Keluhan Pelanggan" };
 
@@ -29,7 +30,7 @@ export default async function ComplaintsPage({ searchParams }: PageProps<"/keluh
 
   return (
     <>
-      <PageHeader title="Keluhan Pelanggan" subtitle="Keluhan dari pelanggan, investigasi, penggantian, dan penelusuran lot" />
+      <PageHeader title="Keluhan Pelanggan" subtitle="Keluhan dari pelanggan, investigasi, penggantian, dan penelusuran lot" actions={<ExportMenu type="keluhan" />} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Keluhan terbuka" value={open} tone={open ? "warn" : "default"} />

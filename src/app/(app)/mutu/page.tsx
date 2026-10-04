@@ -6,6 +6,7 @@ import { divisionLabel } from "@/lib/access";
 import { AUDIT_STATUS, DOC_STATUS, FINDING_CATEGORY, FINDING_STATUS } from "@/lib/mutu";
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 import { AuditForm, DocForm, FindingForm, type Audit, type QualityDoc } from "./forms";
 
 export const metadata: Metadata = { title: "Mutu & Audit ISO" };
@@ -43,7 +44,11 @@ export default async function MutuPage({ searchParams }: PageProps<"/mutu">) {
 
   return (
     <>
-      <PageHeader title="Mutu & Audit ISO" subtitle="Sistem manajemen mutu ISO 9001:2015: audit, temuan & tindakan perbaikan, pengendalian dokumen" />
+      <PageHeader
+        title="Mutu & Audit ISO"
+        subtitle="Sistem manajemen mutu ISO 9001:2015: audit, temuan & tindakan perbaikan, pengendalian dokumen"
+        actions={<ExportMenu type={tab === "temuan" ? "mutu" : tab === "dokumen" ? "dokumen-mutu" : "audit"} />}
+      />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Audit terjadwal" value={upcoming.length} hint={upcoming[0] ? `berikutnya ${tanggal(upcoming[0].start_date)}` : "belum ada jadwal"} />

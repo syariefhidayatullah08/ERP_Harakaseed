@@ -6,6 +6,7 @@ import { Badge, Card, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { createProduction } from "@/actions/production";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Produksi Benih" };
 
@@ -28,7 +29,7 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
 
   return (
     <>
-      <PageHeader title="Produksi Benih" subtitle="Alur: tanam → panen → prosesing → uji lab → lulus (masuk stok sebagai lot)" />
+      <PageHeader title="Produksi Benih" subtitle="Alur: tanam → panen → prosesing → uji lab → lulus (masuk stok sebagai lot)" actions={<ExportMenu type="produksi" />} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
 
       <div className="mb-5 grid gap-4 md:grid-cols-4">

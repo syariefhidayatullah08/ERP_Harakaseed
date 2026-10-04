@@ -6,6 +6,7 @@ import { Badge, Card, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { saveSupplier } from "@/actions/purchasing";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Pembelian" };
 
@@ -23,9 +24,12 @@ export default async function PurchasingPage({ searchParams }: PageProps<"/pembe
         title="Pembelian"
         subtitle="Purchase order kemasan, bahan perlakuan benih, dan kebutuhan produksi"
         actions={
-          <Link href="/pembelian/baru" className="btn-accent">
+          <>
+            <ExportMenu type="pembelian" />
+            {<Link href="/pembelian/baru" className="btn-accent">
             + PO baru
-          </Link>
+          </Link>}
+          </>
         }
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />
@@ -65,7 +69,7 @@ export default async function PurchasingPage({ searchParams }: PageProps<"/pembe
           )}
         </Card>
         <div className="space-y-5">
-          <Card title="Supplier">
+          <Card title="Supplier" actions={<ExportMenu type="supplier" compact />}>
             {suppliers.length ? (
               <ul className="divide-y divide-line text-sm">
                 {suppliers.map((s) => (

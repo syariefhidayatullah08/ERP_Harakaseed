@@ -4,6 +4,7 @@ import { all } from "@/lib/db";
 import { CUSTOMER_KIND, rupiah, tanggal } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader } from "@/components/ui";
 import { can, requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Pelanggan" };
 
@@ -34,9 +35,12 @@ export default async function CustomersPage({ searchParams }: PageProps<"/pelang
         title="Pelanggan"
         subtitle="Distributor, toko tani, petani, dan pembeli ekspor"
         actions={
-          <Link href="/pelanggan/baru" className="btn-accent">
+          <>
+            <ExportMenu type="pelanggan" />
+            {<Link href="/pelanggan/baru" className="btn-accent">
             + Pelanggan baru
-          </Link>
+          </Link>}
+          </>
         }
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />
