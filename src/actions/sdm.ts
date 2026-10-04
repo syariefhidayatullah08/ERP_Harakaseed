@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { insert, run } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { isDivision } from "@/lib/access";
 
 export async function saveEmployee(fd: FormData) {
@@ -20,9 +21,11 @@ export async function saveEmployee(fd: FormData) {
   if (id) {
     await run("UPDATE employees SET name=?, division=?, position=?, email=?, phone=?, join_date=?, status=?, note=? WHERE id=?", ...values, id);
     revalidatePath("/sdm");
+    await logActivity("sdm", "Mengubah data karyawan", name);
     redirect(withMsg(back, "Data karyawan diperbarui."));
   }
   const newId = await insert("INSERT INTO employees (name, division, position, email, phone, join_date, status, note) VALUES (?,?,?,?,?,?,?,?)", ...values);
   revalidatePath("/sdm");
+  await logActivity("sdm", "Menambah karyawan", `${name} · ${division}`);
   redirect(withMsg(`/sdm/${newId}`, `${name} ditambahkan.`));
 }

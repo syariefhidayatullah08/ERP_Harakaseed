@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { get, insert, nextNumber, run } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 
 export async function saveCustomer(fd: FormData) {
   await requireAccess("pelanggan");
@@ -29,6 +30,7 @@ export async function saveCustomer(fd: FormData) {
       c.name, c.kind, c.contact_person, c.email, c.phone, c.city, c.address, c.payment_terms, id,
     );
     revalidatePath("/pelanggan");
+    await logActivity("pelanggan", "Mengubah data pelanggan", c.name);
     redirect(withMsg(`/pelanggan/${id}`, "Data pelanggan diperbarui."));
   }
   const last = (await get<{ n: number }>("SELECT COUNT(*) n FROM customers"))!.n;
@@ -39,5 +41,6 @@ export async function saveCustomer(fd: FormData) {
     code, c.name, c.kind, c.contact_person, c.email, c.phone, c.city, c.address, c.payment_terms,
   );
   revalidatePath("/pelanggan");
+  await logActivity("pelanggan", "Menambah pelanggan", `${code} · ${c.name}`);
   redirect(withMsg(`/pelanggan/${newId}`, `Pelanggan ${c.name} ditambahkan.`));
 }

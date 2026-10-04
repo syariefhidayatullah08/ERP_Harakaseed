@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { get, run } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 
 function read(fd: FormData) {
   return {
@@ -50,5 +51,6 @@ export async function saveProduct(fd: FormData) {
     );
   }
   revalidatePath("/produk");
+  await logActivity("produk", id ? "Mengubah produk" : "Menambah produk", `${p.sku} · ${p.name}`);
   redirect(withMsg("/produk", `Produk ${p.name} disimpan.`));
 }

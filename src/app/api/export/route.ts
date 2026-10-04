@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/db";
 import { nowWib, today } from "@/lib/format";
 import { DATASETS } from "@/lib/export/datasets";
 import { toCsvCols, toDocx, toPdf, toXlsx } from "@/lib/export/render";
+import { logActivity } from "@/lib/activity";
 
 const FORMATS = {
   xlsx: { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ext: "xlsx" },
@@ -48,6 +49,7 @@ export async function GET(request: Request) {
   else if (format === "docx") body = new Uint8Array(await toDocx(meta, cols, rows));
   else body = new TextEncoder().encode("﻿" + toCsvCols(cols, rows)); // BOM agar Excel membaca UTF-8
 
+  await logActivity("unduhan", `Mengunduh ${ds.title}`, `${FORMATS[format].ext.toUpperCase()} · ${rows.length} baris${period ? ` · ${period}` : ""}`, user);
   const name = `${ds.title.replace(/[^\w\s-]+/g, "").replace(/\s+/g, "-")}_${ds.range && from !== "2000-01-01" ? `${from}_${to}` : today()}.${FORMATS[format].ext}`;
   return new Response(Buffer.from(body), {
     headers: {

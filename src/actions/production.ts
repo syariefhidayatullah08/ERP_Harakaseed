@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { get, insert, nextNumber, run } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 
 export async function createProduction(fd: FormData) {
   await requireAccess("produksi");
@@ -23,6 +24,7 @@ export async function createProduction(fd: FormData) {
     str(fd, "notes"),
   );
   revalidatePath("/produksi");
+  await logActivity("produksi", "Membuat batch produksi", code);
   redirect(withMsg(`/produksi/${newId}`, `Batch produksi ${code} dibuat.`));
 }
 
@@ -43,6 +45,7 @@ export async function advanceProduction(fd: FormData) {
   if (next === "gagal") {
     await run("UPDATE productions SET status = 'gagal', notes = notes || ? WHERE id = ?", `\n[Gagal di produksi] ${str(fd, "reason")}`, id);
     revalidatePath("/produksi");
+    await logActivity("produksi", "Menandai batch gagal", `${p.code} · ${str(fd, "reason")}`);
     redirect(withMsg(back, "Batch ditandai gagal."));
   }
   if (FLOW.indexOf(next) !== FLOW.indexOf(p.status) + 1) redirect(withMsg(back, "Urutan status tidak valid.", "error"));
@@ -56,6 +59,7 @@ export async function advanceProduction(fd: FormData) {
   }
   revalidatePath("/produksi");
   revalidatePath("/qc");
+  await logActivity("produksi", "Mengubah status produksi", `${p.code} → ${next}`);
   redirect(withMsg(back, next === "uji_lab" ? "Sampel diserahkan ke Lab/QC untuk diuji." : "Status produksi diperbarui."));
 }
 
@@ -68,5 +72,6 @@ export async function saveGrower(fd: FormData) {
   if (id) await run("UPDATE growers SET name=?, village=?, phone=?, area_ha=? WHERE id=?", ...vals, id);
   else await run("INSERT INTO growers (name, village, phone, area_ha) VALUES (?,?,?,?)", ...vals);
   revalidatePath("/mitra");
+  await logActivity("mitra", id ? "Mengubah petani mitra" : "Menambah petani mitra", name);
   redirect(withMsg("/mitra", `Petani mitra ${name} disimpan.`));
 }

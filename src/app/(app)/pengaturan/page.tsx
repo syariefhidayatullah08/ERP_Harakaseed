@@ -5,7 +5,9 @@ import { emailInfo } from "@/lib/email";
 import { getAccessMatrix, requireUser } from "@/lib/session";
 import { Badge, Card, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
-import { changePassword, clearTransactions, saveAccessMatrix, saveSettings, updateMyName } from "@/actions/settings";
+import { backupNow, changePassword, clearTransactions, saveAccessMatrix, saveSettings, updateMyName } from "@/actions/settings";
+import { BACKUP_KEEP, listBackups, type BackupFile } from "@/lib/backup";
+import { tanggal } from "@/lib/format";
 import { testEmail } from "@/actions/email";
 import { ALL_MODULES, DEFAULT_ACCESS, DIVISIONS, MODULE_HINT, MODULES, OWNER_ONLY, divisionLabel, resolveModules, type Division } from "@/lib/access";
 
@@ -62,6 +64,14 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
   const matrix = await getAccessMatrix();
   const divisions = Object.keys(DEFAULT_ACCESS) as Exclude<Division, "owner">[];
   const modules = ALL_MODULES.filter((m) => !OWNER_ONLY.includes(m));
+  let backups: BackupFile[] = [];
+  let backupError = "";
+  try {
+    backups = await listBackups();
+  } catch (e) {
+    backupError = e instanceof Error ? e.message : String(e);
+  }
+  const [lastAt, lastStatus, lastNote] = s("backup_last").split("|");
 
   return (
     <>
@@ -181,6 +191,57 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
             </Field>
             <SubmitButton>Simpan</SubmitButton>
           </form>
+        </Card>
+
+        <Card
+          title={<span id="backup">Backup data</span>}
+          className="scroll-mt-6"
+          actions={
+            !lastAt ? <Badge tone="amber">Belum pernah</Badge> : lastStatus === "ok" ? <Badge tone="green">Terakhir {tanggal(lastAt.slice(0, 10))}</Badge> : <Badge tone="red">Terakhir gagal</Badge>
+          }
+        >
+          <div className="space-y-4 p-5 text-sm">
+            <p className="text-muted">
+              Seluruh database disalin otomatis setiap malam (± pukul 01.00 WIB) ke penyimpanan file privat, terpisah dari server database. {BACKUP_KEEP} backup terakhir
+              disimpan.
+            </p>
+            {lastStatus === "gagal" && (
+              <p className="text-red-700">
+                Backup terakhir ({lastAt}) gagal: {lastNote}
+              </p>
+            )}
+            {backupError && <p className="text-red-700">Daftar backup tidak bisa dibaca: {backupError}</p>}
+            <form action={saveSettings} className="flex items-end gap-2">
+              <Field label="Kirim salinan backup ke email Owner" className="flex-1">
+                <select name="backup_email" defaultValue={s("backup_email") || "harian"} className="input">
+                  <option value="harian">Setiap hari</option>
+                  <option value="mingguan">Seminggu sekali (Senin)</option>
+                  <option value="mati">Tidak dikirim (hanya disimpan di ERP)</option>
+                </select>
+              </Field>
+              <SubmitButton className="btn-secondary">Simpan</SubmitButton>
+            </form>
+            <form action={backupNow}>
+              <SubmitButton className="btn-secondary" pendingText="Membuat backup…">
+                Buat backup sekarang
+              </SubmitButton>
+            </form>
+            {backups.length > 0 && (
+              <ul className="max-h-56 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+                {backups.map((b) => (
+                  <li key={b.name} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <span>
+                      {tanggal(b.name.slice(11, 21))} <span className="text-xs text-muted">· {Math.max(1, Math.round(b.size / 1024))} KB</span>
+                    </span>
+                    <a href={`/api/backup?file=${b.name}`} className="text-brand-700 hover:underline">
+                      Unduh
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-muted">File backup berisi seluruh data perusahaan. Simpan di tempat aman dan jangan dibagikan.</p>
+          </div>
         </Card>
 
         <Card title="Mulai dengan data asli">

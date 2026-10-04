@@ -8,6 +8,7 @@ import { get, insert, run } from "@/lib/db";
 import { createPasswordToken, requireAccess, type SessionUser } from "@/lib/session";
 import { hashPassword } from "@/lib/password";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { DIVISIONS, isDivision } from "@/lib/access";
 import { passwordLinkEmail, sendEmail } from "@/lib/email";
 
@@ -56,13 +57,14 @@ export async function inviteUser(fd: FormData) {
   const id = await insert("INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)", name, email, hash, role);
   const note = await sendLink({ id, name, email, password_hash: hash, role }, "invite");
   revalidatePath(BACK);
+  await logActivity("pengguna", "Membuat akun pengguna", `${email} · ${DIVISIONS[role].label}`);
   redirect(withMsg(BACK, `Akun ${name} (${DIVISIONS[role].label}) dibuat. ${note}`));
 }
 
 export async function updateUser(fd: FormData) {
   const actor = await requireAccess("pengguna");
   const id = numf(fd, "id");
-  const target = await get<{ id: number; role: string; active: number }>("SELECT id, role, active FROM users WHERE id = ?", id);
+  const target = await get<{ id: number; email: string; role: string; active: number }>("SELECT id, email, role, active FROM users WHERE id = ?", id);
   if (!target) redirect(withMsg(BACK, "Pengguna tidak ditemukan.", "error"));
   const role = str(fd, "role");
   const active = fd.get("active") ? 1 : 0;
@@ -73,8 +75,9 @@ export async function updateUser(fd: FormData) {
   if (target.role === "owner" && target.active && (role !== "owner" || !active) && (await activeOwners()) <= 1) {
     redirect(withMsg(BACK, "Harus ada minimal satu Owner aktif.", "error"));
   }
-  await run("UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?", str(fd, "name") || "Pengguna", role, active, id);
+  await run("UPDATE users SET name = ?, role = ?, active = ?, failed_logins = 0, locked_until = NULL WHERE id = ?", str(fd, "name") || "Pengguna", role, active, id);
   revalidatePath(BACK);
+  await logActivity("pengguna", active ? "Mengubah akun pengguna" : "Menonaktifkan akun pengguna", `${target.email} · ${DIVISIONS[role].label}`);
   redirect(withMsg(BACK, active ? "Akun diperbarui." : "Akun dinonaktifkan; pengguna langsung keluar dari ERP."));
 }
 
@@ -87,6 +90,7 @@ export async function sendUserLink(fd: FormData) {
   if (!user || !user.active) redirect(withMsg(BACK, "Akun tidak aktif.", "error"));
   assertCanManage(actor, user.role);
   const note = await sendLink(user, user.last_login ? "reset" : "invite");
+  await logActivity("pengguna", "Mengirim tautan kata sandi", user.email);
   redirect(withMsg(BACK, note, note.startsWith("Email gagal") ? "error" : "msg"));
 }
 
@@ -100,5 +104,6 @@ export async function deleteUser(fd: FormData) {
   if (target.role === "owner" && target.active && (await activeOwners()) <= 1) redirect(withMsg(BACK, "Harus ada minimal satu Owner aktif.", "error"));
   await run("DELETE FROM users WHERE id = ?", id);
   revalidatePath(BACK);
+  await logActivity("pengguna", "Menghapus akun pengguna", target.email);
   redirect(withMsg(BACK, `Akun ${target.email} dihapus.`));
 }

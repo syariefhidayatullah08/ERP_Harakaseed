@@ -7,6 +7,8 @@ import { del } from "@vercel/blob";
 import { all, exec, get, run, setSetting, tx } from "@/lib/db";
 import { createToken, requireUser, SESSION_COOKIE } from "@/lib/session";
 import { str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
+import { runBackup } from "@/lib/backup";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { ALL_MODULES, DEFAULT_ACCESS, OWNER_ONLY, type AccessMatrix, type Division, type Module } from "@/lib/access";
 
@@ -16,6 +18,9 @@ const TEXT_KEYS = [
   "bank_name", "bank_account", "bank_holder", "signer_name", "invoice_city",
 ];
 const TOGGLES = ["auto_email_order", "auto_email_shipping", "auto_email_invoice"];
+// Pilihan dengan nilai terbatas.
+const CHOICES: Record<string, string[]> = { backup_email: ["harian", "mingguan", "mati"] };
+const CHOICE_KEYS = Object.keys(CHOICES);
 
 async function requireOwner() {
   const user = await requireUser();
@@ -27,7 +32,9 @@ export async function saveSettings(fd: FormData) {
   await requireOwner();
   for (const k of TEXT_KEYS) if (fd.has(k)) await setSetting(k, str(fd, k));
   if (fd.get("toggles")) for (const k of TOGGLES) await setSetting(k, fd.get(k) ? "1" : "0");
+  for (const k of CHOICE_KEYS) if (CHOICES[k].includes(str(fd, k))) await setSetting(k, str(fd, k));
   revalidatePath("/", "layout");
+  await logActivity("pengaturan", "Mengubah pengaturan", [...TEXT_KEYS, ...TOGGLES, ...CHOICE_KEYS].filter((k) => fd.has(k)).join(", "));
   redirect(withMsg(BACK, "Pengaturan disimpan."));
 }
 
@@ -37,6 +44,7 @@ export async function saveAccessMatrix(fd: FormData) {
   if (fd.get("reset")) {
     await run("DELETE FROM settings WHERE key = 'access_matrix'");
     revalidatePath("/", "layout");
+    await logActivity("pengaturan", "Mengembalikan hak akses divisi ke bawaan");
     redirect(withMsg(BACK, "Hak akses dikembalikan ke bawaan.") + "#akses");
   }
   const matrix: AccessMatrix = {};
@@ -45,6 +53,7 @@ export async function saveAccessMatrix(fd: FormData) {
   }
   await setSetting("access_matrix", JSON.stringify(matrix));
   revalidatePath("/", "layout");
+  await logActivity("pengaturan", "Mengubah hak akses divisi", Object.entries(matrix).map(([d, m]) => `${d}: ${m.join("/")}`).join("; "));
   redirect(withMsg(BACK, "Hak akses divisi disimpan. Berlaku langsung untuk semua pengguna.") + "#akses");
 }
 
@@ -54,6 +63,7 @@ export async function updateMyName(fd: FormData) {
   if (!name) redirect(withMsg(BACK, "Nama tidak boleh kosong.", "error"));
   await run("UPDATE users SET name = ? WHERE id = ?", name, user.id);
   revalidatePath("/", "layout");
+  await logActivity("akun", "Mengubah nama tampilan", name);
   redirect(withMsg(BACK, "Nama diperbarui."));
 }
 
@@ -74,7 +84,16 @@ export async function changePassword(fd: FormData) {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
+  await logActivity("akun", "Mengganti kata sandi");
   redirect(withMsg(BACK, "Kata sandi diganti. Perangkat lain yang memakai akun ini otomatis keluar."));
+}
+
+/** Owner membuat backup saat itu juga (mis. sebelum menghapus data atau perubahan besar). */
+export async function backupNow() {
+  await requireOwner();
+  const res = await runBackup({ scheduled: false });
+  revalidatePath(BACK);
+  redirect(withMsg(BACK, res.message, res.ok ? "msg" : "error") + "#backup");
 }
 
 /** Menghapus seluruh data transaksi & master contoh. Produk, pengaturan, pengguna, dan data karyawan tetap. */
@@ -95,5 +114,6 @@ export async function clearTransactions(fd: FormData) {
   });
   if (files.length) await del(files.map((f) => f.pathname)).catch(() => {});
   revalidatePath("/", "layout");
+  await logActivity("pengaturan", "Menghapus semua data transaksi & data contoh");
   redirect(withMsg(BACK, "Semua data transaksi dihapus. Sistem siap dipakai dengan data asli."));
 }

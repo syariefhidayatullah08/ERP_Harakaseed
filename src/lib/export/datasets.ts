@@ -4,6 +4,7 @@ import { today } from "../format";
 import { hasAny, divisionLabel, type Module } from "../access";
 import type { SessionUser } from "../session";
 import { CUSTOMER_KIND, PO_STATUS, PRD_STATUS, SO_STATUS } from "../format";
+import { ACTIVITY_MODULES } from "../activity";
 import {
   complaintLines,
   findingLines,
@@ -492,6 +493,27 @@ export const DATASETS: Record<string, Dataset> = {
       mapRows(
         await all<Row & { role: string; active: number }>("SELECT name, email, role, active, last_login, created_at FROM users ORDER BY role, name"),
         (x) => ({ ...x, role: divisionLabel(x.role), status: x.active ? "Aktif" : "Nonaktif" }),
+      ),
+  },
+  aktivitas: {
+    title: "Log Aktivitas ERP",
+    // Hanya Owner: keuangan adalah modul yang tidak bisa diberikan ke divisi lain.
+    need: "keuangan",
+    range: true,
+    columns: () => [
+      { key: "at", label: "Waktu (WIB)", width: 19 },
+      { key: "user_name", label: "Pengguna", width: 20 },
+      { key: "user_email", label: "Email", width: 26 },
+      { key: "role", label: "Divisi", width: 16 },
+      { key: "module", label: "Bagian", width: 18 },
+      { key: "action", label: "Aktivitas", width: 32 },
+      { key: "detail", label: "Rincian", width: 48 },
+      { key: "ip", label: "IP", width: 15 },
+    ],
+    rows: async (r) =>
+      mapRows(
+        await all<Row & { role: string; module: string }>("SELECT * FROM activity_log WHERE at >= ? AND at < ? ORDER BY at DESC, id DESC LIMIT 20000", r.from, `${r.to} 99`),
+        (x) => ({ ...x, role: x.role ? divisionLabel(x.role) : "", module: ACTIVITY_MODULES[x.module] ?? x.module }),
       ),
   },
 };

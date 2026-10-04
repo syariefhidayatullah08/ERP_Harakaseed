@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { get, insert, run, setSetting, tx } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { createLot } from "@/lib/inventory";
 import { addDays, today } from "@/lib/format";
 
@@ -33,6 +34,7 @@ export async function labDecision(fd: FormData) {
     await run("UPDATE productions SET status = 'gagal', notes = notes || ? WHERE id = ?", `\n[Lab/QC ${testDate}] Tidak lulus: DK ${germination}%, kemurnian ${purity}%, KA ${moisture}%. ${note}`, id);
     revalidatePath("/qc");
     revalidatePath("/produksi");
+    await logActivity("qc", "Keputusan uji lab: tidak lulus", `${p.code} · DK ${germination}%, kemurnian ${purity}%, KA ${moisture}%`);
     redirect(withMsg(back, `Batch ${p.code} dinyatakan TIDAK LULUS.`));
   }
 
@@ -65,6 +67,7 @@ export async function labDecision(fd: FormData) {
   revalidatePath("/qc");
   revalidatePath("/produksi");
   revalidatePath("/inventori");
+  await logActivity("qc", "Keputusan uji lab: lulus", `${p.code} → lot ${lotNo} (${qty} kemasan) · DK ${germination}%`);
   redirect(withMsg(back, `Batch ${p.code} LULUS. Lot ${lotNo} (${qty} kemasan) masuk stok gudang.`));
 }
 
@@ -93,6 +96,7 @@ export async function retestLot(fd: FormData) {
   revalidatePath("/qc");
   revalidatePath(back);
   revalidatePath("/inventori");
+  await logActivity("qc", "Uji ulang lot", `${lot.lot_no} · ${result} · DK ${germination}%`);
   redirect(withMsg(back, result === "gagal" ? `Lot ${lot.lot_no} DIKARANTINA: tidak dihitung stok & tidak akan dikirim.` : `Hasil uji ulang lot ${lot.lot_no} tersimpan (lulus).`));
 }
 
@@ -102,5 +106,6 @@ export async function saveQcStandard(fd: FormData) {
   if (!pct(v) || v === 0) redirect(withMsg("/qc?tab=lot", "Standar harus 1–100%.", "error"));
   await setSetting("qc_min_germination", String(v));
   revalidatePath("/qc");
+  await logActivity("qc", "Mengubah standar minimum daya kecambah", `${v}%`);
   redirect(withMsg("/qc?tab=lot", `Standar minimum daya kecambah: ${v}%.`));
 }

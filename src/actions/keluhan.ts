@@ -5,8 +5,12 @@ import { revalidatePath } from "next/cache";
 import { get, insert, nextNumber, run } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { today } from "@/lib/format";
 import { COMPLAINT_CATEGORIES, COMPLAINT_SEVERITY, COMPLAINT_STATUS } from "@/lib/keluhan";
+
+/** Kode keluhan untuk log aktivitas. */
+const complaintCode = async (id: number) => (await get<{ code: string }>("SELECT code FROM complaints WHERE id = ?", id))?.code ?? `#${id}`;
 
 export async function createComplaint(fd: FormData) {
   const user = await requireAccess("keluhan");
@@ -17,10 +21,11 @@ export async function createComplaint(fd: FormData) {
   const lot = lotNo ? await get<{ id: number; product_id: number }>("SELECT id, product_id FROM lots WHERE upper(lot_no) = ?", lotNo) : undefined;
   if (lotNo && !lot) redirect(withMsg("/keluhan", `Nomor lot ${lotNo} tidak ditemukan.`, "error"));
   const severity = str(fd, "severity");
+  const code = await nextNumber("KLH", "complaints", "code");
   const id = await insert(
     `INSERT INTO complaints (code, report_date, customer_id, product_id, lot_id, category, severity, description, created_by)
      VALUES (?,?,?,?,?,?,?,?,?)`,
-    await nextNumber("KLH", "complaints", "code"),
+    code,
     str(fd, "report_date") || today(),
     numf(fd, "customer_id") || null,
     lot?.product_id ?? (numf(fd, "product_id") || null),
@@ -31,6 +36,7 @@ export async function createComplaint(fd: FormData) {
     user.id,
   );
   revalidatePath("/keluhan");
+  await logActivity("keluhan", "Mencatat keluhan", `${code} · ${category}`);
   redirect(withMsg(`/keluhan/${id}`, "Keluhan dicatat."));
 }
 
@@ -55,5 +61,6 @@ export async function updateComplaint(fd: FormData) {
     id,
   );
   revalidatePath("/keluhan");
+  await logActivity("keluhan", status === "selesai" ? "Menutup keluhan" : "Mengubah keluhan", `${await complaintCode(id)} · ${status}`);
   redirect(withMsg(`/keluhan/${id}`, status === "selesai" ? "Keluhan ditutup." : "Keluhan diperbarui."));
 }

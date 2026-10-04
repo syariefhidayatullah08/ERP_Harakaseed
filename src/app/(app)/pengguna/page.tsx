@@ -15,8 +15,11 @@ const TONE: Record<string, string> = { owner: "purple", marketing: "brand", ware
 export default async function UsersPage({ searchParams }: PageProps<"/pengguna">) {
   const me = await requireAccess("pengguna");
   const sp = await searchParams;
-  const users = await all<{ id: number; name: string; email: string; role: string; active: number; last_login: string | null; created_at: string }>(
-    "SELECT id, name, email, role, active, last_login, created_at FROM users ORDER BY active DESC, role, name",
+  const users = await all<{ id: number; name: string; email: string; role: string; active: number; last_login: string | null; created_at: string; locked: boolean }>(
+    // locked_until disimpan sebagai waktu ISO (UTC), jadi bisa dibandingkan sebagai teks.
+    `SELECT id, name, email, role, active, last_login, created_at,
+            COALESCE(locked_until > to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), false) locked
+     FROM users ORDER BY active DESC, role, name`,
   );
   // Admin/SDM tidak bisa membuat/mengubah akun Owner.
   const assignable = (Object.keys(DIVISIONS) as Division[]).filter((d) => d !== "owner" || me.role === "owner");
@@ -87,6 +90,11 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
                       </td>
                       <td className="align-top">
                         <Badge tone={TONE[u.role]}>{DIVISIONS[u.role as Division]?.label ?? u.role}</Badge>
+                        {u.locked && (
+                          <div className="mt-1" title="Terkunci sementara karena salah kata sandi berulang. Klik Kelola akun → Simpan untuk membuka.">
+                            <Badge tone="red">Terkunci</Badge>
+                          </div>
+                        )}
                         {!u.active && (
                           <div className="mt-1">
                             <Badge tone="red">Nonaktif</Badge>

@@ -5,8 +5,12 @@ import { revalidatePath } from "next/cache";
 import { all, get, insert, nextNumber, run, tx } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { purchaseOrderEmail, sendEmail } from "@/lib/email";
-import { today } from "@/lib/format";
+import { rupiah, today } from "@/lib/format";
+
+/** Nomor PO untuk log aktivitas. */
+const poNo = async (id: number) => (await get<{ po_no: string }>("SELECT po_no FROM purchase_orders WHERE id = ?", id))?.po_no ?? `#${id}`;
 
 export async function saveSupplier(fd: FormData) {
   await requireAccess("pembelian");
@@ -21,6 +25,7 @@ export async function saveSupplier(fd: FormData) {
     str(fd, "address"),
   );
   revalidatePath("/pembelian");
+  await logActivity("pembelian", "Menambah supplier", name);
   redirect(withMsg("/pembelian", `Supplier ${name} ditambahkan.`));
 }
 
@@ -49,6 +54,7 @@ export async function createPO(fd: FormData) {
     return poId;
   });
   revalidatePath("/pembelian");
+  await logActivity("pembelian", "Membuat PO", `${await poNo(id)} · ${rupiah(total)}`);
   redirect(withMsg(`/pembelian/${id}`, "PO dibuat sebagai draft."));
 }
 
@@ -66,6 +72,7 @@ export async function sendPO(fd: FormData) {
   const res = await sendEmail({ to, ...(await purchaseOrderEmail(po, items)), refType: "purchase_order", refId: id });
   if (res.ok) await run("UPDATE purchase_orders SET status = 'dipesan' WHERE id = ? AND status = 'draft'", id);
   revalidatePath("/pembelian");
+  await logActivity("pembelian", "Mengirim PO ke supplier", `${po.po_no} → ${to}${res.ok ? "" : " (gagal)"}`);
   redirect(withMsg(`/pembelian/${id}`, res.ok ? `PO dikirim ke ${to}.` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
 }
 
@@ -82,5 +89,6 @@ export async function setPOStatus(fd: FormData) {
     id,
   );
   revalidatePath("/pembelian");
+  await logActivity("pembelian", "Mengubah status PO", `${await poNo(id)} → ${status}`);
   redirect(withMsg(`/pembelian/${id}`, "Status PO diperbarui."));
 }

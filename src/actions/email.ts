@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getSetting } from "@/lib/db";
 import { requireAccess, requireUser } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { customEmail, sendEmail, syncInbox, verifySmtp } from "@/lib/email";
 
 const safeBack = (v: string) => (v.startsWith("/") && !v.startsWith("//") ? v : "/email");
@@ -19,6 +20,7 @@ export async function composeEmail(fd: FormData) {
   const refId = numf(fd, "ref_id");
   const res = await sendEmail({ to, ...(await customEmail(subject, message)), refType: str(fd, "ref_type") || undefined, refId: refId || undefined });
   revalidatePath("/email");
+  await logActivity("email", "Mengirim email", `${to} · ${subject}${res.ok ? "" : " (gagal)"}`);
   redirect(withMsg(back, res.ok ? `Email terkirim ke ${to}.` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
 }
 

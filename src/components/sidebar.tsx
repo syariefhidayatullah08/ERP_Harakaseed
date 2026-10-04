@@ -29,9 +29,10 @@ import {
   MessageSquareWarning,
   ClipboardCheck,
   Receipt,
+  History,
 } from "lucide-react";
 
-type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean } | { section: string };
+type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean; ownerOnly?: boolean } | { section: string };
 
 const NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -57,12 +58,13 @@ const NAV: NavItem[] = [
   { href: "/temuan", label: "Temuan Audit", icon: ClipboardCheck },
   { href: "/email", label: "Email", icon: Mail, badge: true },
   { href: "/laporan", label: "Laporan", icon: BarChart3 },
+  { href: "/aktivitas", label: "Log Aktivitas", icon: History, ownerOnly: true },
   { href: "/pengaturan", label: "Pengaturan", icon: Settings },
 ];
 
 /** Menu sesuai hak akses; judul bagian yang tidak punya isi ikut disembunyikan. */
-function visibleNav(modules: Module[]) {
-  const items = NAV.filter((item) => "section" in item || hasAny(modules, moduleForPath(item.href)));
+function visibleNav(modules: Module[], role: string) {
+  const items = NAV.filter((item) => "section" in item || ((!item.ownerOnly || role === "owner") && hasAny(modules, moduleForPath(item.href))));
   return items.filter((item, i) => !("section" in item) || (items[i + 1] !== undefined && !("section" in items[i + 1])));
 }
 
@@ -114,7 +116,7 @@ export function Sidebar({
           </div>
         </Link>
         <nav className="relative z-10 flex-1 overflow-y-auto px-3 pb-4">
-          {visibleNav(user.modules).map((item, i) =>
+          {visibleNav(user.modules, user.role).map((item, i) =>
             "section" in item ? (
               <div key={i} className="px-3 pb-1.5 pt-5 text-[10px] font-semibold uppercase tracking-widest text-orange-300/90">
                 {item.section}

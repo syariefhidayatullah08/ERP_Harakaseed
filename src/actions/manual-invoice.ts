@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { get, insert, run, tx } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { rupiah, today } from "@/lib/format";
 import { customEmail, sendEmail } from "@/lib/email";
 import { invoiceFileBase, manualInvoiceDoc, tanggalPanjang } from "@/lib/invoice-doc";
@@ -64,6 +65,7 @@ export async function saveManualInvoice(_: unknown, fd: FormData): Promise<{ err
     return invId;
   });
   revalidatePath("/keuangan/invoice");
+  await logActivity("keuangan", id ? "Mengubah invoice manual" : "Membuat invoice manual", `${number} · ${name} · ${rupiah(total)}`);
   redirect(withMsg(`/keuangan/invoice/${invoiceId}`, id ? "Invoice diperbarui." : `Invoice ${number} dibuat. Unduh PDF/Word lalu cetak.`));
 }
 
@@ -73,6 +75,7 @@ export async function deleteManualInvoice(fd: FormData) {
   const inv = await get<{ number: string }>("SELECT number FROM manual_invoices WHERE id = ?", id);
   await run("DELETE FROM manual_invoices WHERE id = ?", id);
   revalidatePath("/keuangan/invoice");
+  await logActivity("keuangan", "Menghapus invoice manual", inv?.number ?? `#${id}`);
   redirect(withMsg("/keuangan/invoice", `Invoice ${inv?.number ?? ""} dihapus.`));
 }
 
@@ -97,5 +100,6 @@ export async function emailManualInvoice(fd: FormData) {
     attachments: [{ filename: `${invoiceFileBase(doc)}.pdf`, content: Buffer.from(pdf), contentType: "application/pdf" }],
   });
   if (res.ok) await run("UPDATE manual_invoices SET cust_email = ? WHERE id = ?", to, id);
+  await logActivity("keuangan", "Mengirim invoice manual lewat email", `${doc.number} → ${to}${res.ok ? "" : " (gagal)"}`);
   redirect(withMsg(back, res.ok ? `Invoice terkirim ke ${to} (PDF terlampir).` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
 }

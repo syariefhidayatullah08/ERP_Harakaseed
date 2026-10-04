@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { all, get, getSetting, insert, nextNumber, run, tx } from "@/lib/db";
 import { can, requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
-import { addDays, today } from "@/lib/format";
+import { addDays, rupiah, today } from "@/lib/format";
 import {
   invoiceEmail,
   loadOrderForEmail,
@@ -20,6 +21,9 @@ import {
 } from "@/lib/email";
 
 type Line = { product_id: number; qty: number; price: number };
+
+/** Nomor pesanan untuk log aktivitas. */
+const soNo = async (id: number) => (await get<{ so_no: string }>("SELECT so_no FROM sales_orders WHERE id = ?", id))?.so_no ?? `#${id}`;
 
 function totals(lines: Line[], discountPct: number, taxPct: number) {
   const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
@@ -69,6 +73,7 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
     return id;
   });
 
+  await logActivity("penjualan", "Membuat pesanan", `${await soNo(soId)} · ${rupiah(total)}`);
   if (intent === "confirm") {
     const note = await doConfirm(soId);
     redirect(withMsg(`/penjualan/${soId}`, `Pesanan dibuat & dikonfirmasi. ${note}`));
@@ -97,6 +102,7 @@ export async function confirmOrder(fd: FormData) {
   const id = numf(fd, "id");
   const note = await doConfirm(id);
   revalidatePath("/penjualan");
+  await logActivity("penjualan", "Mengonfirmasi pesanan", await soNo(id));
   redirect(withMsg(`/penjualan/${id}`, `Pesanan dikonfirmasi. ${note}`));
 }
 
@@ -131,6 +137,7 @@ export async function shipOrder(fd: FormData) {
     redirect(withMsg(back, e instanceof Error ? e.message : "Gagal memproses pengiriman.", "error"));
   }
 
+  await logActivity("pengiriman", "Mengirim pesanan", [so.so_no, str(fd, "courier"), str(fd, "tracking_no")].filter(Boolean).join(" · "));
   const notes = [await autoEmail("auto_email_shipping", id, shippingEmail, "sales_order", "sj"), await autoEmail("auto_email_invoice", id, invoiceEmail, "invoice", "invoice")]
     .filter(Boolean)
     .filter((v, i, a) => a.indexOf(v) === i);
@@ -161,6 +168,7 @@ export async function recordPayment(fd: FormData) {
     await run("UPDATE sales_orders SET status = 'selesai' WHERE id = ? AND status = 'dikirim' AND paid >= total", id);
   });
 
+  await logActivity("keuangan", "Mencatat pembayaran", `${rupiah(amount)} · ${await soNo(id)} · ${str(fd, "method") || "Transfer"}`);
   let note = "";
   if (fd.get("send_receipt")) {
     const data = await loadOrderForEmail(id);
@@ -184,12 +192,14 @@ export async function cancelOrder(fd: FormData) {
     await run("UPDATE sales_orders SET status = 'batal' WHERE id = ?", id);
   });
   revalidatePath("/penjualan");
+  await logActivity("penjualan", "Membatalkan pesanan", so.so_no);
   redirect(withMsg(`/penjualan/${id}`, so.status === "dikirim" ? "Pesanan dibatalkan dan stok dikembalikan." : "Pesanan dibatalkan."));
 }
 
 export async function deleteDraft(fd: FormData) {
   await requireAccess("penjualan");
   const id = numf(fd, "id");
+  await logActivity("penjualan", "Menghapus draft pesanan", await soNo(id));
   await run("DELETE FROM sales_orders WHERE id = ? AND status = 'draft'", id);
   revalidatePath("/penjualan");
   redirect(withMsg("/penjualan", "Draft dihapus."));
@@ -215,6 +225,7 @@ export async function emailOrderDocument(fd: FormData) {
   const pdf: PdfDoc | null = kind === "invoice" || kind === "pengingat" ? "invoice" : kind === "pengiriman" ? "sj" : null;
   const attachments = pdf && emailConfigured() ? await orderPdfAttachment(id, pdf) : undefined;
   const res = await sendEmail({ to, ...(await build()), refType: pdf === "invoice" ? "invoice" : "sales_order", refId: id, attachments });
+  await logActivity("penjualan", `Mengirim email ${kind}`, `${await soNo(id)} → ${to}${res.ok ? "" : " (gagal)"}`);
   redirect(withMsg(`/penjualan/${id}`, res.ok ? `Email ${kind} terkirim ke ${to}.` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
 }
 
@@ -237,5 +248,6 @@ export async function sendOverdueReminders() {
     if (res.ok) ok++;
     else fail++;
   }
+  await logActivity("keuangan", "Mengirim pengingat telat bayar", `${ok} terkirim, ${fail} gagal/tanpa email`);
   redirect(withMsg("/keuangan", `Pengingat terkirim: ${ok}. Gagal/tanpa email: ${fail}.`, fail && !ok ? "error" : "msg"));
 }

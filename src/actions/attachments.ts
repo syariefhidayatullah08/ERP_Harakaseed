@@ -7,6 +7,7 @@ import { get, insert, run } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { canUseAttachments } from "@/lib/attachment-access";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { ATTACHMENT_CATEGORIES, ATTACHMENT_REFS, isAttachmentRef } from "@/lib/attachments";
 
 /** Catat lampiran yang baru saja diunggah browser ke Blob. */
@@ -45,6 +46,7 @@ export async function registerAttachment(input: {
     meta.size,
     user.id,
   );
+  await logActivity("lampiran", "Mengunggah lampiran", `${input.filename} (${input.refType} #${input.refId})`);
   for (const p of ref.paths(input.refId)) revalidatePath(p);
   return { ok: true };
 }
@@ -58,6 +60,7 @@ export async function deleteAttachment(fd: FormData) {
   if (!(await canUseAttachments(user, row.ref_type, row.ref_id))) redirect(withMsg("/", "Tidak punya akses ke lampiran ini.", "error"));
   await del(row.pathname);
   await run("DELETE FROM attachments WHERE id = ?", id);
+  await logActivity("lampiran", "Menghapus lampiran", `${row.filename} (${row.ref_type} #${row.ref_id})`);
   for (const p of ref.paths(row.ref_id)) revalidatePath(p);
   const back = str(fd, "back");
   redirect(withMsg(back.startsWith("/") && !back.startsWith("//") ? back : ref.paths(row.ref_id)[0], `Lampiran ${row.filename} dihapus.`));

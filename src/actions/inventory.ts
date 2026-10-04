@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { get, getSetting, run, tx } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { createLot, lowStockProducts } from "@/lib/inventory";
 import { lowStockEmail, sendEmail } from "@/lib/email";
 import { addDays } from "@/lib/format";
@@ -34,6 +35,7 @@ export async function createLotAction(fd: FormData) {
     }),
   );
   revalidatePath("/inventori");
+  await logActivity("inventori", "Menambah lot", `${lotNo} · ${qty} kemasan`);
   redirect(withMsg("/inventori", `Lot ${lotNo} (${qty} kemasan) ditambahkan.`));
 }
 
@@ -60,6 +62,7 @@ export async function adjustLot(fd: FormData) {
     );
   });
   revalidatePath("/inventori");
+  await logActivity("inventori", "Menyesuaikan stok lot", `${lot.lot_no} · ${delta > 0 ? "+" : ""}${delta} kemasan · ${reason}`);
   redirect(withMsg(back, "Stok lot disesuaikan."));
 }
 

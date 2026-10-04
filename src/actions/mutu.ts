@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { all, get, insert, nextNumber, run } from "@/lib/db";
 import { can, requireAccess, requireUser } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { logActivity } from "@/lib/activity";
 import { addDays, today } from "@/lib/format";
 import { DIVISIONS, isDivision } from "@/lib/access";
 import { customEmail, sendEmail } from "@/lib/email";
@@ -47,9 +48,11 @@ export async function saveAudit(fd: FormData) {
       user.id,
     );
     revalidatePath("/mutu");
+    await logActivity("mutu", "Menjadwalkan audit", `${title} · ${start}`);
     redirect(withMsg(`/mutu/audit/${newId}`, "Audit dijadwalkan."));
   }
   revalidatePath("/mutu");
+  await logActivity("mutu", "Mengubah audit", `${title} · ${status}`);
   redirect(withMsg(back, "Audit diperbarui."));
 }
 
@@ -85,6 +88,7 @@ export async function addFinding(fd: FormData) {
   );
   revalidatePath("/mutu");
   revalidatePath("/temuan");
+  await logActivity("mutu", "Mencatat temuan", `${code} · ${DIVISIONS[division].label} · ${category}`);
   redirect(withMsg(back, `Temuan ${code} dicatat${n ? `, ${n} anggota divisi diberi tahu lewat email` : ""}.`));
 }
 
@@ -111,6 +115,7 @@ export async function respondFinding(fd: FormData) {
   const n = await notifyDivision("mutu", `[Mutu] ${f.code} sudah ditanggapi`, `Divisi ${DIVISIONS[f.division as keyof typeof DIVISIONS]?.label ?? f.division} sudah mengisi tindakan perbaikan untuk ${f.code}. Mohon diverifikasi:\n${await baseUrl()}/temuan/${id}`);
   revalidatePath("/mutu");
   revalidatePath("/temuan");
+  await logActivity("mutu", "Menanggapi temuan", f.code);
   redirect(withMsg(back, `Tanggapan terkirim ke divisi Mutu untuk diverifikasi${n ? " (diberi tahu lewat email)" : ""}.`));
 }
 
@@ -132,6 +137,7 @@ export async function verifyFinding(fd: FormData) {
   }
   revalidatePath("/mutu");
   revalidatePath("/temuan");
+  await logActivity("mutu", decision === "tutup" ? "Menutup temuan" : "Mengembalikan temuan ke divisi", f.code);
   redirect(withMsg(back, decision === "tutup" ? `${f.code} ditutup.` : `${f.code} dikembalikan ke divisi.`));
 }
 
@@ -153,9 +159,11 @@ export async function saveQualityDoc(fd: FormData) {
   if (id) {
     await run("UPDATE quality_docs SET code=?, title=?, doc_type=?, division=?, revision=?, effective_date=?, review_date=?, status=?, note=? WHERE id=?", ...v, id);
     revalidatePath("/mutu");
+    await logActivity("mutu", "Mengubah dokumen mutu", `${code} rev. ${v[4]} · ${status}`);
     redirect(withMsg(back, "Dokumen diperbarui."));
   }
   const newId = await insert("INSERT INTO quality_docs (code, title, doc_type, division, revision, effective_date, review_date, status, note) VALUES (?,?,?,?,?,?,?,?,?)", ...v);
   revalidatePath("/mutu");
+  await logActivity("mutu", "Mendaftarkan dokumen mutu", `${code} · ${title}`);
   redirect(withMsg(`/mutu/dokumen/${newId}`, `Dokumen ${code} didaftarkan. Unggah file dokumennya di bawah.`));
 }
