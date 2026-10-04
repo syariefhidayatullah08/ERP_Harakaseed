@@ -12,7 +12,7 @@ export async function GET(request: Request, ctx: RouteContext<"/i/[id]/[sig]">) 
   return new Response(Buffer.from(pdf.bytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${pdf.filename}"`,
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(pdf.filename)}`,
       "Cache-Control": "private, no-store",
       "X-Robots-Tag": "noindex",
     },

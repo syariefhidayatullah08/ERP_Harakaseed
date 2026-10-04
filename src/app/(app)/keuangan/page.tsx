@@ -53,7 +53,15 @@ export default async function FinancePage({ searchParams }: PageProps<"/keuangan
 
   return (
     <>
-      <PageHeader title="Keuangan" subtitle="Piutang, pembayaran masuk, dan arus kas. Hanya bisa dilihat Owner." />
+      <PageHeader
+        title="Keuangan"
+        subtitle="Piutang, pembayaran masuk, dan arus kas. Hanya bisa dilihat Owner."
+        actions={
+          <Link href="/keuangan/invoice/baru" className="btn-accent">
+            + Buat invoice manual
+          </Link>
+        }
+      />
       <Flash msg={sp.msg as string} error={sp.error as string} />
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">

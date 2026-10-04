@@ -11,7 +11,10 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import { ALL_MODULES, DEFAULT_ACCESS, OWNER_ONLY, type AccessMatrix, type Division, type Module } from "@/lib/access";
 
 const BACK = "/pengaturan";
-const TEXT_KEYS = ["company_name", "company_brand", "company_tagline", "company_address", "company_phone", "company_email", "company_website", "bank_info", "alert_email"];
+const TEXT_KEYS = [
+  "company_name", "company_brand", "company_tagline", "company_address", "company_phone", "company_email", "company_website", "bank_info", "alert_email",
+  "bank_name", "bank_account", "bank_holder", "signer_name", "invoice_city",
+];
 const TOGGLES = ["auto_email_order", "auto_email_shipping", "auto_email_invoice"];
 
 async function requireOwner() {

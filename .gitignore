@@ -45,3 +45,6 @@ data/
 
 .vercel
 .env*
+
+# Dokumen internal perusahaan (keuangan, template) — jangan pernah di-commit / di-deploy
+referensi/

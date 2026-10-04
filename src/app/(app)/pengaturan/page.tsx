@@ -221,9 +221,27 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
             <Field label="Alamat" className="sm:col-span-2">
               <input name="company_address" defaultValue={s("company_address")} className="input" />
             </Field>
-            <Field label="Rekening pembayaran (tampil di invoice & email)" className="sm:col-span-2">
-              <input name="bank_info" defaultValue={s("bank_info")} className="input" placeholder="Bank BRI 0000-00-000000-00-0 a.n. PT Benih Haraka Sejahtera" />
+            <Field label="Rekening pembayaran (ringkas, untuk email & WhatsApp)" className="sm:col-span-2">
+              <input name="bank_info" defaultValue={s("bank_info")} className="input" placeholder="Bank Mandiri · No. Rek … · a.n. PT Benih Haraka Sejahtera" />
             </Field>
+            <div className="grid gap-4 rounded-lg bg-canvas p-4 sm:col-span-2 sm:grid-cols-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted sm:col-span-3">Kotak catatan & tanda tangan di invoice cetak</div>
+              <Field label="Nama bank">
+                <input name="bank_name" defaultValue={s("bank_name")} className="input" placeholder="BANK MANDIRI" />
+              </Field>
+              <Field label="No. rekening">
+                <input name="bank_account" defaultValue={s("bank_account")} className="input" />
+              </Field>
+              <Field label="Atas nama">
+                <input name="bank_holder" defaultValue={s("bank_holder")} className="input" />
+              </Field>
+              <Field label="Penanda tangan">
+                <input name="signer_name" defaultValue={s("signer_name")} className="input" />
+              </Field>
+              <Field label="Kota tanda tangan">
+                <input name="invoice_city" defaultValue={s("invoice_city")} className="input" placeholder="Jember" />
+              </Field>
+            </div>
             <div className="flex justify-end sm:col-span-2">
               <SubmitButton>Simpan profil</SubmitButton>
             </div>

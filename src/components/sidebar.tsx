@@ -28,6 +28,7 @@ import {
   KeyRound,
   MessageSquareWarning,
   ClipboardCheck,
+  Receipt,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean } | { section: string };
@@ -39,6 +40,7 @@ const NAV: NavItem[] = [
   { href: "/pelanggan", label: "Pelanggan", icon: Users },
   { href: "/keluhan", label: "Keluhan Pelanggan", icon: MessageSquareWarning },
   { href: "/keuangan", label: "Keuangan", icon: Wallet },
+  { href: "/keuangan/invoice", label: "Invoice Manual", icon: Receipt },
   { section: "Operasional" },
   { href: "/pengiriman", label: "Pengiriman", icon: PackageCheck },
   { href: "/inventori", label: "Gudang & Lot", icon: Boxes },
@@ -75,7 +77,10 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  // Menu aktif = href terpanjang yang cocok (mis. /keuangan/invoice tidak ikut menyalakan /keuangan).
+  const matches = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/"));
+  const best = NAV.filter((i): i is Extract<NavItem, { href: string }> => "href" in i && matches(i.href)).sort((a, b) => b.href.length - a.href.length)[0]?.href;
+  const isActive = (href: string) => href === best;
 
   return (
     <>

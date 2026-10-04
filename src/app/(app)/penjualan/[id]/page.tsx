@@ -84,9 +84,14 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
               </Link>
             )}
             {finance && o.invoice_no && (
-              <a href={`/api/pdf/${o.id}`} target="_blank" className="btn-secondary">
-                <FileDown size={15} /> Invoice PDF
-              </a>
+              <>
+                <a href={`/api/pdf/${o.id}`} target="_blank" className="btn-accent">
+                  <FileDown size={15} /> Invoice PDF
+                </a>
+                <a href={`/api/pdf/${o.id}?format=docx`} className="btn-secondary">
+                  <FileDown size={15} /> Invoice Word
+                </a>
+              </>
             )}
           </>
         }

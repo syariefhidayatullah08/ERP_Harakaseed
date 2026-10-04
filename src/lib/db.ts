@@ -476,6 +476,48 @@ const SCHEMA_SQL = `
       created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
     );
 
+    -- Invoice manual (template resmi: per kode produksi / nama petani / bobot kg)
+    CREATE TABLE IF NOT EXISTS manual_invoices (
+      id SERIAL PRIMARY KEY,
+      number TEXT NOT NULL UNIQUE,
+      invoice_date TEXT NOT NULL,
+      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+      cust_name TEXT NOT NULL,
+      cust_address TEXT NOT NULL DEFAULT '',
+      cust_city TEXT NOT NULL DEFAULT '',
+      cust_phone TEXT NOT NULL DEFAULT '',
+      cust_email TEXT NOT NULL DEFAULT '',
+      label_code TEXT NOT NULL DEFAULT 'Kode Produksi',
+      label_name TEXT NOT NULL DEFAULT 'Nama Petani',
+      label_qty TEXT NOT NULL DEFAULT 'Bobot (Kg)',
+      notes TEXT NOT NULL DEFAULT '',
+      total DOUBLE PRECISION NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'terbit',
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE TABLE IF NOT EXISTS manual_invoice_items (
+      id SERIAL PRIMARY KEY,
+      invoice_id INTEGER NOT NULL REFERENCES manual_invoices(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL,
+      code TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL DEFAULT '',
+      qty DOUBLE PRECISION NOT NULL DEFAULT 0,
+      price DOUBLE PRECISION NOT NULL DEFAULT 0
+    );
+    -- Data kop & pembayaran dari template invoice resmi perusahaan
+    INSERT INTO settings (key, value) VALUES
+      ('bank_name', 'BANK MANDIRI'),
+      ('bank_account', '1430033231331'),
+      ('bank_holder', 'PT. BENIH HARAKA SEJAHTERA'),
+      ('signer_name', 'Nur Aini Maulidia'),
+      ('invoice_city', 'Jember'),
+      ('manual_invoice_start', '181')
+    ON CONFLICT (key) DO NOTHING;
+    UPDATE settings SET value = 'Bank Mandiri · No. Rek 1430033231331 · a.n. PT Benih Haraka Sejahtera' WHERE key = 'bank_info' AND value LIKE 'Bank —%';
+    UPDATE settings SET value = 'JL. H. Moh. Noer Dusun Rowo, Kel. Rowoindah, Kec. Ajung, Kab. Jember, Jawa Timur'
+      WHERE key = 'company_address' AND value = 'Jl. H. Moh. Noer, RT001/RW001, Desa Rowoindah, Ajung, Jember, Jawa Timur';
+
     -- SDM: data karyawan
     CREATE TABLE IF NOT EXISTS employees (
       id SERIAL PRIMARY KEY,
@@ -504,11 +546,11 @@ async function seed(ex: Ex) {
     company_name: "PT Benih Haraka Sejahtera",
     company_brand: "HARAKA SEED",
     company_tagline: "Quality you can plant with confidence",
-    company_address: "Jl. H. Moh. Noer, RT001/RW001, Desa Rowoindah, Ajung, Jember, Jawa Timur",
+    company_address: "JL. H. Moh. Noer Dusun Rowo, Kel. Rowoindah, Kec. Ajung, Kab. Jember, Jawa Timur",
     company_phone: "0811-3784-575",
     company_email: "ptbenihharakasejahtera@gmail.com",
     company_website: "https://harakaseeds.com",
-    bank_info: "Bank —, No. Rek —, a.n. PT Benih Haraka Sejahtera",
+    bank_info: "Bank Mandiri · No. Rek 1430033231331 · a.n. PT Benih Haraka Sejahtera",
     alert_email: "ptbenihharakasejahtera@gmail.com",
     auto_email_order: "1",
     auto_email_shipping: "1",
