@@ -15,7 +15,7 @@ import { ALL_MODULES, DEFAULT_ACCESS, OWNER_ONLY, type AccessMatrix, type Divisi
 const BACK = "/pengaturan";
 const TEXT_KEYS = [
   "company_name", "company_brand", "company_tagline", "company_address", "company_phone", "company_email", "company_website", "bank_info", "alert_email",
-  "bank_name", "bank_account", "bank_holder", "signer_name", "invoice_city",
+  "bank_name", "bank_account", "bank_holder", "signer_name", "signer_title", "signer2_name", "signer2_title", "invoice_city",
 ];
 const TOGGLES = ["auto_email_order", "auto_email_shipping", "auto_email_invoice"];
 // Pilihan dengan nilai terbatas.

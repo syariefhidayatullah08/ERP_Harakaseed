@@ -1,7 +1,7 @@
 import "server-only";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import { HARAKA_LOGO, KAN_LOGO } from "./doc-assets";
-import { ddmmyyyy, qtyFmt, rp, sumQty, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
+import { ddmmyyyy, qtyFmt, rp, signers, sumQty, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
 
 // Warna mengikuti template invoice resmi
 const BLACK = rgb(0, 0, 0);
@@ -211,20 +211,24 @@ export async function renderInvoicePdf(doc: InvoiceDoc): Promise<Uint8Array> {
     ...wrap(doc.notes, times, 9.5, 220).filter(Boolean).map((t) => ({ t })),
   ];
   const nH = noteLines.length * 12 + 6;
-  if (y - nH - 90 < 40) {
+  if (y - nH - 120 < 40) {
     page = pdf.addPage([W, H]);
     y = H - 60;
   }
   rect(tx, y - nH, 228, nH);
   noteLines.forEach((l, i) => text(l.t, tx + 3, y - 11 - i * 12, { font: l.bold ? timesB : times, size: 10 }));
 
-  const sx = 455;
-  const sy = y - nH - 10;
-  text(`${s("invoice_city") || "Jember"}, ${tanggalPanjang(doc.date)}`, sx, sy, { font: timesB, size: 10.5, align: "center" });
-  const signer = s("signer_name");
-  const nameY = sy - 70;
-  const nw = text(signer, sx, nameY, { font: timesB, size: 10.5, align: "center" });
-  page.drawLine({ start: { x: sx - nw / 2, y: nameY - 2 }, end: { x: sx + nw / 2, y: nameY - 2 }, thickness: 0.7, color: BLACK });
+  // Dua penanda tangan seperti template: kiri Direktur, kanan ADM & SDM (tempat & tanggal di atas yang kanan).
+  const [left, right] = signers(doc.settings);
+  const sy = y - nH - 14;
+  text(`${s("invoice_city") || "Jember"}, ${tanggalPanjang(doc.date)}`, 455, sy, { size: 10.5, align: "center" });
+  for (const [who, sx] of [[left, 160], [right, 455]] as const) {
+    if (!who.name) continue;
+    text(who.title, sx, sy - 14, { font: timesB, size: 10.5, align: "center" });
+    const nameY = sy - 84;
+    const nw = text(who.name, sx, nameY, { font: timesB, size: 10.5, align: "center" });
+    page.drawLine({ start: { x: sx - nw / 2, y: nameY - 2 }, end: { x: sx + nw / 2, y: nameY - 2 }, thickness: 0.7, color: BLACK });
+  }
 
   return pdf.save();
 }

@@ -41,7 +41,7 @@ const NAV: NavItem[] = [
   { href: "/pelanggan", label: "Pelanggan", icon: Users },
   { href: "/keluhan", label: "Keluhan Pelanggan", icon: MessageSquareWarning },
   { href: "/keuangan", label: "Keuangan", icon: Wallet },
-  { href: "/keuangan/invoice", label: "Invoice Manual", icon: Receipt },
+  { href: "/pembayaran-benih", label: "Pembayaran Benih", icon: Receipt },
   { section: "Operasional" },
   { href: "/pengiriman", label: "Pengiriman", icon: PackageCheck },
   { href: "/inventori", label: "Gudang & Lot", icon: Boxes },
@@ -79,7 +79,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  // Menu aktif = href terpanjang yang cocok (mis. /keuangan/invoice tidak ikut menyalakan /keuangan).
+  // Menu aktif = href terpanjang yang cocok (mis. /pembayaran-benih/pb tidak ikut menyalakan menu lain).
   const matches = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/"));
   const best = NAV.filter((i): i is Extract<NavItem, { href: string }> => "href" in i && matches(i.href)).sort((a, b) => b.href.length - a.href.length)[0]?.href;
   const isActive = (href: string) => href === best;

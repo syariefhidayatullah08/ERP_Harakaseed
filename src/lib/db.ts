@@ -476,44 +476,64 @@ const SCHEMA_SQL = `
       created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
     );
 
-    -- Invoice manual (template resmi: per kode produksi / nama petani / bobot kg)
-    CREATE TABLE IF NOT EXISTS manual_invoices (
-      id SERIAL PRIMARY KEY,
-      number TEXT NOT NULL UNIQUE,
-      invoice_date TEXT NOT NULL,
-      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
-      cust_name TEXT NOT NULL,
-      cust_address TEXT NOT NULL DEFAULT '',
-      cust_city TEXT NOT NULL DEFAULT '',
-      cust_phone TEXT NOT NULL DEFAULT '',
-      cust_email TEXT NOT NULL DEFAULT '',
-      label_code TEXT NOT NULL DEFAULT 'Kode Produksi',
-      label_name TEXT NOT NULL DEFAULT 'Nama Petani',
-      label_qty TEXT NOT NULL DEFAULT 'Bobot (Kg)',
-      notes TEXT NOT NULL DEFAULT '',
-      total DOUBLE PRECISION NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'terbit',
-      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
-    );
-    CREATE TABLE IF NOT EXISTS manual_invoice_items (
-      id SERIAL PRIMARY KEY,
-      invoice_id INTEGER NOT NULL REFERENCES manual_invoices(id) ON DELETE CASCADE,
-      position INTEGER NOT NULL,
-      code TEXT NOT NULL DEFAULT '',
-      name TEXT NOT NULL DEFAULT '',
-      qty DOUBLE PRECISION NOT NULL DEFAULT 0,
-      price DOUBLE PRECISION NOT NULL DEFAULT 0
-    );
-    -- Data kop & pembayaran dari template invoice resmi perusahaan
+    -- Data kop, pembayaran & tanda tangan dari template resmi perusahaan (invoice, surat pengajuan PB)
     INSERT INTO settings (key, value) VALUES
       ('bank_name', 'BANK MANDIRI'),
       ('bank_account', '1430033231331'),
       ('bank_holder', 'PT. BENIH HARAKA SEJAHTERA'),
       ('signer_name', 'Nur Aini Maulidia'),
-      ('invoice_city', 'Jember'),
-      ('manual_invoice_start', '181')
+      ('signer_title', 'Direktur'),
+      ('signer2_name', 'Rosaliana Putri Anggraeni'),
+      ('signer2_title', 'ADM & SDM'),
+      ('invoice_city', 'Jember')
     ON CONFLICT (key) DO NOTHING;
+
+    -- Pembayaran benih petani: surat pengajuan pembayaran (PB) + buku induk benih masuk
+    CREATE TABLE IF NOT EXISTS seed_pb (
+      id SERIAL PRIMARY KEY,
+      number TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL DEFAULT 'internal',
+      pb_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'diajukan',
+      notes TEXT NOT NULL DEFAULT '',
+      paid_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE TABLE IF NOT EXISTS seed_intakes (
+      id SERIAL PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'internal',
+      company TEXT NOT NULL DEFAULT '',
+      received_date TEXT,
+      due_date TEXT,
+      farmer TEXT NOT NULL,
+      location TEXT NOT NULL DEFAULT '',
+      officer TEXT NOT NULL DEFAULT '',
+      contract_no TEXT NOT NULL DEFAULT '',
+      production_code TEXT NOT NULL DEFAULT '',
+      batch_no TEXT NOT NULL DEFAULT '',
+      gross_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+      net_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+      shipped_kg DOUBLE PRECISION,
+      fix_kg DOUBLE PRECISION,
+      ship_date TEXT,
+      test_ka TEXT NOT NULL DEFAULT '',
+      test_km TEXT NOT NULL DEFAULT '',
+      test_db TEXT NOT NULL DEFAULT '',
+      loan DOUBLE PRECISION NOT NULL DEFAULT 0,
+      price DOUBLE PRECISION NOT NULL DEFAULT 0,
+      contract_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+      deduction DOUBLE PRECISION NOT NULL DEFAULT 0,
+      deduction_note TEXT NOT NULL DEFAULT '',
+      amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+      bad_debt DOUBLE PRECISION NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'proses_uji',
+      notes TEXT NOT NULL DEFAULT '',
+      pb_id INTEGER REFERENCES seed_pb(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE INDEX IF NOT EXISTS seed_intakes_pb_idx ON seed_intakes (pb_id);
+    CREATE INDEX IF NOT EXISTS seed_intakes_recv_idx ON seed_intakes (received_date DESC, id DESC);
     UPDATE settings SET value = 'Bank Mandiri · No. Rek 1430033231331 · a.n. PT Benih Haraka Sejahtera' WHERE key = 'bank_info' AND value LIKE 'Bank —%';
     UPDATE settings SET value = 'JL. H. Moh. Noer Dusun Rowo, Kel. Rowoindah, Kec. Ajung, Kab. Jember, Jawa Timur'
       WHERE key = 'company_address' AND value = 'Jl. H. Moh. Noer, RT001/RW001, Desa Rowoindah, Ajung, Jember, Jawa Timur';

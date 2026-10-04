@@ -9,6 +9,7 @@ import { EmailCompose } from "@/components/email-compose";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { syncInboxAction } from "@/actions/email";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Email" };
 
@@ -45,11 +46,14 @@ export default async function EmailPage({ searchParams }: PageProps<"/email">) {
         title="Email"
         subtitle={info.configured ? `Terhubung sebagai ${info.user} (SMTP ${info.smtp} · IMAP ${info.imap})` : "Email belum dikonfigurasi"}
         actions={
-          <form action={syncInboxAction}>
-            <SubmitButton className="btn-secondary" pendingText="Menyinkronkan…">
-              <RefreshCw size={15} /> Sinkronkan kotak masuk
-            </SubmitButton>
-          </form>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ExportMenu type="email" />
+            <form action={syncInboxAction}>
+              <SubmitButton className="btn-secondary" pendingText="Menyinkronkan…">
+                <RefreshCw size={15} /> Sinkronkan kotak masuk
+              </SubmitButton>
+            </form>
+          </div>
         }
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />

@@ -13,6 +13,7 @@ export const MODULES = {
   mutu: "Mutu & Audit ISO",
   keluhan: "Keluhan Pelanggan",
   pembelian: "Pembelian",
+  pembayaran_benih: "Pembayaran Benih Petani",
   sdm: "SDM / Karyawan",
   pengguna: "Akun Pengguna",
   email: "Email Perusahaan",
@@ -35,6 +36,7 @@ export const MODULE_HINT: Record<Module, string> = {
   mutu: "Audit ISO 9001, temuan & tindakan perbaikan (CAPA), pengendalian dokumen",
   keluhan: "Keluhan pelanggan, penggantian, penelusuran lot",
   pembelian: "Supplier & purchase order",
+  pembayaran_benih: "Buku induk benih masuk dari petani & surat pengajuan pembayaran (PB)",
   sdm: "Data karyawan per divisi",
   pengguna: "Membuat & mengelola akun login ERP",
   email: "Kotak masuk & kirim email perusahaan",
@@ -62,7 +64,7 @@ export const DEFAULT_ACCESS: Record<Exclude<Division, "owner">, Module[]> = {
   produksi: ["produksi", "mitra", "produk", "laporan"],
   lab_qc: ["qc", "produk", "laporan"],
   warehouse: ["inventori", "pengiriman", "produk", "laporan"],
-  admin_sdm: ["sdm", "pengguna", "pembelian", "pelanggan", "email", "laporan"],
+  admin_sdm: ["sdm", "pengguna", "pembelian", "pembayaran_benih", "pelanggan", "email", "laporan"],
   mutu: ["mutu", "produk", "laporan"],
   marketing: ["penjualan", "pelanggan", "keluhan", "produk", "email", "laporan"],
 };
@@ -83,9 +85,9 @@ export function hasAny(modules: readonly Module[], need: Module | readonly Modul
   return (Array.isArray(need) ? need : [need]).some((m) => modules.includes(m));
 }
 
-/** Modul yang menaungi sebuah path, mis. "/penjualan/12" → "penjualan". */
+/** Modul yang menaungi sebuah path, mis. "/penjualan/12" → "penjualan", "/pembayaran-benih" → "pembayaran_benih". */
 export function moduleForPath(pathname: string): Module | null {
-  const seg = pathname.split("/")[1] ?? "";
+  const seg = (pathname.split("/")[1] ?? "").replace(/-/g, "_");
   return seg in MODULES ? (seg as Module) : null;
 }
 

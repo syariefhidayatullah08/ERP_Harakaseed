@@ -29,44 +29,15 @@ export const qtyFmt = (n: number, decimals: number) => new Intl.NumberFormat("id
 export const sumQty = (doc: InvoiceDoc) => doc.rows.reduce((s, r) => s + r.qty, 0);
 export const words = (doc: InvoiceDoc) => terbilang(doc.total);
 
-/** Nomor format template: 181/INV/X/2026 */
-export function invoiceNumber(seq: number, date: string) {
-  return `${seq}/INV/${ROMAN[Number(date.slice(5, 7)) - 1]}/${date.slice(0, 4)}`;
+/** Dua penanda tangan dokumen cetak (invoice, surat pengajuan PB): kiri Direktur, kanan ADM & SDM. Diatur di Pengaturan. */
+export function signers(settings: Record<string, string>) {
+  return [
+    { title: settings.signer_title || "Direktur", name: settings.signer_name || "" },
+    { title: settings.signer2_title || "ADM & SDM", name: settings.signer2_name || "" },
+  ] as const;
 }
 
-export async function nextManualSeq() {
-  const rows = await all<{ number: string }>("SELECT number FROM manual_invoices");
-  const used = rows.map((r) => Number(r.number.split("/")[0])).filter(Number.isFinite);
-  const start = Number((await get<{ value: string }>("SELECT value FROM settings WHERE key = 'manual_invoice_start'"))?.value ?? 1);
-  return Math.max(start, ...used.map((n) => n + 1));
-}
-
-export async function manualInvoiceDoc(id: number): Promise<InvoiceDoc | null> {
-  const inv = await get<{
-    number: string; invoice_date: string; cust_name: string; cust_address: string; cust_city: string; cust_phone: string;
-    label_code: string; label_name: string; label_qty: string; notes: string; total: number;
-  }>("SELECT * FROM manual_invoices WHERE id = ?", id);
-  if (!inv) return null;
-  const rows = await all<{ code: string; name: string; qty: number; price: number }>(
-    "SELECT code, name, qty, price FROM manual_invoice_items WHERE invoice_id = ? ORDER BY position, id",
-    id,
-  );
-  return {
-    number: inv.number,
-    date: inv.invoice_date,
-    customer: { name: inv.cust_name, address: inv.cust_address, city: inv.cust_city, phone: inv.cust_phone },
-    labels: { code: inv.label_code, name: inv.label_name, qty: inv.label_qty },
-    qtyDecimals: 2,
-    rows,
-    adjustments: [],
-    total: inv.total,
-    after: [],
-    notes: inv.notes,
-    settings: await getSettings(),
-  };
-}
-
-/** Invoice dari pesanan penjualan, memakai tata letak yang sama. */
+/** Invoice dari pesanan penjualan, dengan tata letak template resmi. */
 export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> {
   const o = await get<{
     so_no: string; invoice_no: string | null; order_date: string; shipped_at: string | null; subtotal: number; discount_pct: number; tax_pct: number;

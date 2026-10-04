@@ -17,7 +17,7 @@ import {
   type ITableCellBorders,
 } from "docx";
 import { HARAKA_LOGO, KAN_LOGO } from "./doc-assets";
-import { ddmmyyyy, qtyFmt, rp, sumQty, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
+import { ddmmyyyy, qtyFmt, rp, signers, sumQty, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
 
 const FONT = "Times New Roman";
 const PEACH = "F4B183";
@@ -181,25 +181,32 @@ export async function renderInvoiceDocx(doc: InvoiceDoc): Promise<Buffer> {
   const footer = new Table({
     layout: TableLayoutType.FIXED,
     width: { size: 8400, type: WidthType.DXA },
-    columnWidths: [4400, 400, 3600],
+    columnWidths: [4400, 4000],
+    indent: { size: 700, type: WidthType.DXA },
+    rows: [new TableRow({ children: [cell(note, 4400, { top: true }), cell(para(run("")), 4000, { borders: noBorders })] })],
+  });
+  // Dua penanda tangan seperti template: kiri Direktur, kanan ADM & SDM (tempat & tanggal di atas yang kanan).
+  const [left, right] = signers(doc.settings);
+  const signCell = (who: { title: string; name: string }, place: string) =>
+    cell(
+      who.name
+        ? [
+            para(run(place || " ", { size: 10.5 }), AlignmentType.CENTER),
+            para(run(who.title, { bold: true, size: 10.5 }), AlignmentType.CENTER, 1100),
+            para(run(who.name, { bold: true, size: 10.5, underline: true }), AlignmentType.CENTER),
+          ]
+        : para(run("")),
+      3600,
+      { borders: noBorders },
+    );
+  const signatures = new Table({
+    layout: TableLayoutType.FIXED,
+    width: { size: 8400, type: WidthType.DXA },
+    columnWidths: [3600, 1200, 3600],
     indent: { size: 700, type: WidthType.DXA },
     rows: [
       new TableRow({
-        children: [
-          cell(note, 4400, { top: true }),
-          cell(para(run("")), 400, { borders: noBorders }),
-          cell(
-            [
-              para(run(" ")),
-              para(run(" ")),
-              para(run(" ")),
-              para(run(`${s("invoice_city") || "Jember"}, ${tanggalPanjang(doc.date)}`, { bold: true, size: 10.5 }), AlignmentType.CENTER, 1100),
-              para(run(s("signer_name"), { bold: true, size: 10.5, underline: true }), AlignmentType.CENTER),
-            ],
-            3600,
-            { borders: noBorders },
-          ),
-        ],
+        children: [signCell(left, ""), cell(para(run("")), 1200, { borders: noBorders }), signCell(right, `${s("invoice_city") || "Jember"}, ${tanggalPanjang(doc.date)}`)],
       }),
     ],
   });
@@ -224,6 +231,8 @@ export async function renderInvoiceDocx(doc: InvoiceDoc): Promise<Buffer> {
           terbilang,
           gap(),
           footer,
+          gap(),
+          signatures,
         ],
       },
     ],

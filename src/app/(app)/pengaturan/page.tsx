@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CheckCircle2, Lock, XCircle } from "lucide-react";
-import { getSettings } from "@/lib/db";
+import { get, getSettings } from "@/lib/db";
 import { emailInfo } from "@/lib/email";
 import { getAccessMatrix, requireUser } from "@/lib/session";
 import { Badge, Card, Field, Flash, PageHeader } from "@/components/ui";
@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/buttons";
 import { backupNow, changePassword, clearTransactions, saveAccessMatrix, saveSettings, updateMyName } from "@/actions/settings";
 import { BACKUP_KEEP, listBackups, type BackupFile } from "@/lib/backup";
 import { tanggal } from "@/lib/format";
+import { formatBytes } from "@/lib/attachments";
 import { testEmail } from "@/actions/email";
 import { ALL_MODULES, DEFAULT_ACCESS, DIVISIONS, MODULE_HINT, MODULES, OWNER_ONLY, divisionLabel, resolveModules, type Division } from "@/lib/access";
 
@@ -72,6 +73,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
     backupError = e instanceof Error ? e.message : String(e);
   }
   const [lastAt, lastStatus, lastNote] = s("backup_last").split("|");
+  const files = (await get<{ n: number; bytes: number }>("SELECT COUNT(*) n, COALESCE(SUM(size), 0) bytes FROM attachments"))!;
 
   return (
     <>
@@ -203,7 +205,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
           <div className="space-y-4 p-5 text-sm">
             <p className="text-muted">
               Seluruh database disalin otomatis setiap malam (± pukul 01.00 WIB) ke penyimpanan file privat, terpisah dari server database. {BACKUP_KEEP} backup terakhir
-              disimpan.
+              disimpan. File lampiran (bukti transfer, foto, dokumen) ikut disalin.
             </p>
             {lastStatus === "gagal" && (
               <p className="text-red-700">
@@ -239,6 +241,16 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
                   </li>
                 ))}
               </ul>
+            )}
+            {files.n > 0 && (
+              <p>
+                <a href="/api/backup/files" className="text-brand-700 hover:underline">
+                  Unduh semua file lampiran (.zip)
+                </a>{" "}
+                <span className="text-xs text-muted">
+                  · {files.n} file, {formatBytes(files.bytes)}
+                </span>
+              </p>
             )}
             <p className="text-xs text-muted">File backup berisi seluruh data perusahaan. Simpan di tempat aman dan jangan dibagikan.</p>
           </div>
@@ -296,11 +308,21 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
               <Field label="Atas nama">
                 <input name="bank_holder" defaultValue={s("bank_holder")} className="input" />
               </Field>
-              <Field label="Penanda tangan">
-                <input name="signer_name" defaultValue={s("signer_name")} className="input" />
-              </Field>
               <Field label="Kota tanda tangan">
                 <input name="invoice_city" defaultValue={s("invoice_city")} className="input" placeholder="Jember" />
+              </Field>
+              <div className="text-xs text-muted sm:col-span-3">Dua penanda tangan di invoice dan surat pengajuan pembayaran benih (PB): kiri dan kanan.</div>
+              <Field label="Jabatan penanda tangan kiri">
+                <input name="signer_title" defaultValue={s("signer_title")} className="input" placeholder="Direktur" />
+              </Field>
+              <Field label="Nama penanda tangan kiri" className="sm:col-span-2">
+                <input name="signer_name" defaultValue={s("signer_name")} className="input" />
+              </Field>
+              <Field label="Jabatan penanda tangan kanan">
+                <input name="signer2_title" defaultValue={s("signer2_title")} className="input" placeholder="ADM & SDM" />
+              </Field>
+              <Field label="Nama penanda tangan kanan" className="sm:col-span-2">
+                <input name="signer2_name" defaultValue={s("signer2_name")} className="input" />
               </Field>
             </div>
             <div className="flex justify-end sm:col-span-2">

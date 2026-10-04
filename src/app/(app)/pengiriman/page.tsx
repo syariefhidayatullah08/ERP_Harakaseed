@@ -5,6 +5,7 @@ import { addDays, num, tanggal, today } from "@/lib/format";
 import { productStock } from "@/lib/inventory";
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { requireAccess } from "@/lib/session";
+import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Pengiriman" };
 
@@ -35,7 +36,7 @@ export default async function ShippingPage({ searchParams }: PageProps<"/pengiri
 
   return (
     <>
-      <PageHeader title="Pengiriman" subtitle="Pesanan yang sudah dikonfirmasi Marketing dan siap disiapkan gudang" />
+      <PageHeader title="Pengiriman" subtitle="Pesanan yang sudah dikonfirmasi Marketing dan siap disiapkan gudang" actions={<ExportMenu type="pengiriman" />} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       {!history && (
         <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-3">

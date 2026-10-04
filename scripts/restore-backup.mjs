@@ -7,6 +7,7 @@
 //
 // Tabel harus sudah ada (buka ERP sekali agar tabel dibuat otomatis). Seluruh isi tabel diganti
 // dengan isi backup dalam satu transaksi: kalau gagal di tengah, tidak ada yang berubah.
+// File lampiran yang hilang dari penyimpanan ikut dikembalikan dari salinan backup-nya (perlu BLOB_READ_WRITE_TOKEN).
 import fs from "node:fs";
 import { gunzipSync } from "node:zlib";
 import pg from "pg";
@@ -71,6 +72,21 @@ try {
   }
   await client.query("COMMIT");
   console.log("\nSelesai: data dipulihkan dari backup.");
+
+  // File lampiran yang sudah terhapus dari penyimpanan dikembalikan dari salinan backup-nya.
+  const files = backup.tables.attachments ?? [];
+  if (files.length && process.env.BLOB_READ_WRITE_TOKEN) {
+    const { copy, head } = await import("@vercel/blob");
+    const prefix = schema ? `backup-files-${schema}/` : "backup-files/";
+    let restored = 0;
+    const lost = [];
+    for (const f of files) {
+      if (await head(f.pathname).then(() => true, () => false)) continue;
+      await copy(prefix + f.pathname, f.pathname, { access: "private", addRandomSuffix: false }).then(() => restored++, () => lost.push(f.filename));
+    }
+    console.log(`Lampiran: ${files.length} file, ${restored} dikembalikan dari salinan backup, ${lost.length} tidak ditemukan.`);
+    for (const name of lost) console.log(`  hilang: ${name}`);
+  }
 } catch (e) {
   await client.query("ROLLBACK").catch(() => {});
   console.error("\nGAGAL, tidak ada data yang diubah:", e.message);

@@ -5,6 +5,7 @@ import { hasAny, divisionLabel, type Module } from "../access";
 import type { SessionUser } from "../session";
 import { CUSTOMER_KIND, PO_STATUS, PRD_STATUS, SO_STATUS } from "../format";
 import { ACTIVITY_MODULES } from "../activity";
+import { INTAKE_KIND, INTAKE_STATUS, PB_STATUS } from "../seed-payment";
 import {
   complaintLines,
   findingLines,
@@ -178,28 +179,6 @@ export const DATASETS: Record<string, Dataset> = {
       all(
         `SELECT p.pay_date, so.so_no, so.invoice_no, c.name customer, p.method, p.note, p.amount FROM payments p
          JOIN sales_orders so ON so.id = p.so_id JOIN customers c ON c.id = so.customer_id WHERE p.pay_date BETWEEN ? AND ? ORDER BY p.pay_date`,
-        r.from,
-        r.to,
-      ),
-  },
-  "invoice-manual": {
-    title: "Daftar Invoice Manual",
-    need: "keuangan",
-    range: true,
-    columns: () => [
-      { key: "number", label: "Nomor", width: 18 },
-      { key: "invoice_date", label: "Tanggal", type: "date" },
-      { key: "cust_name", label: "Customer", width: 28 },
-      { key: "cust_city", label: "Kota", width: 18 },
-      { key: "rows", label: "Baris", type: "number" },
-      { key: "qty", label: "Total bobot/qty", type: "decimal" },
-      { key: "total", label: "Jumlah tagihan", type: "money" },
-    ],
-    rows: (r) =>
-      all(
-        `SELECT m.number, m.invoice_date, m.cust_name, m.cust_city, COUNT(i.id) rows, COALESCE(SUM(i.qty),0) qty, m.total
-         FROM manual_invoices m LEFT JOIN manual_invoice_items i ON i.invoice_id = m.id
-         WHERE m.invoice_date BETWEEN ? AND ? GROUP BY m.id ORDER BY m.invoice_date, m.number`,
         r.from,
         r.to,
       ),
@@ -461,6 +440,143 @@ export const DATASETS: Record<string, Dataset> = {
       { key: "address", label: "Alamat", width: 30 },
     ],
     rows: () => all("SELECT * FROM suppliers ORDER BY name"),
+  },
+
+  /* ------------------------ Pembayaran benih petani ------------------------ */
+  "pembayaran-benih": {
+    title: "Buku Induk Pembayaran Benih",
+    need: "pembayaran_benih",
+    range: true,
+    columns: () => [
+      { key: "kind", label: "Jenis" },
+      { key: "company", label: "Perusahaan", width: 20 },
+      { key: "received_date", label: "Tgl benih masuk", type: "date" },
+      { key: "due_date", label: "Tgl jatuh tempo", type: "date" },
+      { key: "farmer", label: "Nama petani", width: 22 },
+      { key: "location", label: "Lokasi lahan", width: 16 },
+      { key: "officer", label: "Petugas" },
+      { key: "contract_no", label: "No kontrak", width: 13 },
+      { key: "production_code", label: "Kode produksi", width: 14 },
+      { key: "batch_no", label: "No batch" },
+      { key: "gross_kg", label: "Bobot awal (kg)", type: "decimal" },
+      { key: "net_kg", label: "Bobot bersih (kg)", type: "decimal" },
+      { key: "fix_kg", label: "Bobot fix (kg)", type: "decimal" },
+      { key: "test_ka", label: "KA" },
+      { key: "test_km", label: "KM" },
+      { key: "test_db", label: "DB" },
+      { key: "loan", label: "Nilai pinjaman", type: "money" },
+      { key: "price", label: "Harga petani", type: "money" },
+      { key: "deduction", label: "Potongan", type: "money" },
+      { key: "amount", label: "Nilai pembayaran", type: "money" },
+      { key: "bad_debt", label: "Kredit macet", type: "money" },
+      { key: "contract_price", label: "Harga kontrak", type: "money" },
+      { key: "invoice", label: "Tagihan invoice", type: "money" },
+      { key: "status", label: "Status" },
+      { key: "pb_no", label: "No. surat PB", width: 22 },
+      { key: "notes", label: "Keterangan", width: 30 },
+    ],
+    rows: async (r) =>
+      mapRows(
+        await all<Row & { kind: string; status: string }>(
+          `SELECT i.*, CASE WHEN i.kind = 'eksternal' THEN i.contract_price * COALESCE(i.fix_kg, i.net_kg) END invoice, pb.number pb_no
+           FROM seed_intakes i LEFT JOIN seed_pb pb ON pb.id = i.pb_id
+           WHERE COALESCE(i.received_date, '2000-01-01') BETWEEN ? AND ? ORDER BY i.kind DESC, i.received_date, i.id`,
+          r.from,
+          r.to,
+        ),
+        (x) => ({ ...x, kind: INTAKE_KIND[x.kind] ?? x.kind, status: label(INTAKE_STATUS)(x.status) }),
+      ),
+  },
+  "surat-pb": {
+    title: "Daftar Surat Pengajuan Pembayaran Benih",
+    need: "pembayaran_benih",
+    range: true,
+    columns: () => [
+      { key: "number", label: "Nomor", width: 24 },
+      { key: "pb_date", label: "Tanggal", type: "date" },
+      { key: "kind", label: "Jenis" },
+      { key: "rows", label: "Baris", type: "number" },
+      { key: "kg", label: "Bobot (kg)", type: "decimal" },
+      { key: "total", label: "Total pembayaran", type: "money" },
+      { key: "status", label: "Status" },
+      { key: "paid_at", label: "Dibayar", type: "date" },
+    ],
+    rows: async (r) =>
+      mapRows(
+        await all<Row & { kind: string; status: string }>(
+          `SELECT pb.number, pb.pb_date, pb.kind, pb.status, pb.paid_at, COUNT(i.id) rows, COALESCE(ROUND(SUM(i.net_kg)::numeric, 2), 0) kg, COALESCE(SUM(i.amount), 0) total
+           FROM seed_pb pb LEFT JOIN seed_intakes i ON i.pb_id = pb.id WHERE pb.pb_date BETWEEN ? AND ? GROUP BY pb.id ORDER BY pb.pb_date, pb.id`,
+          r.from,
+          r.to,
+        ),
+        (x) => ({ ...x, kind: INTAKE_KIND[x.kind] ?? x.kind, status: label(PB_STATUS)(x.status) }),
+      ),
+  },
+
+  /* ------------------------------ Pengiriman ------------------------------ */
+  pengiriman: {
+    title: "Daftar Pengiriman",
+    need: "pengiriman",
+    range: true,
+    // Tanpa harga, sama seperti surat jalan.
+    columns: () => [
+      { key: "so_no", label: "No. Pesanan", width: 16 },
+      { key: "order_date", label: "Dipesan", type: "date" },
+      { key: "customer", label: "Pelanggan", width: 26 },
+      { key: "city", label: "Kota", width: 16 },
+      { key: "address", label: "Alamat", width: 32 },
+      { key: "items", label: "Barang", width: 44 },
+      { key: "status", label: "Status" },
+      { key: "shipped_at", label: "Dikirim", type: "date" },
+      { key: "courier", label: "Ekspedisi", width: 16 },
+      { key: "tracking_no", label: "No. resi", width: 18 },
+    ],
+    rows: async (r) =>
+      mapRows(
+        await all<Row & { status: string }>(
+          `SELECT so.so_no, so.order_date, c.name customer, c.city, c.address, so.status, so.shipped_at, so.courier, so.tracking_no,
+                  (SELECT string_agg(p.name || ' ' || p.pack_size || ' × ' || i.qty, '; ' ORDER BY i.id)
+                   FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = so.id) items
+           FROM sales_orders so JOIN customers c ON c.id = so.customer_id
+           WHERE so.status IN ('dikonfirmasi','dikirim','selesai') AND COALESCE(so.shipped_at, so.order_date) BETWEEN ? AND ?
+           ORDER BY COALESCE(so.shipped_at, so.order_date), so.so_no`,
+          r.from,
+          r.to,
+        ),
+        (x) => ({ ...x, status: x.status === "dikonfirmasi" ? "Perlu dikirim" : label(SO_STATUS)(x.status) }),
+      ),
+  },
+
+  /* --------------------------------- Email --------------------------------- */
+  email: {
+    title: "Riwayat Email",
+    need: "email",
+    range: true,
+    columns: () => [
+      { key: "created_at", label: "Waktu (WIB)", width: 19 },
+      { key: "direction", label: "Arah" },
+      { key: "from_addr", label: "Dari", width: 28 },
+      { key: "to_addr", label: "Kepada", width: 28 },
+      { key: "subject", label: "Subjek", width: 36 },
+      { key: "status", label: "Status" },
+      { key: "body", label: "Isi", width: 60 },
+    ],
+    rows: async (r) =>
+      mapRows(
+        // Isi email akun (tautan kata sandi) dan backup tidak ikut diunduh.
+        await all<Row & { direction: string; status: string; error: string }>(
+          `SELECT created_at, direction, from_addr, to_addr, subject, status, error,
+                  CASE WHEN ref_type IN ('account','backup') THEN '' ELSE left(body_text, 2000) END body
+           FROM emails WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC, id DESC LIMIT 20000`,
+          r.from,
+          `${r.to} 99`,
+        ),
+        (x) => ({
+          ...x,
+          direction: x.direction === "in" ? "Masuk" : "Keluar",
+          status: x.direction === "in" ? "Diterima" : x.status === "gagal" ? `Gagal: ${x.error}` : "Terkirim",
+        }),
+      ),
   },
 
   /* ------------------------------ Organisasi ------------------------------ */

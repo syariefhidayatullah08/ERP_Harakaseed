@@ -82,7 +82,7 @@ export async function loadOrderPdfData(soId: number) {
 
 /** Invoice atau surat jalan dalam format PDF (A4). */
 export async function orderPdf(soId: number, doc: PdfDoc = "invoice"): Promise<{ bytes: Uint8Array; filename: string } | null> {
-  // Invoice memakai template resmi perusahaan (sama dengan invoice manual); surat jalan memakai tata letak di bawah.
+  // Invoice memakai template resmi perusahaan; surat jalan memakai tata letak di bawah.
   if (doc === "invoice") {
     const inv = await orderInvoiceDoc(soId);
     return inv ? { bytes: await renderInvoicePdf(inv), filename: `${invoiceFileBase(inv)}.pdf` } : null;
