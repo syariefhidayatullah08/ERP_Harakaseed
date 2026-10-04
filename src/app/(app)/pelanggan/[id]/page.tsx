@@ -57,7 +57,7 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
               </a>
             )}
             {can(user, "penjualan") && (
-              <Link href={`/penjualan/baru?customer=${c.id}`} className="btn-primary">
+              <Link href={`/penjualan/baru?customer=${c.id}`} className="btn-accent">
                 + Buat pesanan
               </Link>
             )}
@@ -96,7 +96,7 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
                     return (
                       <tr key={o.id}>
                         <td>
-                          <Link href={`/penjualan/${o.id}`} className="font-medium text-brand-700 hover:underline">
+                          <Link href={`/penjualan/${o.id}`} className="whitespace-nowrap font-medium text-brand-700 hover:underline">
                             {o.so_no}
                           </Link>
                         </td>

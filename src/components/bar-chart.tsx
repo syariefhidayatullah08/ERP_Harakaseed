@@ -30,7 +30,7 @@ export function BarChart({
             return (
               <div key={d.label} className="group relative flex h-full flex-1 items-end justify-center">
                 <div
-                  className={`w-full max-w-10 rounded-t-[4px] transition-colors ${last ? "bg-brand-700" : "bg-brand-500/70 group-hover:bg-brand-600"}`}
+                  className={`w-full max-w-10 rounded-t-[4px] transition-colors ${last ? "bg-linear-to-t from-accent to-gold shadow-md shadow-accent/30" : "bg-linear-to-t from-brand-800 to-brand-500 opacity-80 group-hover:opacity-100"}`}
                   style={{ height: `${Math.max(h, d.value > 0 ? 1.5 : 0)}%` }}
                 />
                 {last && d.value > 0 && (
@@ -80,7 +80,7 @@ export function RankBars({ rows, format }: { rows: { label: string; sub?: string
             <span className="tabular-nums text-muted">{format(r.value)}</span>
           </div>
           <div className="h-2 rounded-full bg-brand-50">
-            <div className="h-2 rounded-full bg-brand-600" style={{ width: `${(r.value / max) * 100}%` }} />
+            <div className="h-2 rounded-full bg-linear-to-r from-brand-700 via-brand-500 to-accent" style={{ width: `${(r.value / max) * 100}%` }} />
           </div>
         </li>
       ))}

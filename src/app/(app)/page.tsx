@@ -101,7 +101,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
         subtitle={`Ringkasan operasional per ${tanggal(t)}`}
         actions={
           <>
-            <Link href="/penjualan/baru" className="btn-primary">
+            <Link href="/penjualan/baru" className="btn-accent">
               + Pesanan baru
             </Link>
           </>
@@ -200,7 +200,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
                   return (
                     <tr key={o.id}>
                       <td>
-                        <Link href={`/penjualan/${o.id}`} className="font-medium text-brand-700 hover:underline">
+                        <Link href={`/penjualan/${o.id}`} className="whitespace-nowrap font-medium text-brand-700 hover:underline">
                           {o.so_no}
                         </Link>
                       </td>

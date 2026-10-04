@@ -14,7 +14,7 @@ const TONES: Record<string, string> = {
 
 export function Badge({ tone = "gray", children }: { tone?: string; children: ReactNode }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${TONES[tone] ?? TONES.gray}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${TONES[tone] ?? TONES.gray}`}>
       {children}
     </span>
   );
@@ -39,6 +39,7 @@ export function PageHeader({
             ← {back.label}
           </Link>
         )}
+        <div aria-hidden className="mb-2 h-1 w-12 rounded-full bg-linear-to-r from-brand-500 via-brand-600 to-accent" />
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
@@ -61,10 +62,14 @@ export function StatCard({
   href?: string;
 }) {
   const inner = (
-    <div className="card h-full p-5 transition-shadow hover:shadow-sm">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted">{label}</div>
+    <div className="card relative h-full overflow-hidden p-5 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-900/10">
       <div
-        className={`mt-2 text-2xl font-bold tabular-nums ${tone === "danger" ? "text-red-700" : tone === "warn" ? "text-amber-700" : "text-ink"}`}
+        aria-hidden
+        className={`absolute inset-x-0 top-0 h-1 ${tone === "danger" ? "bg-linear-to-r from-red-500 to-orange-400" : tone === "warn" ? "bg-linear-to-r from-amber-400 to-gold" : "bg-linear-to-r from-brand-600 via-brand-500 to-accent"}`}
+      />
+      <div className="text-[11px] font-medium uppercase tracking-wide text-muted sm:text-xs">{label}</div>
+      <div
+        className={`mt-2 break-words text-lg font-bold tabular-nums sm:text-2xl ${tone === "danger" ? "text-red-700" : tone === "warn" ? "text-amber-700" : "text-ink"}`}
       >
         {value}
       </div>

@@ -29,7 +29,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/produk"
         title="Produk / Varietas"
         subtitle={`${all.length} varietas benih · ${all.filter((p) => p.seed_type !== "OP").length} F1 Hibrida, ${all.filter((p) => p.seed_type === "OP").length} OP`}
         actions={
-          <Link href="/produk/baru" className="btn-primary">
+          <Link href="/produk/baru" className="btn-accent">
             + Produk baru
           </Link>
         }

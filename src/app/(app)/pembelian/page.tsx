@@ -23,7 +23,7 @@ export default async function PurchasingPage({ searchParams }: PageProps<"/pembe
         title="Pembelian"
         subtitle="Purchase order kemasan, bahan perlakuan benih, dan kebutuhan produksi"
         actions={
-          <Link href="/pembelian/baru" className="btn-primary">
+          <Link href="/pembelian/baru" className="btn-accent">
             + PO baru
           </Link>
         }

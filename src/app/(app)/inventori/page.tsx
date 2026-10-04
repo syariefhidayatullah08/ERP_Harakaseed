@@ -54,7 +54,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                 Email peringatan stok
               </SubmitButton>
             </form>
-            <a href="#lot-baru" className="btn-primary">
+            <a href="#lot-baru" className="btn-accent">
               + Terima lot
             </a>
           </>

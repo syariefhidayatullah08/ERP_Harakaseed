@@ -34,7 +34,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/pelang
         title="Pelanggan"
         subtitle="Distributor, toko tani, petani, dan pembeli ekspor"
         actions={
-          <Link href="/pelanggan/baru" className="btn-primary">
+          <Link href="/pelanggan/baru" className="btn-accent">
             + Pelanggan baru
           </Link>
         }

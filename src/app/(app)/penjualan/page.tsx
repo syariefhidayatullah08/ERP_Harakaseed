@@ -42,7 +42,7 @@ export default async function SalesPage({ searchParams }: PageProps<"/penjualan"
         subtitle={finance ? "Pesanan dan pengiriman. Piutang & pembayaran ada di menu Keuangan." : "Pesanan pelanggan dan status pengiriman"}
         actions={
           can(user, "penjualan") && (
-            <Link href="/penjualan/baru" className="btn-primary">
+            <Link href="/penjualan/baru" className="btn-accent">
               + Pesanan baru
             </Link>
           )
@@ -84,7 +84,7 @@ export default async function SalesPage({ searchParams }: PageProps<"/penjualan"
                   return (
                     <tr key={o.id}>
                       <td>
-                        <Link href={`/penjualan/${o.id}`} className="font-medium text-brand-700 hover:underline">
+                        <Link href={`/penjualan/${o.id}`} className="whitespace-nowrap font-medium text-brand-700 hover:underline">
                           {o.so_no}
                         </Link>
                         {finance && o.invoice_no && <div className="text-xs text-muted">{o.invoice_no}</div>}

@@ -20,25 +20,38 @@
   /* Warna logo HARAKA: biru #00aeef, oranye #f08020, merah tulisan #f82828 */
   --color-accent: #f08020;
   --color-accent-600: #d96c0f;
+  /* Gradasi: navy → biru logo, oranye logo → emas. Teks di atas oranye/emas selalu accent-ink (kontras ≥ 5.5:1). */
+  --color-navy: #062538;
+  --color-gold: #fbbf24;
+  --color-accent-ink: #0b2a3f;
 }
 
 body {
-  background: var(--color-canvas);
   color: var(--color-ink);
+  background-color: var(--color-canvas);
+  /* Cahaya lembut biru (kiri atas) & hangat (kanan bawah) agar latar tidak datar */
+  background-image:
+    radial-gradient(60rem 40rem at -10% -10%, rgb(0 174 239 / 0.1), transparent 60%),
+    radial-gradient(50rem 36rem at 110% 110%, rgb(240 128 32 / 0.1), transparent 60%);
+  background-attachment: fixed;
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-line bg-white;
+    @apply min-w-0 rounded-xl border border-line/80 bg-white shadow-[0_1px_2px_rgb(6_37_56/0.04),0_4px_16px_-8px_rgb(6_37_56/0.08)];
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer whitespace-nowrap;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer whitespace-nowrap bg-brand-700 text-white hover:bg-brand-800;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer whitespace-nowrap bg-linear-to-r from-brand-800 to-brand-700 text-white shadow-sm shadow-brand-800/25 hover:from-navy hover:to-brand-800;
   }
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer whitespace-nowrap border border-line bg-white text-ink hover:bg-brand-50;
+  }
+  /* Tombol aksi utama halaman (mis. "+ Pesanan baru") */
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer whitespace-nowrap bg-linear-to-r from-accent to-gold text-accent-ink shadow-sm shadow-accent/30 hover:brightness-105 hover:shadow-md hover:shadow-accent/30;
   }
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer whitespace-nowrap border border-red-200 bg-white text-red-700 hover:bg-red-50;
@@ -56,7 +69,7 @@ body {
     @apply w-full text-sm;
   }
   .table th {
-    @apply border-b border-line bg-canvas/60 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted;
+    @apply whitespace-nowrap border-b border-line bg-linear-to-b from-brand-50/70 to-canvas/40 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted;
   }
   .table td {
     @apply border-b border-line px-4 py-3 align-middle;
