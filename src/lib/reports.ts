@@ -59,6 +59,121 @@ export async function stockByLot() {
   );
 }
 
+/* ------------------------------ Laporan divisi operasional ------------------------------ */
+
+type Rows = Record<string, string | number | null>[];
+
+/** Detail penjualan tanpa nilai rupiah (untuk Marketing). */
+export async function salesQtyLines(from: string, to: string) {
+  return await all<Record<string, string | number | null>>(
+    `SELECT so.so_no, so.order_date, so.status, c.name customer, c.city, p.sku, p.name product, i.qty
+     FROM so_items i JOIN sales_orders so ON so.id = i.so_id JOIN customers c ON c.id = so.customer_id JOIN products p ON p.id = i.product_id
+     WHERE ${VALID} ORDER BY so.order_date, so.so_no`,
+    from,
+    to,
+  );
+}
+
+export async function productionReport(from: string, to: string) {
+  return await all<{ name: string; batches: number; berjalan: number; lulus: number; gagal: number; area_ha: number; harvest_kg: number }>(
+    `SELECT p.name, COUNT(*) batches,
+            COUNT(*) FILTER (WHERE pr.status IN ('tanam','panen','prosesing','uji_lab')) berjalan,
+            COUNT(*) FILTER (WHERE pr.status = 'lulus') lulus,
+            COUNT(*) FILTER (WHERE pr.status = 'gagal') gagal,
+            COALESCE(SUM(pr.area_ha),0) area_ha, COALESCE(SUM(pr.harvest_kg),0) harvest_kg
+     FROM productions pr JOIN products p ON p.id = pr.product_id
+     WHERE pr.plant_date BETWEEN ? AND ? GROUP BY p.id ORDER BY batches DESC, p.name`,
+    from,
+    to,
+  );
+}
+
+export async function productionLines(from: string, to: string): Promise<Rows> {
+  return await all(
+    `SELECT pr.code, p.name product, g.name petani, pr.area_ha, pr.plant_date, pr.est_harvest, pr.harvest_kg, pr.status
+     FROM productions pr JOIN products p ON p.id = pr.product_id LEFT JOIN growers g ON g.id = pr.grower_id
+     WHERE pr.plant_date BETWEEN ? AND ? ORDER BY pr.plant_date`,
+    from,
+    to,
+  );
+}
+
+export async function qcReport(from: string, to: string) {
+  return await all<{ name: string; tests: number; lulus: number; gagal: number; avg_dk: number; min_dk: number }>(
+    `SELECT p.name, COUNT(*) tests, COUNT(*) FILTER (WHERE t.result = 'lulus') lulus, COUNT(*) FILTER (WHERE t.result = 'gagal') gagal,
+            ROUND(AVG(t.germination)::numeric, 1) avg_dk, MIN(t.germination) min_dk
+     FROM lot_tests t JOIN lots l ON l.id = t.lot_id JOIN products p ON p.id = l.product_id
+     WHERE t.test_date BETWEEN ? AND ? GROUP BY p.id ORDER BY tests DESC`,
+    from,
+    to,
+  );
+}
+
+export async function qcLines(from: string, to: string): Promise<Rows> {
+  return await all(
+    `SELECT t.test_date, l.lot_no, p.name product, t.germination, t.purity, t.moisture, t.result, t.note, u.name penguji
+     FROM lot_tests t JOIN lots l ON l.id = t.lot_id JOIN products p ON p.id = l.product_id LEFT JOIN users u ON u.id = t.tested_by
+     WHERE t.test_date BETWEEN ? AND ? ORDER BY t.test_date`,
+    from,
+    to,
+  );
+}
+
+export async function stockMovementReport(from: string, to: string) {
+  return await all<{ name: string; masuk: number; keluar: number; penyesuaian: number; retur: number }>(
+    `SELECT p.name,
+            COALESCE(SUM(m.qty) FILTER (WHERE m.kind = 'masuk'),0) masuk,
+            COALESCE(-SUM(m.qty) FILTER (WHERE m.kind = 'keluar'),0) keluar,
+            COALESCE(SUM(m.qty) FILTER (WHERE m.kind = 'penyesuaian'),0) penyesuaian,
+            COALESCE(SUM(m.qty) FILTER (WHERE m.kind = 'retur'),0) retur
+     FROM stock_moves m JOIN products p ON p.id = m.product_id
+     WHERE substr(m.created_at,1,10) BETWEEN ? AND ? GROUP BY p.id ORDER BY keluar DESC, masuk DESC`,
+    from,
+    to,
+  );
+}
+
+export async function complaintReport(from: string, to: string) {
+  const byCategory = await all<{ category: string; total: number; terbuka: number; avg_days: number | null }>(
+    `SELECT category, COUNT(*) total, COUNT(*) FILTER (WHERE status <> 'selesai') terbuka,
+            ROUND(AVG((closed_at::date - report_date::date)) FILTER (WHERE closed_at IS NOT NULL), 1) avg_days
+     FROM complaints WHERE report_date BETWEEN ? AND ? GROUP BY category ORDER BY total DESC`,
+    from,
+    to,
+  );
+  const byProduct = await all<{ name: string; total: number }>(
+    `SELECT COALESCE(p.name,'(tidak diketahui)') name, COUNT(*) total FROM complaints k LEFT JOIN products p ON p.id = k.product_id
+     WHERE k.report_date BETWEEN ? AND ? GROUP BY 1 ORDER BY total DESC LIMIT 10`,
+    from,
+    to,
+  );
+  return { byCategory, byProduct };
+}
+
+export async function complaintLines(from: string, to: string): Promise<Rows> {
+  return await all(
+    `SELECT k.code, k.report_date, c.name customer, p.name product, l.lot_no, k.category, k.severity, k.status, k.root_cause, k.action_taken, k.closed_at
+     FROM complaints k LEFT JOIN customers c ON c.id = k.customer_id LEFT JOIN products p ON p.id = k.product_id LEFT JOIN lots l ON l.id = k.lot_id
+     WHERE k.report_date BETWEEN ? AND ? ORDER BY k.report_date`,
+    from,
+    to,
+  );
+}
+
+export async function sdmReport() {
+  return await all<{ division: string; aktif: number; nonaktif: number; akun: number }>(
+    `SELECT d.division,
+            (SELECT COUNT(*) FROM employees e WHERE e.division = d.division AND e.status = 'aktif') aktif,
+            (SELECT COUNT(*) FROM employees e WHERE e.division = d.division AND e.status <> 'aktif') nonaktif,
+            (SELECT COUNT(*) FROM users u WHERE u.role = d.division AND u.active = 1) akun
+     FROM (SELECT DISTINCT division FROM employees UNION SELECT DISTINCT role FROM users) d ORDER BY 1`,
+  );
+}
+
+export async function sdmLines(): Promise<Rows> {
+  return await all("SELECT name, division, position, email, phone, join_date, status FROM employees ORDER BY division, name");
+}
+
 export function toCsv(rows: Record<string, unknown>[]) {
   if (!rows.length) return "";
   const headers = Object.keys(rows[0]);

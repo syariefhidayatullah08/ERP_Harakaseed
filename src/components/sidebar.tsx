@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { canAccess, moduleForPath, ROLES } from "@/lib/access";
+import { divisionLabel, hasAny, moduleForPath, type Module } from "@/lib/access";
 import { useState } from "react";
 import {
   LayoutDashboard,
@@ -20,32 +20,52 @@ import {
   Menu,
   X,
   Wheat,
+  Wallet,
+  PackageCheck,
+  FlaskConical,
+  ShieldCheck,
+  IdCard,
+  KeyRound,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean } | { section: string };
 
 const NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { section: "Operasional" },
+  { section: "Penjualan & Keuangan" },
   { href: "/penjualan", label: "Penjualan", icon: ShoppingCart },
   { href: "/pelanggan", label: "Pelanggan", icon: Users },
-  { href: "/inventori", label: "Inventori & Lot", icon: Boxes },
+  { href: "/keuangan", label: "Keuangan", icon: Wallet },
+  { section: "Operasional" },
+  { href: "/pengiriman", label: "Pengiriman", icon: PackageCheck },
+  { href: "/inventori", label: "Gudang & Lot", icon: Boxes },
   { href: "/produksi", label: "Produksi Benih", icon: Tractor },
   { href: "/mitra", label: "Petani Mitra", icon: Wheat },
+  { href: "/qc", label: "Lab / QC", icon: FlaskConical },
+  { href: "/mutu", label: "Mutu", icon: ShieldCheck },
   { href: "/pembelian", label: "Pembelian", icon: Truck },
   { href: "/produk", label: "Produk / Varietas", icon: Sprout },
-  { section: "Komunikasi & Analisis" },
+  { section: "Organisasi" },
+  { href: "/sdm", label: "SDM / Karyawan", icon: IdCard },
+  { href: "/pengguna", label: "Akun Pengguna", icon: KeyRound },
+  { section: "Lainnya" },
   { href: "/email", label: "Email", icon: Mail, badge: true },
   { href: "/laporan", label: "Laporan", icon: BarChart3 },
   { href: "/pengaturan", label: "Pengaturan", icon: Settings },
 ];
+
+/** Menu sesuai hak akses; judul bagian yang tidak punya isi ikut disembunyikan. */
+function visibleNav(modules: Module[]) {
+  const items = NAV.filter((item) => "section" in item || hasAny(modules, moduleForPath(item.href)));
+  return items.filter((item, i) => !("section" in item) || (items[i + 1] !== undefined && !("section" in items[i + 1])));
+}
 
 export function Sidebar({
   user,
   unread,
   logout,
 }: {
-  user: { name: string; email: string; role: string };
+  user: { name: string; email: string; role: string; modules: Module[] };
   unread: number;
   logout: () => Promise<void>;
 }) {
@@ -82,7 +102,7 @@ export function Sidebar({
           </div>
         </Link>
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
-          {NAV.filter((item) => "section" in item || canAccess(user.role, moduleForPath(item.href))).map((item, i) =>
+          {visibleNav(user.modules).map((item, i) =>
             "section" in item ? (
               <div key={i} className="px-3 pb-1.5 pt-5 text-[10px] font-semibold uppercase tracking-widest text-brand-300">
                 {item.section}
@@ -110,7 +130,7 @@ export function Sidebar({
         <div className="border-t border-white/10 px-5 py-4">
           <div className="truncate text-sm font-medium text-white">{user.name}</div>
           <div className="truncate text-xs text-brand-200">{user.email}</div>
-          <div className="mt-1 text-[11px] text-brand-300">{ROLES[user.role]?.label ?? user.role}</div>
+          <div className="mt-1 text-[11px] text-brand-300">{divisionLabel(user.role)}</div>
           <form action={logout}>
             <button className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-brand-200 hover:text-white">
               <LogOut size={14} /> Keluar

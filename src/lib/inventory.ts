@@ -23,11 +23,11 @@ export type ProductStock = {
   reserved: number;
 };
 
-/** Stok layak jual = lot yang belum kadaluarsa. Reserved = qty pesanan dikonfirmasi yang belum dikirim. */
+/** Stok layak jual = lot yang belum kadaluarsa dan tidak dikarantina Lab/QC. Reserved = qty pesanan dikonfirmasi yang belum dikirim. */
 export async function productStock(where = "1=1", ...params: (string | number)[]): Promise<ProductStock[]> {
   return await all<ProductStock>(
     `SELECT p.*,
-       COALESCE((SELECT SUM(qty_available) FROM lots l WHERE l.product_id = p.id AND l.expiry_date >= ?), 0) AS stock,
+       COALESCE((SELECT SUM(qty_available) FROM lots l WHERE l.product_id = p.id AND l.expiry_date >= ? AND l.qc_status = 'lulus'), 0) AS stock,
        COALESCE((SELECT SUM(i.qty) FROM so_items i JOIN sales_orders so ON so.id = i.so_id
                  WHERE i.product_id = p.id AND so.status = 'dikonfirmasi'), 0) AS reserved
      FROM products p WHERE ${where} ORDER BY p.category, p.name`,
@@ -48,7 +48,7 @@ export async function lowStockProducts() {
 export async function allocateFefo(soItemId: number, productId: number, qty: number, ref: string) {
   const lots = await all<{ id: number; lot_no: string; qty_available: number }>(
     `SELECT id, lot_no, qty_available FROM lots
-     WHERE product_id = ? AND qty_available > 0 AND expiry_date >= ?
+     WHERE product_id = ? AND qty_available > 0 AND expiry_date >= ? AND qc_status = 'lulus'
      ORDER BY expiry_date, id
      FOR UPDATE`,
     productId,

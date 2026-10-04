@@ -2,11 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { get, insert, nextNumber, run, tx } from "@/lib/db";
+import { get, insert, nextNumber, run } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
-import { createLot } from "@/lib/inventory";
-import { addDays, today } from "@/lib/format";
 
 export async function createProduction(fd: FormData) {
   await requireAccess("produksi");
@@ -40,8 +38,11 @@ export async function advanceProduction(fd: FormData) {
     id,
   );
   if (!p) redirect("/produksi");
+  // Keputusan lulus/gagal uji lab adalah wewenang Lab/QC (lihat actions/qc.ts).
+  if (p.status === "uji_lab" || next === "lulus") redirect(withMsg(back, "Batch sedang di Lab/QC. Keputusan lulus/gagal dilakukan divisi Lab/QC.", "error"));
   if (next === "gagal") {
-    await run("UPDATE productions SET status = 'gagal', notes = notes || ? WHERE id = ?", `\n[Gagal] ${str(fd, "reason")}`, id);
+    await run("UPDATE productions SET status = 'gagal', notes = notes || ? WHERE id = ?", `\n[Gagal di produksi] ${str(fd, "reason")}`, id);
+    revalidatePath("/produksi");
     redirect(withMsg(back, "Batch ditandai gagal."));
   }
   if (FLOW.indexOf(next) !== FLOW.indexOf(p.status) + 1) redirect(withMsg(back, "Urutan status tidak valid.", "error"));
@@ -50,36 +51,12 @@ export async function advanceProduction(fd: FormData) {
     const kg = numf(fd, "harvest_kg");
     if (kg <= 0) redirect(withMsg(back, "Isi berat benih hasil panen (kg).", "error"));
     await run("UPDATE productions SET status = 'panen', harvest_kg = ? WHERE id = ?", kg, id);
-  } else if (next === "lulus") {
-    const qty = Math.round(numf(fd, "qty"));
-    const germination = numf(fd, "germination");
-    if (qty <= 0 || germination <= 0) redirect(withMsg(back, "Isi jumlah kemasan dan hasil uji daya kecambah.", "error"));
-    const prodDate = str(fd, "prod_date") || today();
-    const lotNo = (str(fd, "lot_no") || `L${p.code.replace(/\D/g, "")}-${p.sku.split("-")[1] ?? "X"}`).toUpperCase();
-    if (await get("SELECT id FROM lots WHERE lot_no = ?", lotNo)) redirect(withMsg(back, `Nomor lot ${lotNo} sudah ada.`, "error"));
-    await tx(async () => {
-      await createLot({
-        lotNo,
-        productId: p.product_id,
-        productionId: id,
-        qty,
-        germination,
-        purity: numf(fd, "purity"),
-        moisture: numf(fd, "moisture"),
-        prodDate,
-        expiryDate: addDays(prodDate, p.shelf_life_months * 30),
-        location: str(fd, "location") || "Gudang Jember",
-        note: `Hasil produksi ${p.code}`,
-      });
-      await run("UPDATE productions SET status = 'lulus' WHERE id = ?", id);
-    });
-    revalidatePath("/inventori");
-    redirect(withMsg(back, `Lulus uji mutu. Lot ${lotNo} (${qty} kemasan) masuk stok.`));
   } else {
     await run("UPDATE productions SET status = ? WHERE id = ?", next, id);
   }
   revalidatePath("/produksi");
-  redirect(withMsg(back, "Status produksi diperbarui."));
+  revalidatePath("/qc");
+  redirect(withMsg(back, next === "uji_lab" ? "Sampel diserahkan ke Lab/QC untuk diuji." : "Status produksi diperbarui."));
 }
 
 export async function saveGrower(fd: FormData) {

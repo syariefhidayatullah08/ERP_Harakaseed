@@ -43,7 +43,7 @@ export async function registerAttachment(input: {
     meta.size,
     user.id,
   );
-  revalidatePath(ref.path(input.refId));
+  for (const p of ref.paths(input.refId)) revalidatePath(p);
   return { ok: true };
 }
 
@@ -55,6 +55,7 @@ export async function deleteAttachment(fd: FormData) {
   await requireAccess(ref.module);
   await del(row.pathname);
   await run("DELETE FROM attachments WHERE id = ?", id);
-  revalidatePath(ref.path(row.ref_id));
-  redirect(withMsg(str(fd, "back") || ref.path(row.ref_id), `Lampiran ${row.filename} dihapus.`));
+  for (const p of ref.paths(row.ref_id)) revalidatePath(p);
+  const back = str(fd, "back");
+  redirect(withMsg(back.startsWith("/") && !back.startsWith("//") ? back : ref.paths(row.ref_id)[0], `Lampiran ${row.filename} dihapus.`));
 }

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { all, get, getSetting, insert, nextNumber, run, tx } from "@/lib/db";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
@@ -101,13 +101,15 @@ export async function confirmOrder(fd: FormData) {
 }
 
 export async function shipOrder(fd: FormData) {
-  await requireAccess("penjualan");
+  const user = await requireAccess("pengiriman");
   const id = numf(fd, "id");
+  // Warehouse tidak membuka halaman penjualan; kembalikan ke halaman pengiriman.
+  const back = can(user, "penjualan") ? `/penjualan/${id}` : `/pengiriman/${id}`;
   const so = await get<{ id: number; so_no: string; status: string; customer_id: number; payment_terms: number }>(
     "SELECT so.*, c.payment_terms FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
     id,
   );
-  if (!so || so.status !== "dikonfirmasi") redirect(withMsg(`/penjualan/${id}`, "Hanya pesanan dikonfirmasi yang bisa dikirim.", "error"));
+  if (!so || so.status !== "dikonfirmasi") redirect(withMsg(back, "Hanya pesanan dikonfirmasi yang bisa dikirim.", "error"));
 
   const shipDate = str(fd, "shipped_at") || today();
   try {
@@ -126,19 +128,20 @@ export async function shipOrder(fd: FormData) {
       );
     });
   } catch (e) {
-    redirect(withMsg(`/penjualan/${id}`, e instanceof Error ? e.message : "Gagal memproses pengiriman.", "error"));
+    redirect(withMsg(back, e instanceof Error ? e.message : "Gagal memproses pengiriman.", "error"));
   }
 
   const notes = [await autoEmail("auto_email_shipping", id, shippingEmail, "sales_order", "sj"), await autoEmail("auto_email_invoice", id, invoiceEmail, "invoice", "invoice")]
     .filter(Boolean)
     .filter((v, i, a) => a.indexOf(v) === i);
   revalidatePath("/penjualan");
+  revalidatePath("/pengiriman");
   revalidatePath("/inventori");
-  redirect(withMsg(`/penjualan/${id}`, `Pesanan dikirim, stok dipotong (FEFO), invoice dibuat. ${notes.join(" ")}`));
+  redirect(withMsg(back, `Barang dikirim, stok dipotong per lot (FEFO). ${notes.join(" ")}`));
 }
 
 export async function recordPayment(fd: FormData) {
-  await requireAccess("penjualan");
+  await requireAccess("keuangan");
   const id = numf(fd, "id");
   const amount = numf(fd, "amount");
   const so = await get<{ total: number; paid: number; status: string }>("SELECT total, paid, status FROM sales_orders WHERE id = ?", id);
@@ -193,9 +196,10 @@ export async function deleteDraft(fd: FormData) {
 }
 
 export async function emailOrderDocument(fd: FormData) {
-  await requireAccess("penjualan");
   const id = numf(fd, "id");
   const kind = str(fd, "kind");
+  // Invoice & pengingat berisi tagihan → keuangan; konfirmasi & pengiriman → penjualan.
+  await requireAccess(kind === "invoice" || kind === "pengingat" ? "keuangan" : ["penjualan", "keuangan"]);
   const data = await loadOrderForEmail(id);
   if (!data) redirect("/penjualan");
   const to = str(fd, "to") || data.order.email;
@@ -216,7 +220,7 @@ export async function emailOrderDocument(fd: FormData) {
 
 /** Kirim pengingat ke semua invoice yang lewat jatuh tempo. */
 export async function sendOverdueReminders() {
-  await requireAccess("penjualan");
+  await requireAccess("keuangan");
   const overdue = await all<{ id: number }>(
     "SELECT so.id FROM sales_orders so WHERE so.invoice_no IS NOT NULL AND so.status != 'batal' AND so.paid < so.total AND so.due_date < ?",
     today(),
@@ -233,5 +237,5 @@ export async function sendOverdueReminders() {
     if (res.ok) ok++;
     else fail++;
   }
-  redirect(withMsg("/penjualan?tab=piutang", `Pengingat terkirim: ${ok}. Gagal/tanpa email: ${fail}.`, fail && !ok ? "error" : "msg"));
+  redirect(withMsg("/keuangan", `Pengingat terkirim: ${ok}. Gagal/tanpa email: ${fail}.`, fail && !ok ? "error" : "msg"));
 }

@@ -33,7 +33,7 @@ export default function LoginPage() {
             <Image src="/logo-wordmark.png" alt="HARAKA SEED" width={194} height={48} priority />
           </div>
           <h2 className="text-2xl font-bold">Masuk ke ERP</h2>
-          <p className="mb-6 mt-1 text-sm text-muted">Gunakan akun yang diberikan administrator.</p>
+          <p className="mb-6 mt-1 text-sm text-muted">Masuk dengan email pribadi yang didaftarkan untuk divisi Anda.</p>
           <LoginForm />
         </div>
       </div>

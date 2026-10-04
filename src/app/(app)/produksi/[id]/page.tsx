@@ -1,17 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { all, get } from "@/lib/db";
-import { PRD_STATUS, num, tanggal, today } from "@/lib/format";
+import { PRD_STATUS, num, tanggal } from "@/lib/format";
 import { Badge, Card, DL, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { advanceProduction } from "@/actions/production";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess } from "@/lib/session";
 import { Attachments } from "@/components/attachments";
 
 const FLOW = ["tanam", "panen", "prosesing", "uji_lab", "lulus"];
 
 export default async function ProductionDetail({ params, searchParams }: PageProps<"/produksi/[id]">) {
-  await requireAccess("produksi");
+  const user = await requireAccess(["produksi", "qc"]);
   const { id } = await params;
   const sp = await searchParams;
   const p = await get<{
@@ -83,7 +83,21 @@ export default async function ProductionDetail({ params, searchParams }: PagePro
           </div>
         </Card>
 
-        {next && p.status !== "gagal" && (
+        {p.status === "uji_lab" && (
+          <Card title="Menunggu hasil Lab / QC">
+            <div className="space-y-3 p-5 text-sm">
+              <p className="text-muted">
+                Sampel batch ini sedang diuji laboratorium. Divisi Lab/QC akan menentukan lulus (lot masuk stok gudang) atau tidak lulus.
+              </p>
+              {can(user, "qc") && (
+                <Link href="/qc" className="btn-primary">
+                  Buka antrian Lab/QC
+                </Link>
+              )}
+            </div>
+          </Card>
+        )}
+        {next && p.status !== "gagal" && p.status !== "uji_lab" && (
           <Card title={`Lanjut ke: ${PRD_STATUS[next].label}`}>
             <form action={advanceProduction} className="space-y-3 p-5">
               <input type="hidden" name="id" value={p.id} />
@@ -93,32 +107,8 @@ export default async function ProductionDetail({ params, searchParams }: PagePro
                   <input name="harvest_kg" type="number" step="0.1" min={0} required className="input" />
                 </Field>
               )}
-              {next === "lulus" && (
-                <>
-                  <p className="text-sm text-muted">Masukkan hasil uji lab. Lot baru akan otomatis masuk ke stok.</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label={`Jumlah kemasan (${p.pack_size}) *`}>
-                      <input name="qty" type="number" min={1} required className="input" />
-                    </Field>
-                    <Field label="No. lot (opsional)">
-                      <input name="lot_no" className="input font-mono uppercase" placeholder="otomatis" />
-                    </Field>
-                    <Field label="Daya kecambah (%) *">
-                      <input name="germination" type="number" step="0.1" min={0} max={100} required className="input" />
-                    </Field>
-                    <Field label="Kemurnian (%)">
-                      <input name="purity" type="number" step="0.1" min={0} max={100} defaultValue={98} className="input" />
-                    </Field>
-                    <Field label="Kadar air (%)">
-                      <input name="moisture" type="number" step="0.1" min={0} max={100} defaultValue={7} className="input" />
-                    </Field>
-                    <Field label="Tanggal kemas">
-                      <input name="prod_date" type="date" defaultValue={today()} className="input" />
-                    </Field>
-                  </div>
-                </>
-              )}
-              <SubmitButton className="btn-primary w-full">Tandai {PRD_STATUS[next].label}</SubmitButton>
+              {next === "uji_lab" && <p className="text-sm text-muted">Benih sudah diproses dan sampelnya diserahkan ke Lab/QC untuk diuji.</p>}
+              <SubmitButton className="btn-primary w-full">{next === "uji_lab" ? "Serahkan ke Lab/QC" : `Tandai ${PRD_STATUS[next].label}`}</SubmitButton>
             </form>
             <form action={advanceProduction} className="flex gap-2 border-t border-line p-5">
               <input type="hidden" name="id" value={p.id} />

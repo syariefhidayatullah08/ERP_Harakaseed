@@ -6,7 +6,7 @@ import { daysUntil, num, rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, Field, Flash, PageHeader, StatCard } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { createLotAction, sendLowStockAlert } from "@/actions/inventory";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Inventori" };
 
@@ -25,7 +25,7 @@ type LotRow = {
 };
 
 export default async function InventoryPage({ searchParams }: PageProps<"/inventori">) {
-  await requireAccess("inventori");
+  const user = await requireAccess("inventori");
   const sp = await searchParams;
   const productFilter = Number(sp.product ?? 0);
   const showEmpty = sp.all === "1";
@@ -63,7 +63,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       <Flash msg={sp.msg as string} error={sp.error as string} />
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Nilai stok (harga jual)" value={rupiah(value)} />
+        {can(user, "keuangan") ? <StatCard label="Nilai stok (harga jual)" value={rupiah(value)} /> : <StatCard label="Varietas berstok" value={stock.filter((p) => p.stock > 0).length} />}
         <StatCard label="Total kemasan" value={num(stock.reduce((s, p) => s + p.stock, 0))} hint={`${stock.length} varietas aktif`} />
         <StatCard label="Di bawah minimum" value={low.length} tone={low.length ? "danger" : "default"} />
         <StatCard label="Lot kadaluarsa (masih ada sisa)" value={expired.length} tone={expired.length ? "warn" : "default"} hint="Tidak dihitung sebagai stok jual" />

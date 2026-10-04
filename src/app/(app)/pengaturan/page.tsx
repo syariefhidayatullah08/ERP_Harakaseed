@@ -1,71 +1,160 @@
 import type { Metadata } from "next";
-import { CheckCircle2, XCircle } from "lucide-react";
-import { all, getSettings } from "@/lib/db";
+import { CheckCircle2, Lock, XCircle } from "lucide-react";
+import { getSettings } from "@/lib/db";
 import { emailInfo } from "@/lib/email";
-import { requireUser } from "@/lib/session";
-import { tanggal } from "@/lib/format";
+import { getAccessMatrix, requireUser } from "@/lib/session";
 import { Badge, Card, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
-import { addUser, changePassword, clearTransactions, deleteUser, saveSettings, updateUser } from "@/actions/settings";
-import { ROLES } from "@/lib/access";
+import { changePassword, clearTransactions, saveAccessMatrix, saveSettings, updateMyName } from "@/actions/settings";
 import { testEmail } from "@/actions/email";
+import { ALL_MODULES, DEFAULT_ACCESS, DIVISIONS, MODULE_HINT, MODULES, OWNER_ONLY, divisionLabel, resolveModules, type Division } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Pengaturan" };
 
 export default async function SettingsPage({ searchParams }: PageProps<"/pengaturan">) {
   const sp = await searchParams;
   const me = await requireUser();
+  const isOwner = me.role === "owner";
+
+  const myAccount = (
+    <Card title="Akun saya">
+      <div className="space-y-4 p-5">
+        <div className="text-sm">
+          <div className="text-muted">Email login</div>
+          <div className="font-medium">{me.email}</div>
+          <div className="mt-2 text-muted">Divisi</div>
+          <div className="font-medium">{divisionLabel(me.role)}</div>
+        </div>
+        <form action={updateMyName} className="flex items-end gap-2">
+          <Field label="Nama tampilan" className="flex-1">
+            <input name="name" defaultValue={me.name} required className="input" />
+          </Field>
+          <SubmitButton className="btn-secondary">Simpan</SubmitButton>
+        </form>
+        <form action={changePassword} className="grid gap-3 border-t border-line pt-4 sm:grid-cols-2">
+          <Field label="Kata sandi lama">
+            <input name="current" type="password" required autoComplete="current-password" className="input" />
+          </Field>
+          <Field label="Kata sandi baru (min. 8)">
+            <input name="next" type="password" minLength={8} required autoComplete="new-password" className="input" />
+          </Field>
+          <div className="sm:col-span-2">
+            <SubmitButton className="btn-secondary">Ganti kata sandi</SubmitButton>
+          </div>
+        </form>
+      </div>
+    </Card>
+  );
+
+  if (!isOwner) {
+    return (
+      <>
+        <PageHeader title="Pengaturan" subtitle="Akun Anda. Pengaturan perusahaan hanya bisa diubah Owner." />
+        <Flash msg={sp.msg as string} error={sp.error as string} />
+        <div className="max-w-2xl">{myAccount}</div>
+      </>
+    );
+  }
+
   const info = emailInfo();
-  const users = await all<{ id: number; name: string; email: string; role: string; created_at: string }>("SELECT * FROM users ORDER BY id");
   const settings = await getSettings();
   const s = (k: string) => settings[k] ?? "";
-  const isAdmin = me.role === "admin";
+  const matrix = await getAccessMatrix();
+  const divisions = Object.keys(DEFAULT_ACCESS) as Exclude<Division, "owner">[];
+  const modules = ALL_MODULES.filter((m) => !OWNER_ONLY.includes(m));
 
   return (
     <>
-      <PageHeader title="Pengaturan" subtitle="Profil perusahaan, koneksi email, otomasi, dan pengguna" />
+      <PageHeader title="Pengaturan" subtitle="Profil perusahaan, hak akses divisi, koneksi email, dan akun Anda" />
       <Flash msg={sp.msg as string} error={sp.error as string} />
 
+      <Card
+        title={<span id="akses">Hak akses divisi</span>}
+        className="mb-5 scroll-mt-6 overflow-hidden"
+        actions={matrix ? <Badge tone="orange">Disesuaikan</Badge> : <Badge>Bawaan</Badge>}
+      >
+        <form action={saveAccessMatrix}>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th className="min-w-48">Modul</th>
+                  <th className="text-center">{DIVISIONS.owner.label}</th>
+                  {divisions.map((d) => (
+                    <th key={d} className="text-center">
+                      {DIVISIONS[d].label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ALL_MODULES.map((m) => {
+                  const locked = OWNER_ONLY.includes(m);
+                  return (
+                    <tr key={m}>
+                      <td>
+                        <div className="font-medium">
+                          {MODULES[m]} {locked && <Lock size={12} className="inline text-orange-600" />}
+                        </div>
+                        <div className="text-xs text-muted">{MODULE_HINT[m]}</div>
+                      </td>
+                      <td className="text-center">
+                        <CheckCircle2 size={16} className="inline text-emerald-600" aria-label="Selalu" />
+                      </td>
+                      {divisions.map((d) => (
+                        <td key={d} className="text-center">
+                          {locked ? (
+                            <span className="text-xs text-muted">—</span>
+                          ) : (
+                            <input
+                              type="checkbox"
+                              name={`${d}:${m}`}
+                              defaultChecked={resolveModules(d, matrix).includes(m)}
+                              className="size-4 accent-brand-700"
+                              aria-label={`${DIVISIONS[d].label}: ${MODULES[m]}`}
+                            />
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-4">
+            <p className="text-xs text-muted">
+              <Lock size={12} className="inline text-orange-600" /> Keuangan selalu khusus Owner. Perubahan berlaku langsung untuk semua pengguna. ({modules.length} modul
+              bisa diatur)
+            </p>
+            <div className="flex gap-2">
+              <SubmitButton className="btn-secondary" name="reset" value="1" confirm="Kembalikan semua hak akses ke bawaan?">
+                Kembalikan bawaan
+              </SubmitButton>
+              <SubmitButton>Simpan hak akses</SubmitButton>
+            </div>
+          </div>
+        </form>
+      </Card>
+
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card
-          title="Koneksi email"
-          actions={info.configured ? <Badge tone="green">Terkonfigurasi</Badge> : <Badge tone="amber">Belum terhubung</Badge>}
-        >
+        {myAccount}
+
+        <Card title="Koneksi email perusahaan" actions={info.configured ? <Badge tone="green">Terkonfigurasi</Badge> : <Badge tone="amber">Belum terhubung</Badge>}>
           <div className="space-y-4 p-5 text-sm">
             <div className="flex items-center gap-2">
-              {info.configured ? <CheckCircle2 className="text-brand-600" size={18} /> : <XCircle className="text-amber-600" size={18} />}
+              {info.configured ? <CheckCircle2 className="text-emerald-600" size={18} /> : <XCircle className="text-amber-600" size={18} />}
               {info.configured ? (
                 <span>
                   Akun <b>{info.user}</b> · SMTP {info.smtp} · IMAP {info.imap}
                 </span>
               ) : (
-                <span>Isi kredensial email di file .env.local lalu jalankan ulang server.</span>
+                <span>Isi EMAIL_USER dan EMAIL_PASS (App Password Gmail) di environment Vercel.</span>
               )}
             </div>
-            <details className="rounded-lg bg-canvas p-4" open={!info.configured}>
-              <summary className="cursor-pointer font-semibold">Panduan menghubungkan Gmail</summary>
-              <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-muted">
-                <li>
-                  Login ke akun Google <b>{s("company_email")}</b>, aktifkan <b>Verifikasi 2 Langkah</b>.
-                </li>
-                <li>
-                  Buka <b>myaccount.google.com/apppasswords</b>, buat App Password bernama “ERP Haraka”.
-                </li>
-                <li>
-                  Di Gmail → Setelan → <b>Penerusan dan POP/IMAP</b>, pastikan IMAP aktif.
-                </li>
-                <li>
-                  Salin <code className="font-mono">.env.example</code> menjadi <code className="font-mono">.env.local</code>, isi:
-                  <pre className="mt-2 overflow-x-auto rounded bg-ink p-3 font-mono text-xs text-white">
-                    {`EMAIL_USER=${s("company_email")}\nEMAIL_PASS=xxxx xxxx xxxx xxxx`}
-                  </pre>
-                </li>
-                <li>Jalankan ulang server, lalu klik “Kirim email tes”.</li>
-              </ol>
-              <p className="mt-3 text-xs text-muted">
-                Memakai email domain sendiri (mis. @harakaseeds.com di Zoho/cPanel)? Isi juga SMTP_HOST, SMTP_PORT, IMAP_HOST, IMAP_PORT.
-              </p>
-            </details>
+            <p className="text-xs text-muted">
+              Email ini dipakai ERP untuk mengirim konfirmasi pesanan, invoice, undangan akun, dan reset kata sandi. Login pengguna memakai email pribadi masing-masing.
+            </p>
             <form action={testEmail}>
               <SubmitButton className="btn-secondary" pendingText="Menguji koneksi…">
                 Kirim email tes ke {s("alert_email") || s("company_email")}
@@ -79,171 +168,67 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
             <input type="hidden" name="toggles" value="1" />
             {[
               ["auto_email_order", "Kirim konfirmasi ke pelanggan saat pesanan dikonfirmasi"],
-              ["auto_email_shipping", "Kirim info pengiriman (kurir & resi) saat barang dikirim"],
-              ["auto_email_invoice", "Kirim invoice saat barang dikirim"],
+              ["auto_email_shipping", "Kirim info pengiriman (kurir, resi, surat jalan PDF) saat barang dikirim"],
+              ["auto_email_invoice", "Kirim invoice PDF saat barang dikirim"],
             ].map(([k, label]) => (
               <label key={k} className="flex items-start gap-3">
-                <input type="checkbox" name={k} defaultChecked={s(k) === "1"} className="mt-0.5 accent-brand-700" disabled={!isAdmin} />
+                <input type="checkbox" name={k} defaultChecked={s(k) === "1"} className="mt-0.5 accent-brand-700" />
                 {label}
               </label>
             ))}
             <Field label="Email penerima peringatan internal (stok rendah, email tes)">
-              <input name="alert_email" type="email" defaultValue={s("alert_email")} className="input" disabled={!isAdmin} />
+              <input name="alert_email" type="email" defaultValue={s("alert_email")} className="input" />
             </Field>
-            {isAdmin && <SubmitButton>Simpan</SubmitButton>}
+            <SubmitButton>Simpan</SubmitButton>
+          </form>
+        </Card>
+
+        <Card title="Mulai dengan data asli">
+          <form action={clearTransactions} className="space-y-3 p-5 text-sm">
+            <p className="text-muted">
+              Hapus semua transaksi & data contoh (pesanan, pelanggan, supplier, petani, lot, produksi, uji lab, keluhan, email, lampiran). Produk, pengaturan, akun pengguna, dan
+              data karyawan tetap.
+            </p>
+            <Field label='Ketik "HAPUS" untuk konfirmasi'>
+              <input name="confirm" className="input" autoComplete="off" />
+            </Field>
+            <SubmitButton className="btn-danger" confirm="Yakin menghapus semua data transaksi? Tindakan ini tidak bisa dibatalkan.">
+              Hapus data contoh & transaksi
+            </SubmitButton>
           </form>
         </Card>
 
         <Card title="Profil perusahaan (kop email, invoice, surat jalan)" className="lg:col-span-2">
           <form action={saveSettings} className="grid gap-4 p-5 sm:grid-cols-2">
             <Field label="Nama perusahaan">
-              <input name="company_name" defaultValue={s("company_name")} className="input" disabled={!isAdmin} />
+              <input name="company_name" defaultValue={s("company_name")} className="input" />
             </Field>
             <Field label="Merek">
-              <input name="company_brand" defaultValue={s("company_brand")} className="input" disabled={!isAdmin} />
+              <input name="company_brand" defaultValue={s("company_brand")} className="input" />
             </Field>
             <Field label="Tagline">
-              <input name="company_tagline" defaultValue={s("company_tagline")} className="input" disabled={!isAdmin} />
+              <input name="company_tagline" defaultValue={s("company_tagline")} className="input" />
             </Field>
             <Field label="Website">
-              <input name="company_website" defaultValue={s("company_website")} className="input" disabled={!isAdmin} />
+              <input name="company_website" defaultValue={s("company_website")} className="input" />
             </Field>
             <Field label="Telepon / WA">
-              <input name="company_phone" defaultValue={s("company_phone")} className="input" disabled={!isAdmin} />
+              <input name="company_phone" defaultValue={s("company_phone")} className="input" />
             </Field>
             <Field label="Email perusahaan">
-              <input name="company_email" type="email" defaultValue={s("company_email")} className="input" disabled={!isAdmin} />
+              <input name="company_email" type="email" defaultValue={s("company_email")} className="input" />
             </Field>
             <Field label="Alamat" className="sm:col-span-2">
-              <input name="company_address" defaultValue={s("company_address")} className="input" disabled={!isAdmin} />
+              <input name="company_address" defaultValue={s("company_address")} className="input" />
             </Field>
             <Field label="Rekening pembayaran (tampil di invoice & email)" className="sm:col-span-2">
-              <input name="bank_info" defaultValue={s("bank_info")} className="input" disabled={!isAdmin} placeholder="Bank BRI 0000-00-000000-00-0 a.n. PT Benih Haraka Sejahtera" />
+              <input name="bank_info" defaultValue={s("bank_info")} className="input" placeholder="Bank BRI 0000-00-000000-00-0 a.n. PT Benih Haraka Sejahtera" />
             </Field>
-            {isAdmin && (
-              <div className="flex justify-end sm:col-span-2">
-                <SubmitButton>Simpan profil</SubmitButton>
-              </div>
-            )}
+            <div className="flex justify-end sm:col-span-2">
+              <SubmitButton>Simpan profil</SubmitButton>
+            </div>
           </form>
         </Card>
-
-        <Card title="Pengguna" className="overflow-hidden">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Nama</th>
-                <th>Peran</th>
-                <th>Dibuat</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <div className="font-medium">{u.name}</div>
-                    <div className="text-xs text-muted">{u.email}</div>
-                    {isAdmin && (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-xs text-brand-700">Ubah peran / reset sandi</summary>
-                        <form action={updateUser} className="mt-2 flex flex-wrap items-end gap-2">
-                          <input type="hidden" name="id" value={u.id} />
-                          <select name="role" defaultValue={u.role} className="input w-auto py-1 text-xs">
-                            {Object.entries(ROLES).map(([k, r]) => (
-                              <option key={k} value={k}>
-                                {r.label}
-                              </option>
-                            ))}
-                          </select>
-                          <input name="password" type="password" minLength={8} placeholder="Sandi baru (opsional)" className="input w-44 py-1 text-xs" />
-                          <SubmitButton className="btn-secondary btn-sm">Simpan</SubmitButton>
-                        </form>
-                        {u.id !== me.id && (
-                          <form action={deleteUser} className="mt-2">
-                            <input type="hidden" name="id" value={u.id} />
-                            <SubmitButton className="btn-danger btn-sm" confirm={`Hapus pengguna ${u.email}?`}>
-                              Hapus pengguna
-                            </SubmitButton>
-                          </form>
-                        )}
-                      </details>
-                    )}
-                  </td>
-                  <td className="align-top">
-                    <Badge tone={u.role === "admin" ? "purple" : u.role === "sales" ? "blue" : u.role === "gudang" ? "amber" : "gray"}>
-                      {ROLES[u.role]?.label ?? u.role}
-                    </Badge>
-                  </td>
-                  <td className="align-top text-muted">{tanggal(u.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {isAdmin && (
-            <form action={addUser} className="grid gap-3 border-t border-line p-5 sm:grid-cols-2">
-              <Field label="Nama">
-                <input name="name" className="input" />
-              </Field>
-              <Field label="Email *">
-                <input name="email" type="email" required className="input" />
-              </Field>
-              <Field label="Kata sandi * (min. 8)">
-                <input name="password" type="password" minLength={8} required className="input" />
-              </Field>
-              <Field label="Peran">
-                <select name="role" defaultValue="staff" className="input">
-                  {Object.entries(ROLES).map(([k, r]) => (
-                    <option key={k} value={k}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <ul className="space-y-0.5 text-xs text-muted sm:col-span-2">
-                {Object.values(ROLES).map((r) => (
-                  <li key={r.label}>
-                    <b className="text-ink">{r.label}:</b> {r.description}
-                  </li>
-                ))}
-              </ul>
-              <div className="sm:col-span-2">
-                <SubmitButton className="btn-secondary">Tambah pengguna</SubmitButton>
-              </div>
-            </form>
-          )}
-        </Card>
-
-        <div className="space-y-5">
-          <Card title="Ganti kata sandi saya">
-            <form action={changePassword} className="grid gap-3 p-5 sm:grid-cols-2">
-              <Field label="Kata sandi lama">
-                <input name="current" type="password" required className="input" />
-              </Field>
-              <Field label="Kata sandi baru">
-                <input name="next" type="password" minLength={8} required className="input" />
-              </Field>
-              <div className="sm:col-span-2">
-                <SubmitButton className="btn-secondary">Ganti kata sandi</SubmitButton>
-              </div>
-            </form>
-          </Card>
-          {isAdmin && (
-            <Card title="Mulai dengan data asli">
-              <form action={clearTransactions} className="space-y-3 p-5 text-sm">
-                <p className="text-muted">
-                  Sistem terisi data contoh (pelanggan/supplier bertanda “Contoh”, pesanan, lot awal). Hapus semua transaksi, pelanggan, supplier, petani,
-                  lot, dan riwayat email. Produk, pengaturan, dan pengguna tetap ada.
-                </p>
-                <Field label='Ketik "HAPUS" untuk konfirmasi'>
-                  <input name="confirm" className="input" autoComplete="off" />
-                </Field>
-                <SubmitButton className="btn-danger" confirm="Yakin menghapus semua data transaksi? Tindakan ini tidak bisa dibatalkan.">
-                  Hapus data contoh & transaksi
-                </SubmitButton>
-              </form>
-            </Card>
-          )}
-        </div>
       </div>
     </>
   );

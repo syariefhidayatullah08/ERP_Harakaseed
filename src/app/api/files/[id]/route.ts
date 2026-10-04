@@ -2,7 +2,7 @@ import { toId } from "@/lib/form";
 import { get as getBlob } from "@vercel/blob";
 import { get } from "@/lib/db";
 import { currentUser } from "@/lib/session";
-import { canAccess } from "@/lib/access";
+import { hasAny } from "@/lib/access";
 import { ATTACHMENT_REFS, isAttachmentRef } from "@/lib/attachments";
 
 /** Buka/unduh lampiran bukti. File disimpan privat; hanya pengguna dengan akses modul terkait yang bisa membuka. */
@@ -15,7 +15,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/files/[id]">
     toId(id),
   );
   if (!row || !isAttachmentRef(row.ref_type)) return new Response("Tidak ditemukan", { status: 404 });
-  if (!canAccess(user.role, ATTACHMENT_REFS[row.ref_type].module)) return new Response("Forbidden", { status: 403 });
+  if (!hasAny(user.modules, ATTACHMENT_REFS[row.ref_type].module)) return new Response("Forbidden", { status: 403 });
 
   const file = await getBlob(row.pathname, { access: "private" });
   if (!file || file.statusCode !== 200) return new Response("File tidak ditemukan di penyimpanan", { status: 404 });

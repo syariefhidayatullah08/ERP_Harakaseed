@@ -9,11 +9,13 @@ import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui
 import { EmailCompose } from "@/components/email-compose";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { CustomerForm, type Customer } from "../customer-form";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess } from "@/lib/session";
 import { Attachments } from "@/components/attachments";
 
 export default async function CustomerDetail({ params, searchParams }: PageProps<"/pelanggan/[id]">) {
-  await requireAccess("pelanggan");
+  const user = await requireAccess("pelanggan");
+  const finance = can(user, "keuangan");
+  const sales = can(user, "penjualan") || finance;
   const { id } = await params;
   const sp = await searchParams;
   const c = await get<Customer>("SELECT * FROM customers WHERE id = ?", toId(id));
@@ -27,9 +29,10 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
   const revenue = valid.reduce((s, o) => s + o.total, 0);
   const outstanding = valid.filter((o) => o.invoice_no).reduce((s, o) => s + (o.total - o.paid), 0);
   const emails = await all<EmailRow>(
-    `SELECT * FROM emails WHERE (ref_type = 'customer' AND ref_id = ?)
+    `SELECT * FROM emails WHERE ((ref_type = 'customer' AND ref_id = ?)
        OR (ref_type IN ('sales_order','invoice') AND ref_id IN (SELECT id FROM sales_orders WHERE customer_id = ?))
-       OR (? != '' AND (lower(to_addr) ILIKE ? OR lower(from_addr) ILIKE ?))
+       OR (? != '' AND (lower(to_addr) ILIKE ? OR lower(from_addr) ILIKE ?)))
+       ${finance ? "" : "AND COALESCE(ref_type, '') <> 'invoice'"}
      ORDER BY created_at DESC LIMIT 30`,
     c.id,
     c.id,
@@ -53,22 +56,30 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
                 <MessageCircle size={15} className="text-[#25D366]" /> WhatsApp
               </a>
             )}
-            <Link href={`/penjualan/baru?customer=${c.id}`} className="btn-primary">
-              + Buat pesanan
-            </Link>
+            {can(user, "penjualan") && (
+              <Link href={`/penjualan/baru?customer=${c.id}`} className="btn-primary">
+                + Buat pesanan
+              </Link>
+            )}
           </>
         }
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total omzet" value={rupiah(revenue)} hint={`${valid.length} pesanan`} />
-        <StatCard label="Piutang" value={rupiah(outstanding)} tone={outstanding > 0 ? "warn" : "default"} />
+        {finance ? (
+          <>
+            <StatCard label="Total omzet" value={rupiah(revenue)} hint={`${valid.length} pesanan`} />
+            <StatCard label="Piutang" value={rupiah(outstanding)} tone={outstanding > 0 ? "warn" : "default"} />
+          </>
+        ) : (
+          <StatCard label="Jumlah pesanan" value={valid.length} />
+        )}
         <StatCard label="Termin" value={`${c.payment_terms} hari`} />
         <StatCard label="Order terakhir" value={tanggal(orders[0]?.order_date)} />
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="space-y-5">
-          <Card title="Riwayat pesanan" className="overflow-hidden">
+          {sales && <Card title="Riwayat pesanan" className="overflow-hidden">
             {orders.length ? (
               <table className="table">
                 <thead>
@@ -92,7 +103,7 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
                         <td className="text-muted">{tanggal(o.order_date)}</td>
                         <td className="space-x-1">
                           <Badge tone={SO_STATUS[o.status]?.tone}>{SO_STATUS[o.status]?.label}</Badge>
-                          {o.invoice_no && o.status !== "batal" && <Badge tone={ps.tone}>{ps.label}</Badge>}
+                          {finance && o.invoice_no && o.status !== "batal" && <Badge tone={ps.tone}>{ps.label}</Badge>}
                         </td>
                         <td className="num">{rupiah(o.total)}</td>
                       </tr>
@@ -103,14 +114,16 @@ export default async function CustomerDetail({ params, searchParams }: PageProps
             ) : (
               <Empty>Belum ada pesanan.</Empty>
             )}
-          </Card>
+          </Card>}
           <Card title="Data pelanggan">
             <CustomerForm c={c} />
           </Card>
         </div>
         <div className="space-y-5">
           <Card title="Kirim email ke pelanggan">
-            {c.email ? (
+            {!can(user, "email") ? (
+              <Empty>Kirim email ke pelanggan melalui divisi yang punya akses Email.</Empty>
+            ) : c.email ? (
               <EmailCompose to={c.email} back={`/pelanggan/${c.id}`} refType="customer" refId={c.id} message={`Yth. ${c.contact_person || c.name},\n\n`} />
             ) : (
               <Empty>Isi email pelanggan pada form data pelanggan untuk mengirim email.</Empty>

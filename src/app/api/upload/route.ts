@@ -1,6 +1,6 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { currentUser } from "@/lib/session";
-import { canAccess } from "@/lib/access";
+import { hasAny } from "@/lib/access";
 import { ALLOWED_CONTENT_TYPES, ATTACHMENT_REFS, isAttachmentRef, MAX_ATTACHMENT_BYTES } from "@/lib/attachments";
 
 /**
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
         if (!user) throw new Error("Silakan login ulang.");
         const { refType, refId } = JSON.parse(clientPayload ?? "{}") as { refType?: string; refId?: number };
         if (!isAttachmentRef(refType) || !Number.isInteger(refId)) throw new Error("Dokumen tujuan tidak valid.");
-        if (!canAccess(user.role, ATTACHMENT_REFS[refType].module)) throw new Error("Tidak punya akses ke dokumen ini.");
+        if (!hasAny(user.modules, ATTACHMENT_REFS[refType].module)) throw new Error("Tidak punya akses ke dokumen ini.");
         if (!pathname.startsWith(`evidence/${refType}/${refId}/`)) throw new Error("Lokasi file tidak valid.");
         return {
           allowedContentTypes: ALLOWED_CONTENT_TYPES,

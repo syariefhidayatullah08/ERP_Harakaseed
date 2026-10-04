@@ -2,17 +2,18 @@ import { toId } from "@/lib/form";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { all, get, getSettings } from "@/lib/db";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess } from "@/lib/session";
 import { num, rupiah, tanggal } from "@/lib/format";
 import { PrintButton } from "@/components/buttons";
 
 export const dynamic = "force-dynamic";
 
 export default async function PrintOrder({ params, searchParams }: PageProps<"/cetak/pesanan/[id]">) {
-  await requireAccess("penjualan");
   const { id } = await params;
   const sp = await searchParams;
   const deliveryNote = sp.doc === "sj";
+  // Surat jalan: penjualan/pengiriman. Pesanan/invoice (berisi harga & tagihan): penjualan/keuangan, dicek lagi di bawah.
+  const user = await requireAccess(deliveryNote ? ["penjualan", "pengiriman", "keuangan"] : ["penjualan", "keuangan"]);
   const o = await get<{
     id: number; so_no: string; customer: string; contact_person: string; phone: string; address: string; city: string; order_date: string;
     subtotal: number; discount_pct: number; tax_pct: number; total: number; paid: number; invoice_no: string | null; due_date: string | null;
@@ -23,6 +24,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
     toId(id),
   );
   if (!o) notFound();
+  if (!deliveryNote && o.invoice_no && !can(user, "keuangan")) notFound();
   const items = await all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
     "SELECT i.*, p.name, p.crop, p.pack_size FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ?",
     o.id,

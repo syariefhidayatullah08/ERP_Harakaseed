@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/sidebar";
-import { requireUser } from "@/lib/session";
+import { can, requireUser } from "@/lib/session";
 import { get } from "@/lib/db";
 import { logout } from "@/actions/auth";
 
@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
-  const unread = (await get<{ n: number }>("SELECT COUNT(*) AS n FROM emails WHERE direction = 'in' AND is_read = 0"))?.n ?? 0;
+  const unread = can(user, "email")
+    ? ((await get<{ n: number }>("SELECT COUNT(*) AS n FROM emails WHERE direction = 'in' AND is_read = 0"))?.n ?? 0)
+    : 0;
   return (
     <div className="min-h-screen">
       <Sidebar user={user} unread={unread} logout={logout} />

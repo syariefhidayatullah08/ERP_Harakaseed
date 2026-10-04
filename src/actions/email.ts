@@ -32,7 +32,8 @@ export async function syncInboxAction() {
 }
 
 export async function testEmail() {
-  await requireUser();
+  const user = await requireUser();
+  if (user.role !== "owner") redirect(withMsg("/pengaturan", "Hanya Owner yang dapat menguji koneksi email.", "error"));
   const check = await verifySmtp();
   if (!check.ok) redirect(withMsg("/pengaturan", `Koneksi SMTP gagal: ${check.error}`, "error"));
   const to = await getSetting("alert_email") || await getSetting("company_email");

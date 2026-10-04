@@ -378,14 +378,74 @@ const SCHEMA_SQL = `
     ALTER TABLE products ADD COLUMN IF NOT EXISTS yield_potential TEXT NOT NULL DEFAULT '';
     ALTER TABLE products ADD COLUMN IF NOT EXISTS fruit_weight TEXT NOT NULL DEFAULT '';
     ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT NOT NULL DEFAULT '';
+
+    -- Akun per divisi (v3): role = kode divisi
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_requested_at TEXT;
+    UPDATE users SET role = 'owner' WHERE role = 'admin';
+    UPDATE users SET role = 'marketing' WHERE role = 'sales';
+    UPDATE users SET role = 'warehouse' WHERE role = 'gudang';
+    UPDATE users SET role = 'admin_sdm' WHERE role = 'staff';
+
+    -- Lab / QC: riwayat uji per lot
+    CREATE TABLE IF NOT EXISTS lot_tests (
+      id SERIAL PRIMARY KEY,
+      lot_id INTEGER NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
+      test_date TEXT NOT NULL,
+      germination DOUBLE PRECISION NOT NULL,
+      purity DOUBLE PRECISION NOT NULL DEFAULT 0,
+      moisture DOUBLE PRECISION NOT NULL DEFAULT 0,
+      result TEXT NOT NULL DEFAULT 'lulus',
+      note TEXT NOT NULL DEFAULT '',
+      tested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_lot_tests_lot ON lot_tests(lot_id);
+    -- 'lulus' = boleh dijual; 'karantina' = ditahan Lab/QC (tidak dihitung stok jual & tidak dialokasikan)
+    ALTER TABLE lots ADD COLUMN IF NOT EXISTS qc_status TEXT NOT NULL DEFAULT 'lulus';
+    INSERT INTO settings (key, value) VALUES ('qc_min_germination', '85') ON CONFLICT (key) DO NOTHING;
+
+    -- Mutu: keluhan pelanggan
+    CREATE TABLE IF NOT EXISTS complaints (
+      id SERIAL PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      report_date TEXT NOT NULL,
+      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+      product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+      lot_id INTEGER REFERENCES lots(id) ON DELETE SET NULL,
+      category TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'sedang',
+      description TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'baru',
+      root_cause TEXT NOT NULL DEFAULT '',
+      action_taken TEXT NOT NULL DEFAULT '',
+      closed_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+
+    -- SDM: data karyawan
+    CREATE TABLE IF NOT EXISTS employees (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      division TEXT NOT NULL,
+      position TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      join_date TEXT,
+      status TEXT NOT NULL DEFAULT 'aktif',
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
   `;
 
 
 async function seed(ex: Ex) {
   await ex(
-    "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'admin')",
-    "Administrator",
-    (process.env.ADMIN_EMAIL ?? "ptbenihharakasejahtera@gmail.com").toLowerCase(),
+    "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'owner')",
+    "Owner",
+    (process.env.ADMIN_EMAIL ?? "nurainimaulidia@gmail.com").toLowerCase(),
     hashPassword(process.env.ADMIN_PASSWORD ?? "haraka123"),
   );
 

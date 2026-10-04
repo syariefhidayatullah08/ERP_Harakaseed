@@ -3,12 +3,13 @@ import type { Metadata } from "next";
 import { all } from "@/lib/db";
 import { CUSTOMER_KIND, rupiah, tanggal } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader } from "@/components/ui";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Pelanggan" };
 
 export default async function CustomersPage({ searchParams }: PageProps<"/pelanggan">) {
-  await requireAccess("pelanggan");
+  const user = await requireAccess("pelanggan");
+  const finance = can(user, "keuangan");
   const sp = await searchParams;
   const q = String(sp.q ?? "").trim();
   const kind = String(sp.kind ?? "");
@@ -23,7 +24,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/pelang
        (SELECT MAX(order_date) FROM sales_orders so WHERE so.customer_id = c.id) last_order
      FROM customers c
      WHERE (c.name ILIKE ? OR c.city ILIKE ? OR c.email ILIKE ? OR c.code ILIKE ?) AND (? = '' OR c.kind = ?)
-     ORDER BY revenue DESC, c.name`,
+     ORDER BY ${finance ? "revenue DESC, " : ""}c.name`,
     `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, kind, kind,
   );
 
@@ -61,8 +62,8 @@ export default async function CustomersPage({ searchParams }: PageProps<"/pelang
                   <th>Jenis</th>
                   <th>Kontak</th>
                   <th className="num">Pesanan</th>
-                  <th className="num">Omzet</th>
-                  <th className="num">Piutang</th>
+                  {finance && <th className="num">Omzet</th>}
+                  {finance && <th className="num">Piutang</th>}
                   <th>Order terakhir</th>
                 </tr>
               </thead>
@@ -85,8 +86,8 @@ export default async function CustomersPage({ searchParams }: PageProps<"/pelang
                       <div className={c.email ? "text-muted" : "text-amber-700"}>{c.email || "email belum diisi"}</div>
                     </td>
                     <td className="num">{c.orders}</td>
-                    <td className="num font-medium">{rupiah(c.revenue)}</td>
-                    <td className={`num ${c.outstanding > 0 ? "font-medium text-amber-700" : "text-muted"}`}>{rupiah(c.outstanding)}</td>
+                    {finance && <td className="num font-medium">{rupiah(c.revenue)}</td>}
+                    {finance && <td className={`num ${c.outstanding > 0 ? "font-medium text-amber-700" : "text-muted"}`}>{rupiah(c.outstanding)}</td>}
                     <td className="whitespace-nowrap text-muted">{tanggal(c.last_order)}</td>
                   </tr>
                 ))}

@@ -1,13 +1,18 @@
 import type { Module } from "./access";
 
-/** Dokumen yang bisa diberi lampiran bukti, beserta modul yang mengatur hak aksesnya. */
+/**
+ * Dokumen yang bisa diberi lampiran bukti. `module` = divisi mana saja yang boleh melihat/mengunggah
+ * (cukup punya salah satu). `paths` = halaman yang perlu diperbarui setelah lampiran berubah.
+ */
 export const ATTACHMENT_REFS = {
-  sales_order: { module: "penjualan", path: (id: number) => `/penjualan/${id}` },
-  customer: { module: "pelanggan", path: (id: number) => `/pelanggan/${id}` },
-  lot: { module: "inventori", path: (id: number) => `/inventori/${id}` },
-  production: { module: "produksi", path: (id: number) => `/produksi/${id}` },
-  purchase_order: { module: "pembelian", path: (id: number) => `/pembelian/${id}` },
-} satisfies Record<string, { module: Module; path: (id: number) => string }>;
+  sales_order: { module: ["penjualan", "pengiriman", "keuangan"], paths: (id: number) => [`/penjualan/${id}`, `/pengiriman/${id}`] },
+  customer: { module: ["pelanggan"], paths: (id: number) => [`/pelanggan/${id}`] },
+  lot: { module: ["inventori", "qc"], paths: (id: number) => [`/inventori/${id}`, `/qc/lot/${id}`] },
+  production: { module: ["produksi", "qc"], paths: (id: number) => [`/produksi/${id}`, `/qc`] },
+  purchase_order: { module: ["pembelian"], paths: (id: number) => [`/pembelian/${id}`] },
+  complaint: { module: ["mutu"], paths: (id: number) => [`/mutu/${id}`] },
+  employee: { module: ["sdm"], paths: (id: number) => [`/sdm/${id}`] },
+} satisfies Record<string, { module: Module[]; paths: (id: number) => string[] }>;
 
 export type AttachmentRef = keyof typeof ATTACHMENT_REFS;
 
@@ -20,6 +25,8 @@ export const ATTACHMENT_CATEGORIES: Record<AttachmentRef, string[]> = {
   lot: ["Hasil uji lab", "Sertifikat benih", "Foto kemasan", "Berita acara stock opname", "Lainnya"],
   production: ["Foto lapangan", "Hasil uji lab", "Berita acara panen", "Lainnya"],
   purchase_order: ["Nota / faktur supplier", "Bukti transfer", "Foto barang diterima", "Lainnya"],
+  complaint: ["Foto keluhan dari pelanggan", "Hasil investigasi", "Berita acara penggantian", "Lainnya"],
+  employee: ["KTP", "Kontrak kerja", "Ijazah / sertifikat", "Lainnya"],
 };
 
 export const ALLOWED_CONTENT_TYPES = [

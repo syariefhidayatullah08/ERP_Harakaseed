@@ -395,3 +395,34 @@ export async function customEmail(subject: string, message: string) {
     html: await layout(escapeHtml(subject), escapeHtml(message).replace(/\n/g, "<br>")),
   };
 }
+
+const button = (href: string, label: string) =>
+  `<p style="margin:24px 0"><a href="${escapeHtml(href)}" style="background:#0077a8;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block">${label}</a></p>
+   <p style="font-size:12px;color:#5f6b76">Jika tombol tidak bisa diklik, salin tautan ini ke browser:<br><span style="word-break:break-all">${escapeHtml(href)}</span></p>`;
+
+/** Undangan akun baru (berlaku 72 jam) atau reset kata sandi (berlaku 1 jam). */
+export async function passwordLinkEmail(name: string, link: string, kind: "reset" | "invite", division?: string) {
+  if (kind === "invite") {
+    return {
+      subject: "Undangan akun ERP Haraka Seed",
+      html: await layout(
+        "Akun ERP Anda sudah dibuat",
+        `<p>Halo ${escapeHtml(name)},</p>
+         <p>Anda diundang menggunakan ERP PT Benih Haraka Sejahtera${division ? ` sebagai <b>${escapeHtml(division)}</b>` : ""}.
+         Login memakai alamat email ini. Klik tombol di bawah untuk membuat kata sandi Anda.</p>
+         ${button(link, "Buat kata sandi")}
+         <p style="font-size:12px;color:#5f6b76">Tautan berlaku 72 jam dan hanya bisa dipakai sekali.</p>`,
+      ),
+    };
+  }
+  return {
+    subject: "Reset kata sandi ERP Haraka Seed",
+    html: await layout(
+      "Permintaan reset kata sandi",
+      `<p>Halo ${escapeHtml(name)},</p>
+       <p>Kami menerima permintaan untuk mengganti kata sandi akun ERP Anda. Klik tombol di bawah untuk membuat kata sandi baru.</p>
+       ${button(link, "Buat kata sandi baru")}
+       <p style="font-size:12px;color:#5f6b76">Tautan berlaku 1 jam dan hanya bisa dipakai sekali. Abaikan email ini jika Anda tidak memintanya; kata sandi Anda tidak berubah.</p>`,
+    ),
+  };
+}

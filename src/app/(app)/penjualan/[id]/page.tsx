@@ -10,11 +10,13 @@ import { EmailList, type EmailRow } from "@/components/email-list";
 import { cancelOrder, confirmOrder, deleteDraft, emailOrderDocument, recordPayment, shipOrder } from "@/actions/sales";
 import { productStock } from "@/lib/inventory";
 import { orderWhatsappMessages, waLink } from "@/lib/whatsapp";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess } from "@/lib/session";
 import { Attachments } from "@/components/attachments";
 
 export default async function OrderDetail({ params, searchParams }: PageProps<"/penjualan/[id]">) {
-  await requireAccess("penjualan");
+  const user = await requireAccess(["penjualan", "keuangan"]);
+  const finance = can(user, "keuangan");
+  const sales = can(user, "penjualan");
   const { id } = await params;
   const sp = await searchParams;
   const o = await get<{
@@ -42,7 +44,11 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
     o.id,
   );
   const settings = await getSettings();
-  const emails = await all<EmailRow>("SELECT * FROM emails WHERE ref_type IN ('sales_order','invoice') AND ref_id = ? ORDER BY id DESC", o.id);
+  // Email invoice/pengingat berisi tagihan → hanya untuk keuangan.
+  const emails = await all<EmailRow>(
+    `SELECT * FROM emails WHERE ref_type IN ${finance ? "('sales_order','invoice')" : "('sales_order')"} AND ref_id = ? ORDER BY id DESC`,
+    o.id,
+  );
   const stock = o.status === "dikonfirmasi" ? await productStock() : [];
   const shortages = items
     .map((i) => ({ name: i.name, need: i.qty, have: stock.find((s) => s.id === i.product_id)?.stock ?? 0 }))
@@ -60,24 +66,28 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
         title={
           <span className="flex flex-wrap items-center gap-3">
             {o.so_no} <Badge tone={st?.tone}>{st?.label}</Badge>
-            {o.invoice_no && o.status !== "batal" && <Badge tone={ps.tone}>{ps.label}</Badge>}
+            {finance && o.invoice_no && o.status !== "batal" && <Badge tone={ps.tone}>{ps.label}</Badge>}
           </span>
         }
-        subtitle={`${tanggal(o.order_date)}${o.invoice_no ? ` · Invoice ${o.invoice_no}` : ""}`}
-        back={{ href: "/penjualan", label: "Penjualan" }}
+        subtitle={`${tanggal(o.order_date)}${finance && o.invoice_no ? ` · Invoice ${o.invoice_no}` : ""}`}
+        back={sales ? { href: "/penjualan", label: "Penjualan" } : { href: "/keuangan", label: "Keuangan" }}
         actions={
           <>
-            <Link href={`/cetak/pesanan/${o.id}`} target="_blank" className="btn-secondary">
-              <Printer size={15} /> {o.invoice_no ? "Invoice" : "Pesanan"}
-            </Link>
+            {(finance || !o.invoice_no) && (
+              <Link href={`/cetak/pesanan/${o.id}`} target="_blank" className="btn-secondary">
+                <Printer size={15} /> {o.invoice_no ? "Invoice" : "Pesanan"}
+              </Link>
+            )}
             {o.shipped_at && (
               <Link href={`/cetak/pesanan/${o.id}?doc=sj`} target="_blank" className="btn-secondary">
                 <Printer size={15} /> Surat jalan
               </Link>
             )}
-            <a href={`/api/pdf/${o.id}`} target="_blank" className="btn-secondary">
-              <FileDown size={15} /> PDF
-            </a>
+            {finance && o.invoice_no && (
+              <a href={`/api/pdf/${o.id}`} target="_blank" className="btn-secondary">
+                <FileDown size={15} /> Invoice PDF
+              </a>
+            )}
           </>
         }
       />
@@ -153,7 +163,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
             {o.notes && <div className="border-t border-line px-5 py-3 text-sm text-muted">Catatan: {o.notes}</div>}
           </Card>
 
-          {o.invoice_no && (
+          {finance && o.invoice_no && (
             <Card title="Pembayaran" className="overflow-hidden">
               {payments.length ? (
                 <table className="table">
@@ -219,7 +229,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
         <div className="space-y-5">
           <Card title="Langkah berikutnya">
             <div className="space-y-3 p-5">
-              {o.status === "draft" && (
+              {sales && o.status === "draft" && (
                 <>
                   <form action={confirmOrder}>
                     <input type="hidden" name="id" value={o.id} />
@@ -234,7 +244,10 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                   </form>
                 </>
               )}
-              {o.status === "dikonfirmasi" && (
+              {o.status === "dikonfirmasi" && !can(user, "pengiriman") && (
+                <p className="text-sm text-muted">Pesanan sudah dikonfirmasi dan menunggu divisi Warehouse untuk dikirim.</p>
+              )}
+              {o.status === "dikonfirmasi" && can(user, "pengiriman") && (
                 <form action={shipOrder} className="space-y-3">
                   <input type="hidden" name="id" value={o.id} />
                   {shortages.length > 0 && (
@@ -264,14 +277,18 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                       ["Dikirim", tanggal(o.shipped_at)],
                       ["Kurir", o.courier || "—"],
                       ["Resi", o.tracking_no || "—"],
-                      ["Jatuh tempo", <span key="d">{tanggal(o.due_date)} {due > 0 && o.due_date && daysUntil(o.due_date) < 0 && <Badge tone="red">Telat</Badge>}</span>],
-                      ["Sisa tagihan", <b key="s">{rupiah(due)}</b>],
+                      ...(finance
+                        ? ([
+                            ["Jatuh tempo", <span key="d">{tanggal(o.due_date)} {due > 0 && o.due_date && daysUntil(o.due_date) < 0 && <Badge tone="red">Telat</Badge>}</span>],
+                            ["Sisa tagihan", <b key="s">{rupiah(due)}</b>],
+                          ] as [string, React.ReactNode][])
+                        : []),
                     ]}
                   />
                 </div>
               )}
               {o.status === "batal" && <p className="text-sm text-muted">Pesanan dibatalkan.</p>}
-              {["dikonfirmasi", "dikirim"].includes(o.status) && o.paid === 0 && (
+              {sales && ["dikonfirmasi", "dikirim"].includes(o.status) && o.paid === 0 && (
                 <form action={cancelOrder} className="border-t border-line pt-3">
                   <input type="hidden" name="id" value={o.id} />
                   <SubmitButton className="btn-danger btn-sm w-full" confirm="Batalkan pesanan ini? Stok yang sudah dikirim akan dikembalikan.">
@@ -286,7 +303,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
             <Card title={<span className="flex items-center gap-2"><MessageCircle size={15} className="text-[#25D366]" /> Kirim via WhatsApp</span>}>
               {waLink(o.phone, "x") ? (
                 <div className="space-y-2 p-5">
-                  {orderWhatsappMessages(o, settings.company_brand ?? "HARAKA SEED", settings.bank_info ?? "").map((m) => (
+                  {orderWhatsappMessages(o, settings.company_brand ?? "HARAKA SEED", settings.bank_info ?? "").filter((m) => finance || m.key !== "invoice").map((m) => (
                     <a key={m.key} href={waLink(o.phone, m.text)} target="_blank" rel="noopener noreferrer" className="btn-secondary w-full justify-start">
                       <MessageCircle size={15} className="text-[#25D366]" /> {m.label}
                     </a>
@@ -318,11 +335,11 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
               <form action={emailOrderDocument} className="space-y-3 p-5">
                 <input type="hidden" name="id" value={o.id} />
                 <Field label="Dokumen">
-                  <select name="kind" className="input" defaultValue={o.invoice_no ? (due > 0 ? "pengingat" : "invoice") : "konfirmasi"}>
+                  <select name="kind" className="input" defaultValue={finance && o.invoice_no ? (due > 0 ? "pengingat" : "invoice") : "konfirmasi"}>
                     <option value="konfirmasi">Konfirmasi pesanan</option>
                     {o.shipped_at && <option value="pengiriman">Info pengiriman</option>}
-                    {o.invoice_no && <option value="invoice">Invoice</option>}
-                    {o.invoice_no && due > 0 && <option value="pengingat">Pengingat pembayaran</option>}
+                    {finance && o.invoice_no && <option value="invoice">Invoice</option>}
+                    {finance && o.invoice_no && due > 0 && <option value="pengingat">Pengingat pembayaran</option>}
                   </select>
                 </Field>
                 <Field label="Kepada">

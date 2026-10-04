@@ -2,21 +2,42 @@
 
 Sistem ERP untuk **PT Benih Haraka Sejahtera (HARAKA SEED)**, produsen benih hortikultura di Jember. Dibangun dengan Next.js 16 dan Postgres (Neon), di-deploy di Vercel, dan terhubung ke email lewat SMTP dan IMAP.
 
+## Divisi & hak akses
+
+Setiap karyawan login dengan **email pribadinya**. Hak akses mengikuti divisi; divisi tidak bisa melihat modul divisi lain, dan **keuangan hanya untuk Owner**.
+
+| Divisi | Modul bawaan |
+|---|---|
+| **Owner (Keuangan)** | Semua modul, termasuk Keuangan (pembayaran, piutang, invoice, omzet) dan pengaturan perusahaan |
+| **Marketing** | Penjualan, Pelanggan, Produk, Email, Laporan penjualan (jumlah kemasan, tanpa omzet) |
+| **Warehouse** | Gudang & Lot, Pengiriman (tanpa harga), Produk, Laporan gudang |
+| **Produksi** | Produksi Benih, Petani Mitra, Produk, Laporan produksi |
+| **Lab / QC** | Antrian uji lab, kelulusan & karantina lot, Produk, Laporan QC |
+| **Mutu** | Keluhan pelanggan & ketertelusuran lot, Produk, Laporan mutu |
+| **Admin / SDM** | Karyawan, Akun Pengguna, Pembelian, Pelanggan, Email, Laporan SDM |
+
+Owner bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. Modul Keuangan terkunci khusus Owner. Akses dicek di setiap halaman, aksi, dan unduhan, jadi bukan sekadar menu yang disembunyikan.
+
+**Akun:** Owner atau Admin/SDM membuat akun di menu **Akun Pengguna**. Pengguna menerima email undangan untuk membuat kata sandinya sendiri (berlaku 72 jam). **Lupa kata sandi** bisa dilakukan sendiri dari halaman login; tautan reset dikirim ke email (berlaku 1 jam, sekali pakai). Akun yang dinonaktifkan langsung keluar dari semua perangkat.
+
 ## Modul
 
 | Modul | Isi |
 |---|---|
-| **Dashboard** | Omzet bulan ini vs bulan lalu, piutang dan yang lewat jatuh tempo, pesanan siap kirim, stok rendah, lot yang hampir kadaluarsa, grafik 12 bulan, varietas terlaris, email masuk |
-| **Penjualan** | Pesanan → konfirmasi → kirim (stok dipotong per lot dengan FEFO, invoice terbit otomatis) → pembayaran. Ada tab piutang, cetak invoice dan surat jalan (berisi nomor lot), serta pembatalan yang mengembalikan stok |
-| **Pelanggan** | Distributor, toko tani, petani, ekspor. Riwayat pesanan, omzet, piutang, kirim email langsung, dan riwayat korespondensi |
-| **Inventori & Lot** | Stok per lot dengan data mutu (daya kecambah, kemurnian, kadar air), tanggal kadaluarsa, penyesuaian stok, ketertelusuran (lot dikirim ke pelanggan mana), dan email peringatan stok rendah |
-| **Produksi Benih** | Papan alur tanam → panen → prosesing → uji lab → lulus. Batch yang lulus otomatis menjadi lot di stok |
-| **Petani Mitra** | Data penangkar, lahan, dan hasil panen |
-| **Pembelian** | Supplier dan purchase order yang bisa dikirim ke supplier lewat email |
-| **Produk** | 12 varietas Haraka (KENTA F1, DIARA F1, BIANTARA F1, MARISA F1, MEILI F1, SAHWA F1, JANU F1, VEDA F1, VINETA, LUMINA, SENDAYU, CALLINA MADU) |
-| **Email** | Kotak masuk (sinkron IMAP, email pengirim dicocokkan ke pelanggan), terkirim, gagal, tulis, dan balas |
-| **Laporan** | Omzet per bulan, varietas, pelanggan, dan kota. Bisa diekspor ke CSV (Excel) |
-| **Pengaturan** | Profil perusahaan (kop email/invoice), rekening, saklar email otomatis, pengguna, dan penghapusan data contoh |
+| **Dashboard** | Owner: omzet, piutang, grafik 12 bulan, varietas terlaris. Divisi lain: kartu & daftar sesuai modulnya |
+| **Penjualan** | Pesanan → konfirmasi → kirim (stok dipotong per lot dengan FEFO) → invoice. Cetak pesanan, invoice, dan surat jalan |
+| **Keuangan** | Piutang & umur piutang, pembayaran masuk, pengingat telat bayar (massal, invoice PDF terlampir) |
+| **Pengiriman** | Antrian pesanan siap kirim untuk gudang, input kurir & resi, surat jalan, bukti pengiriman |
+| **Pelanggan** | Distributor, toko tani, petani, ekspor. Riwayat pesanan, email, dokumen |
+| **Gudang & Lot** | Stok per lot dengan data mutu, kadaluarsa, penyesuaian stok, ketertelusuran |
+| **Produksi Benih** | Tanam → panen → prosesing → serah ke Lab/QC |
+| **Lab / QC** | Uji daya kecambah/kemurnian/kadar air; lulus → lot masuk stok; uji ulang; lot gagal dikarantina (tidak bisa dijual) |
+| **Mutu** | Keluhan pelanggan, investigasi, tindakan perbaikan, daftar penerima lot yang sama |
+| **SDM** | Data karyawan per divisi, terhubung ke akun ERP |
+| **Petani Mitra / Pembelian / Produk** | Penangkar, PO ke supplier, 38 varietas katalog resmi dengan foto kemasan |
+| **Email** | Kotak masuk perusahaan (IMAP), terkirim, gagal, tulis, balas |
+| **Laporan** | Tab per divisi (Keuangan, Penjualan, Produksi, Lab/QC, Gudang, Mutu, SDM), semua bisa diunduh CSV |
+| **Pengaturan** | Akun saya (semua). Owner: hak akses divisi, profil perusahaan, email otomatis, hapus data contoh |
 
 ### Email otomatis
 - **Pesanan dikonfirmasi**: email konfirmasi pesanan dikirim ke pelanggan.
@@ -43,7 +64,7 @@ Lupa kata sandi admin: `node --env-file=.env.local scripts/reset-password.mjs <e
 
 Tabel dibuat otomatis saat aplikasi pertama kali dibuka dan langsung diisi data contoh (pelanggan dan supplier bertanda "(Contoh)", pesanan 6 bulan, lot awal). Harga produk hanya perkiraan, jadi sesuaikan di menu Produk. Untuk mulai dengan data asli, buka **Pengaturan → Hapus data contoh & transaksi**.
 
-Login awal memakai `ADMIN_EMAIL` / `ADMIN_PASSWORD` dari environment. Lokal tanpa variabel itu, default-nya `ptbenihharakasejahtera@gmail.com` / `haraka123`. **Segera ganti kata sandi** di menu Pengaturan.
+Akun Owner pertama dibuat dari `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Lokal tanpa variabel itu, default-nya `nurainimaulidia@gmail.com` / `haraka123`. **Segera ganti kata sandi** di Pengaturan. Email perusahaan (`EMAIL_USER`, ptbenihharakasejahtera@gmail.com) dipakai ERP untuk mengirim email, bukan untuk login.
 
 ### Menghubungkan Gmail
 1. Login ke akun Google perusahaan, lalu aktifkan **Verifikasi 2 Langkah**.

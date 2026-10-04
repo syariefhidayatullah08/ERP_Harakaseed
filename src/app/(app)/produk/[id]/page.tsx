@@ -7,10 +7,10 @@ import { productStock } from "@/lib/inventory";
 import { addDays, daysUntil, num, rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, DL, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { ProductForm } from "../product-form";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess } from "@/lib/session";
 
 export default async function ProductDetail({ params, searchParams }: PageProps<"/produk/[id]">) {
-  await requireAccess("produk");
+  const user = await requireAccess("produk");
   const { id } = await params;
   const sp = await searchParams;
   const [product] = await productStock("p.id = ?", toId(id));
@@ -35,7 +35,7 @@ export default async function ProductDetail({ params, searchParams }: PageProps<
         <StatCard label="Stok layak jual" value={num(product.stock)} tone={product.min_stock > 0 && product.stock < product.min_stock ? "danger" : "default"} hint={`Minimum ${num(product.min_stock)}`} />
         <StatCard label="Dipesan (belum kirim)" value={num(product.reserved)} hint={`Tersedia ${num(product.stock - product.reserved)}`} />
         <StatCard label="Terjual 12 bulan" value={num(sold.qty)} hint="kemasan" />
-        <StatCard label="Omzet 12 bulan" value={rupiah(sold.v)} />
+        {can(user, "keuangan") && <StatCard label="Omzet 12 bulan" value={rupiah(sold.v)} />}
       </div>
       <div className="grid gap-5 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
