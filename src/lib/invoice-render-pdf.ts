@@ -121,7 +121,7 @@ export async function renderInvoicePdf(doc: InvoiceDoc): Promise<Uint8Array> {
 
   // ---------------- Tabel ----------------
   const tx = 80;
-  const cols = [24, 68, 116, 55, 78, 94]; // No, Kode, Nama, Qty, Harga, Total
+  const cols = [22, 112, 104, 48, 68, 81]; // No, Nama Produk, Varietas, Qty, Harga, Total
   const colX = cols.reduce<number[]>((a, w, i) => [...a, i === 0 ? tx : a[i - 1] + cols[i - 1]], []);
   const tw = cols.reduce((a, b) => a + b, 0);
   const rowH = 13;

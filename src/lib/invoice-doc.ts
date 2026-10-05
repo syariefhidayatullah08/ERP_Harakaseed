@@ -1,5 +1,5 @@
 import "server-only";
-import { all, get, getDocSettings } from "./db";
+import { all, get, getDocSettings, getSetting } from "./db";
 import { parseSignature } from "./signature";
 import { terbilang } from "./terbilang";
 import { CHANNELS, toChannel } from "./sales-channel";
@@ -39,7 +39,20 @@ export function signers(settings: Record<string, string>) {
   ] as const;
 }
 
-/** Invoice dari pesanan penjualan, dengan tata letak template resmi. */
+/**
+ * Nomor invoice format template: No/INV/Bulan/Tahun, mis. 181/INV/X/2026. Nomor urut berlanjut per tahun.
+ * Pengaturan invoice_start ("tahun:nomor") menyambung penomoran invoice yang dibuat sebelum memakai ERP.
+ */
+export async function nextInvoiceNumber(date: string) {
+  const year = date.slice(0, 4);
+  const rows = await all<{ invoice_no: string }>("SELECT invoice_no FROM sales_orders WHERE invoice_no LIKE ?", `%/INV/%/${year}`);
+  const last = Math.max(0, ...rows.map((r) => Number(r.invoice_no.split("/")[0])).filter(Number.isFinite));
+  const [startYear, startNo] = (await getSetting("invoice_start")).split(":");
+  const seq = Math.max(last + 1, startYear === year ? Number(startNo) || 1 : 1);
+  return `${seq}/INV/${ROMAN[Number(date.slice(5, 7)) - 1]}/${year}`;
+}
+
+/** Invoice dari pesanan penjualan, dengan tata letak referensi/TEMPLATE INVOICE.xlsx (Nama Produk | Varietas | Bobot/Qty | Harga | Total). */
 export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> {
   const o = await get<{
     so_no: string; channel: string; invoice_no: string | null; order_date: string; shipped_at: string | null; subtotal: number; discount_pct: number; tax_pct: number;
@@ -66,9 +79,9 @@ export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> 
     number: o.invoice_no ?? o.so_no,
     date: o.shipped_at ?? o.order_date,
     customer: { name: o.customer, address: o.address, city: o.city, phone: o.phone },
-    labels: { code: "Kode", name: "Produk", qty: channel === "bulky" ? "Bobot (Kg)" : `Qty (${CHANNELS[channel].short})` },
+    labels: { code: "Nama Produk", name: "Varietas", qty: channel === "bulky" ? "Bobot (Kg)" : `Qty (${CHANNELS[channel].short})` },
     qtyDecimals: channel === "bulky" ? 2 : 0,
-    rows: items.map((i) => ({ code: i.sku, name: itemName(i), qty: i.qty, price: i.price })),
+    rows: items.map((i) => ({ code: i.crop, name: itemName(i), qty: i.qty, price: i.price })),
     adjustments: adjustments.length ? [{ label: "Subtotal", amount: o.subtotal }, ...adjustments] : [],
     total: o.total,
     after: o.paid > 0 ? [{ label: "Sudah dibayar", amount: o.paid }, { label: "Sisa tagihan", amount: o.total - o.paid }] : [],

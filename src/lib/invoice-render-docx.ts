@@ -120,7 +120,7 @@ export async function renderInvoiceDocx(doc: InvoiceDoc): Promise<Buffer> {
   });
 
   // ---------------- Tabel item ----------------
-  const W = [500, 1500, 1900, 1150, 1600, 1750]; // total 8400
+  const W = [450, 2050, 1700, 850, 1600, 1750]; // total 8400
   const center = (t: string, bold = false) => para(run(t, { bold, size: 9.5 }), AlignmentType.CENTER);
   const head = new TableRow({
     tableHeader: true,

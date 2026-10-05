@@ -8,6 +8,7 @@ import { numf, str, withMsg } from "@/lib/form";
 import { logActivity } from "@/lib/activity";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
+import { nextInvoiceNumber } from "@/lib/invoice-doc";
 import { addDays, rupiah, today } from "@/lib/format";
 import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, toChannel } from "@/lib/sales-channel";
 import {
@@ -162,7 +163,7 @@ export async function shipOrder(fd: FormData) {
         const items = await all<{ id: number; product_id: number; pack_size: string; qty: number }>("SELECT id, product_id, pack_size, qty FROM so_items WHERE so_id = ?", id);
         for (const it of items) await allocateFefo(it.id, it.product_id, it.pack_size, it.qty, so.so_no);
       }
-      const invoiceNo = await nextNumber("INV", "sales_orders", "invoice_no");
+      const invoiceNo = await nextInvoiceNumber(shipDate);
       await run(
         `UPDATE sales_orders SET status='dikirim', shipped_at=?, courier=?, tracking_no=?, invoice_no=?, due_date=? WHERE id=?`,
         shipDate,

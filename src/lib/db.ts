@@ -677,6 +677,9 @@ const SCHEMA_SQL = `
     );
     CREATE INDEX IF NOT EXISTS cash_entries_date_idx ON cash_entries (entry_date, id);
 
+    -- Invoice terakhir sebelum memakai ERP bernomor 180/INV/X/2026; ERP melanjutkan dari 181.
+    INSERT INTO settings (key, value) VALUES ('invoice_start', '2026:181') ON CONFLICT (key) DO NOTHING;
+
     -- Owner berganti sebutan menjadi Founder (kode peran di database tetap 'owner').
     UPDATE users SET name = 'Founder' WHERE role = 'owner' AND name = 'Owner';
   `;
