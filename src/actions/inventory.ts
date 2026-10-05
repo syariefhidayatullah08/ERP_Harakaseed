@@ -12,18 +12,24 @@ import { addDays } from "@/lib/format";
 
 export async function createLotAction(fd: FormData) {
   await requireAccess("inventori");
-  const productId = numf(fd, "product_id");
+  const [pid, ...rest] = str(fd, "product_pack").split("|");
+  const productId = Number(pid) || 0;
+  const packSize = rest.join("|");
   const qty = Math.round(numf(fd, "qty"));
   const lotNo = str(fd, "lot_no").toUpperCase();
   const prodDate = str(fd, "prod_date");
   const product = await get<{ shelf_life_months: number }>("SELECT shelf_life_months FROM products WHERE id = ?", productId);
   if (!product || qty <= 0 || !lotNo || !prodDate) redirect(withMsg("/inventori", "Lengkapi produk, nomor lot, tanggal, dan qty.", "error"));
+  if (!(await get("SELECT id FROM product_packs WHERE product_id = ? AND pack_size = ?", productId, packSize))) {
+    redirect(withMsg("/inventori", "Gramasi tidak dikenal. Tambahkan dulu di menu Produk.", "error"));
+  }
   if (await get("SELECT id FROM lots WHERE lot_no = ?", lotNo)) redirect(withMsg("/inventori", `Nomor lot ${lotNo} sudah ada.`, "error"));
 
   await tx(async () =>
     await createLot({
       lotNo,
       productId,
+      packSize,
       qty,
       germination: numf(fd, "germination"),
       purity: numf(fd, "purity"),
@@ -35,8 +41,8 @@ export async function createLotAction(fd: FormData) {
     }),
   );
   revalidatePath("/inventori");
-  await logActivity("inventori", "Menambah lot", `${lotNo} · ${qty} kemasan`);
-  redirect(withMsg("/inventori", `Lot ${lotNo} (${qty} kemasan) ditambahkan.`));
+  await logActivity("inventori", "Menambah lot", `${lotNo} · ${qty} kemasan ${packSize}`);
+  redirect(withMsg("/inventori", `Lot ${lotNo} (${qty} kemasan ${packSize}) ditambahkan.`));
 }
 
 export async function adjustLot(fd: FormData) {

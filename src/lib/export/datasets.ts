@@ -6,6 +6,7 @@ import type { SessionUser } from "../session";
 import { CUSTOMER_KIND, PO_STATUS, PRD_STATUS, SO_STATUS } from "../format";
 import { ACTIVITY_MODULES } from "../activity";
 import { INTAKE_KIND, INTAKE_STATUS, PB_STATUS } from "../seed-payment";
+import { CHANNELS, toChannel } from "../sales-channel";
 import {
   complaintLines,
   findingLines,
@@ -37,6 +38,8 @@ export type Dataset = {
 const finance = (u: SessionUser) => hasAny(u.modules, "keuangan");
 const label = (map: Record<string, { label: string }>) => (v: unknown) => map[String(v)]?.label ?? String(v ?? "");
 const mapRows = <T extends Row>(rows: T[], fn: (r: T) => Row) => rows.map(fn);
+/** Jenis penjualan & satuan qty-nya (kemasan / kg / lembar). */
+const channelInfo = (v: unknown) => ({ channel: CHANNELS[toChannel(v)].label, unit: CHANNELS[toChannel(v)].unit });
 
 /**
  * Semua data yang bisa diunduh (Excel / PDF / Word / CSV). Kunci = ?type= di /api/export.
@@ -50,6 +53,7 @@ export const DATASETS: Record<string, Dataset> = {
     range: true,
     columns: (u) => [
       { key: "so_no", label: "No. Pesanan", width: 16 },
+      { key: "channel", label: "Jenis" },
       { key: "order_date", label: "Tanggal", type: "date" },
       { key: "customer", label: "Pelanggan", width: 28 },
       { key: "city", label: "Kota", width: 16 },
@@ -67,16 +71,16 @@ export const DATASETS: Record<string, Dataset> = {
     rows: async (r) =>
       mapRows(
         await all<Row & { status: string; total: number; paid: number }>(
-          `SELECT so.so_no, so.order_date, c.name customer, c.city, so.status, so.total, so.invoice_no, so.paid, so.total - so.paid sisa, so.due_date
+          `SELECT so.so_no, so.channel, so.order_date, c.name customer, c.city, so.status, so.total, so.invoice_no, so.paid, so.total - so.paid sisa, so.due_date
            FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.order_date BETWEEN ? AND ? ORDER BY so.order_date, so.so_no`,
           r.from,
           r.to,
         ),
-        (x) => ({ ...x, status: label(SO_STATUS)(x.status) }),
+        (x) => ({ ...x, status: label(SO_STATUS)(x.status), channel: channelInfo(x.channel).channel }),
       ),
   },
   penjualan: {
-    title: "Detail Penjualan (jumlah kemasan)",
+    title: "Detail Penjualan (jumlah)",
     need: ["penjualan", "keuangan"],
     range: true,
     columns: () => [
@@ -86,10 +90,13 @@ export const DATASETS: Record<string, Dataset> = {
       { key: "customer", label: "Pelanggan", width: 26 },
       { key: "city", label: "Kota", width: 14 },
       { key: "sku", label: "SKU", width: 14 },
-      { key: "product", label: "Produk", width: 18 },
-      { key: "qty", label: "Qty", type: "number" },
+      { key: "product", label: "Varietas", width: 18 },
+      { key: "channel", label: "Jenis" },
+      { key: "pack_size", label: "Gramasi", width: 10 },
+      { key: "qty", label: "Qty", type: "decimal" },
+      { key: "unit", label: "Satuan", width: 10 },
     ],
-    rows: async (r) => mapRows(await salesQtyLines(r.from, r.to), (x) => ({ ...x, status: label(SO_STATUS)(x.status) })),
+    rows: async (r) => mapRows(await salesQtyLines(r.from, r.to), (x) => ({ ...x, status: label(SO_STATUS)(x.status), ...channelInfo(x.channel) })),
   },
 
   /* -------------------------------- Keuangan -------------------------------- */
@@ -103,12 +110,15 @@ export const DATASETS: Record<string, Dataset> = {
       { key: "order_date", label: "Tanggal", type: "date" },
       { key: "customer", label: "Pelanggan", width: 26 },
       { key: "city", label: "Kota", width: 14 },
-      { key: "product", label: "Produk", width: 18 },
-      { key: "qty", label: "Qty", type: "number" },
+      { key: "product", label: "Varietas", width: 18 },
+      { key: "channel", label: "Jenis" },
+      { key: "pack_size", label: "Gramasi", width: 10 },
+      { key: "qty", label: "Qty", type: "decimal" },
+      { key: "unit", label: "Satuan", width: 10 },
       { key: "price", label: "Harga", type: "money" },
       { key: "amount", label: "Jumlah", type: "money" },
     ],
-    rows: (r) => salesLines(r.from, r.to),
+    rows: async (r) => mapRows(await salesLines(r.from, r.to), (x) => ({ ...x, ...channelInfo(x.channel) })),
   },
   "keuangan-produk": {
     title: "Omzet per Varietas",
@@ -120,7 +130,7 @@ export const DATASETS: Record<string, Dataset> = {
       { key: "crop", label: "Komoditas", width: 22 },
       { key: "category", label: "Kategori", width: 14 },
       { key: "orders", label: "Pesanan", type: "number" },
-      { key: "qty", label: "Qty", type: "number" },
+      { key: "qty", label: "Qty kemasan", type: "number" },
       { key: "revenue", label: "Omzet", type: "money" },
     ],
     rows: (r) => salesByProduct(r.from, r.to),
@@ -535,7 +545,7 @@ export const DATASETS: Record<string, Dataset> = {
       mapRows(
         await all<Row & { status: string }>(
           `SELECT so.so_no, so.order_date, c.name customer, c.city, c.address, so.status, so.shipped_at, so.courier, so.tracking_no,
-                  (SELECT string_agg(p.name || ' ' || p.pack_size || ' × ' || i.qty, '; ' ORDER BY i.id)
+                  (SELECT string_agg(trim(p.name || ' ' || i.pack_size) || ' × ' || i.qty || CASE so.channel WHEN 'bulky' THEN ' kg' WHEN 'label' THEN ' lembar' ELSE '' END, '; ' ORDER BY i.id)
                    FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = so.id) items
            FROM sales_orders so JOIN customers c ON c.id = so.customer_id
            WHERE so.status IN ('dikonfirmasi','dikirim','selesai') AND COALESCE(so.shipped_at, so.order_date) BETWEEN ? AND ?

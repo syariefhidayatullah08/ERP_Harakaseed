@@ -4,7 +4,8 @@ import { FileDown, Printer } from "lucide-react";
 import { all, get } from "@/lib/db";
 import { toId } from "@/lib/form";
 import { num, SO_STATUS, tanggal, today } from "@/lib/format";
-import { productStock } from "@/lib/inventory";
+import { packKey, stockByPack } from "@/lib/inventory";
+import { CHANNELS, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
 import { Badge, Card, DL, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { Attachments } from "@/components/attachments";
@@ -16,17 +17,17 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
   const { id } = await params;
   const sp = await searchParams;
   const o = await get<{
-    id: number; so_no: string; status: string; order_date: string; shipped_at: string | null; courier: string; tracking_no: string; notes: string;
+    id: number; so_no: string; channel: string; status: string; order_date: string; shipped_at: string | null; courier: string; tracking_no: string; notes: string;
     customer: string; contact_person: string; phone: string; address: string; city: string;
   }>(
-    `SELECT so.id, so.so_no, so.status, so.order_date, so.shipped_at, so.courier, so.tracking_no, so.notes,
+    `SELECT so.id, so.so_no, so.channel, so.status, so.order_date, so.shipped_at, so.courier, so.tracking_no, so.notes,
             c.name customer, c.contact_person, c.phone, c.address, c.city
      FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?`,
     toId(id),
   );
   if (!o || o.status === "draft") notFound();
-  const items = await all<{ id: number; product_id: number; name: string; crop: string; pack_size: string; qty: number }>(
-    "SELECT i.id, i.product_id, i.qty, p.name, p.crop, p.pack_size FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id",
+  const items = await all<{ id: number; product_id: number; name: string; crop: string; pack: string; pack_size: string; qty: number }>(
+    `SELECT i.id, i.product_id, i.qty, i.pack_size pack, p.name, p.crop, ${ITEM_PACK_SQL} FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
   );
   const lots = await all<{ so_item_id: number; lot_id: number; lot_no: string; qty: number; expiry_date: string }>(
@@ -34,8 +35,12 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
      JOIN so_items i ON i.id = a.so_item_id WHERE i.so_id = ? ORDER BY a.id`,
     o.id,
   );
-  const stock = new Map((await productStock()).map((p) => [p.id, p.stock]));
-  const shortages = o.status === "dikonfirmasi" ? items.filter((i) => (stock.get(i.product_id) ?? 0) < i.qty) : [];
+  // Hanya penjualan kemasan yang memotong stok lot; bulky & label dikirim tanpa alokasi lot.
+  const channel = toChannel(o.channel);
+  const usesStock = channel === "kemasan";
+  const stock = usesStock ? await stockByPack() : new Map<string, number>();
+  const have = (i: { product_id: number; pack: string }) => stock.get(packKey(i.product_id, i.pack)) ?? 0;
+  const shortages = usesStock && o.status === "dikonfirmasi" ? items.filter((i) => have(i) < i.qty) : [];
 
   return (
     <>
@@ -68,13 +73,12 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
               <thead>
                 <tr>
                   <th>Produk</th>
-                  <th className="num">Qty</th>
-                  <th>{o.shipped_at ? "Lot dikirim" : "Stok gudang"}</th>
+                  <th className="num">Qty ({CHANNELS[channel].unit})</th>
+                  {usesStock && <th>{o.shipped_at ? "Lot dikirim" : "Stok gudang"}</th>}
                 </tr>
               </thead>
               <tbody>
                 {items.map((i) => {
-                  const have = stock.get(i.product_id) ?? 0;
                   return (
                     <tr key={i.id}>
                       <td>
@@ -85,6 +89,7 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
                         </div>
                       </td>
                       <td className="num font-medium">{num(i.qty)}</td>
+                      {usesStock && (
                       <td className="text-xs">
                         {o.shipped_at ? (
                           lots
@@ -95,9 +100,10 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
                               </div>
                             ))
                         ) : (
-                          <span className={have < i.qty ? "font-semibold text-red-700" : "text-muted"}>{num(have)} tersedia</span>
+                          <span className={have(i) < i.qty ? "font-semibold text-red-700" : "text-muted"}>{num(have(i))} tersedia</span>
                         )}
                       </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -124,7 +130,7 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
                   <input type="hidden" name="id" value={o.id} />
                   {shortages.length > 0 && (
                     <div className="rounded-lg bg-red-50 p-3 text-xs text-red-800">
-                      Stok kurang: {shortages.map((s) => `${s.name} (butuh ${s.qty}, ada ${stock.get(s.product_id) ?? 0})`).join(", ")}
+                      Stok kurang: {shortages.map((s) => `${s.name} ${s.pack} (butuh ${s.qty}, ada ${have(s)})`).join(", ")}
                     </div>
                   )}
                   <Field label="Tanggal kirim">

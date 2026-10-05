@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { all, get, getSettings } from "@/lib/db";
 import { can, requireAccess } from "@/lib/session";
 import { num, rupiah, tanggal } from "@/lib/format";
+import { CHANNELS, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
 import { PrintButton } from "@/components/buttons";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
   // Surat jalan: penjualan/pengiriman. Pesanan/invoice (berisi harga & tagihan): penjualan/keuangan, dicek lagi di bawah.
   const user = await requireAccess(deliveryNote ? ["penjualan", "pengiriman", "keuangan"] : ["penjualan", "keuangan"]);
   const o = await get<{
-    id: number; so_no: string; customer: string; contact_person: string; phone: string; address: string; city: string; order_date: string;
+    id: number; so_no: string; channel: string; customer: string; contact_person: string; phone: string; address: string; city: string; order_date: string;
     subtotal: number; discount_pct: number; tax_pct: number; total: number; paid: number; invoice_no: string | null; due_date: string | null;
     shipped_at: string | null; courier: string; tracking_no: string; notes: string;
   }>(
@@ -26,7 +27,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
   if (!o) notFound();
   if (!deliveryNote && o.invoice_no && !can(user, "keuangan")) notFound();
   const items = await all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    "SELECT i.*, p.name, p.crop, p.pack_size FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ?",
+    `SELECT i.*, p.name, p.crop, ${ITEM_PACK_SQL} FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
   );
   const lots = await all<{ so_item_id: number; lot_no: string; qty: number; expiry_date: string }>(
@@ -113,7 +114,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
               <th className="p-2">No</th>
               <th className="p-2">Produk</th>
               {deliveryNote && <th className="p-2">No. Lot / Kadaluarsa</th>}
-              <th className="p-2 text-right">Qty</th>
+              <th className="p-2 text-right">Qty ({CHANNELS[toChannel(o.channel)].unit})</th>
               {!deliveryNote && <th className="p-2 text-right">Harga</th>}
               {!deliveryNote && <th className="p-2 text-right">Jumlah</th>}
             </tr>
@@ -125,7 +126,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
                 <td className="p-2">
                   <div className="font-semibold">{i.name}</div>
                   <div className="text-xs text-muted">
-                    Benih {i.crop} · kemasan {i.pack_size}
+                    {i.crop} · {i.pack_size}
                   </div>
                 </td>
                 {deliveryNote && (

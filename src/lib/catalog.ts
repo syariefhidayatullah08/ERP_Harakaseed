@@ -590,3 +590,45 @@ export const CATALOG: CatalogItem[] = [
     "image": "/products/32.png"
   }
 ];
+
+/**
+ * Gramasi & harga per kemasan dari "PRICELIST PRODUCT HARAKA SEED 2025": nama varietas → [gram, harga][].
+ * Hanya dipakai untuk mengisi awal; setelah itu gramasi & harga dikelola lewat menu Produk.
+ */
+export const PRICELIST: Record<string, [number, number][]> = {
+  VALLEN: [[500, 40000]],
+  BELVA: [[20, 25000]],
+  ARINA: [[100, 10000], [500, 35000]],
+  LUMINA: [[100, 10000], [500, 35000]],
+  GHAHAR: [[10, 12000]],
+  GANNA: [[10, 15000]],
+  BESARI: [[10, 15000]],
+  GAJO: [[10, 15000]],
+  PITHA: [[10, 15000]],
+  "BIANTARA F1": [[10, 60000]],
+  "MARISA F1": [[250, 60000]],
+  DHITA: [[250, 25000]],
+  GANTARI: [[100, 12000], [500, 60000]],
+  VINETA: [[100, 12000], [500, 60000]],
+  SYLVIA: [[500, 25000]],
+  SAFIA: [[500, 20000]],
+  RIHANA: [[10, 10000]],
+  "DIARA F1": [[5, 75000], [10, 150000]],
+  "RAINA F1": [[5, 45000], [10, 90000]],
+  "MEILI F1": [[20, 25000]],
+  "VIVAN F1": [[20, 25000]],
+  "CAMAL F1": [[20, 25000]],
+  "HANASTA F1": [[10, 12000]],
+  "KANAYA F1": [[10, 12000]],
+  "VEDA F1": [[10, 12000]],
+  "CALLINA MADU": [[1, 8000], [5, 40000], [10, 75000]],
+  "KENTA F1": [[5, 23000], [20, 90000]],
+  "LAKSITA F1": [[5, 20000]],
+  "JANU F1": [[5, 15000]],
+  RAJENDRA: [[10, 7000]],
+  BIUTI: [[10, 10000]],
+  GANTA: [[10, 12000]],
+  "SAHWA F1": [[5, 80000]],
+  "NURA F1": [[5, 55000], [10, 110000]],
+  SENDAYU: [[25, 7000]],
+};

@@ -3,49 +3,83 @@
 import { useActionState, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { createOrder } from "@/actions/sales";
+import { CHANNELS, type Channel } from "@/lib/sales-channel";
 
-type P = { id: number; name: string; crop: string; pack_size: string; price: number; available: number };
-type C = { id: number; name: string; city: string; email: string };
-type Line = { key: number; product_id: number; qty: number; price: number };
+type P = { id: number; name: string; crop: string };
+type K = { product_id: number; pack_size: string; price: number; available: number };
+type C = { name: string; city: string; email: string };
+type Line = { key: number; product_id: number; pack_size: string; qty: number; price: number };
 
 const rupiah = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n || 0);
+const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-export function OrderForm({ customers, products, defaultCustomer, today }: { customers: C[]; products: P[]; defaultCustomer?: number; today: string }) {
+export function OrderForm({
+  channel,
+  customers,
+  products,
+  packs,
+  defaultCustomer = "",
+  today,
+}: {
+  channel: Channel;
+  customers: C[];
+  products: P[];
+  packs: K[];
+  defaultCustomer?: string;
+  today: string;
+}) {
+  const ch = CHANNELS[channel];
+  const usesPack = channel !== "bulky";
   const [state, action, pending] = useActionState(createOrder, null);
-  const [customerId, setCustomerId] = useState<number>(defaultCustomer ?? 0);
-  const [lines, setLines] = useState<Line[]>([{ key: 1, product_id: 0, qty: 1, price: 0 }]);
+  const [customerName, setCustomerName] = useState(defaultCustomer);
+  const [lines, setLines] = useState<Line[]>([{ key: 1, product_id: 0, pack_size: "", qty: 1, price: 0 }]);
   const [discount, setDiscount] = useState(0);
   const [tax, setTax] = useState(0);
 
-  const customer = customers.find((c) => c.id === customerId);
+  const customer = customers.find((c) => same(c.name, customerName));
   const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
   const afterDisc = subtotal * (1 - discount / 100);
   const total = Math.round(afterDisc * (1 + tax / 100));
-  const payload = useMemo(() => JSON.stringify(lines.map(({ product_id, qty, price }) => ({ product_id, qty, price }))), [lines]);
+  const payload = useMemo(() => JSON.stringify(lines.map(({ product_id, pack_size, qty, price }) => ({ product_id, pack_size, qty, price }))), [lines]);
 
   const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const packsOf = (productId: number) => packs.filter((k) => k.product_id === productId);
+  // Harga kemasan mengikuti gramasi; bulky & label diisi manual.
+  const packPatch = (k?: K): Partial<Line> => ({ pack_size: k?.pack_size ?? "", ...(channel === "kemasan" ? { price: k?.price ?? 0 } : {}) });
 
   return (
     <form action={action} className="grid gap-5 lg:grid-cols-3">
+      <input type="hidden" name="channel" value={channel} />
       <input type="hidden" name="lines" value={payload} />
       <div className="space-y-5 lg:col-span-2">
         <section className="card grid gap-4 p-5 sm:grid-cols-2">
           <label className="block">
             <span className="label">Pelanggan *</span>
-            <select name="customer_id" required value={customerId || ""} onChange={(e) => setCustomerId(Number(e.target.value))} className="input">
-              <option value="" disabled>
-                Pilih pelanggan…
-              </option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} {c.city && `— ${c.city}`}
+            <input
+              name="customer_name"
+              required
+              autoComplete="off"
+              list="daftar-pelanggan"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              className="input"
+              placeholder="Ketik nama, atau pilih distributor…"
+            />
+            <datalist id="daftar-pelanggan">
+              {customers.map((c, i) => (
+                <option key={i} value={c.name}>
+                  {c.city}
                 </option>
               ))}
-            </select>
-            {customer && (
-              <span className={`mt-1 block text-xs ${customer.email ? "text-muted" : "text-amber-700"}`}>
-                {customer.email ? `Email: ${customer.email}` : "Pelanggan belum punya email — konfirmasi tidak akan terkirim."}
+            </datalist>
+            {customerName.trim() && (
+              <span className={`mt-1 block text-xs ${customer?.email ? "text-muted" : "text-amber-700"}`}>
+                {customer
+                  ? customer.email
+                    ? `Pelanggan terdaftar${customer.city ? ` · ${customer.city}` : ""} · ${customer.email}`
+                    : "Pelanggan terdaftar, belum punya email — konfirmasi tidak akan terkirim."
+                  : "Nama baru — otomatis disimpan sebagai pelanggan. Tanpa email, konfirmasi tidak terkirim."}
               </span>
             )}
           </label>
@@ -56,29 +90,32 @@ export function OrderForm({ customers, products, defaultCustomer, today }: { cus
         </section>
 
         <section className="card overflow-hidden">
-          <div className="border-b border-line px-5 py-3.5 text-sm font-semibold">Item pesanan</div>
+          <div className="border-b border-line px-5 py-3.5 text-sm font-semibold">Item pesanan · {ch.label.toLowerCase()}</div>
           <div className="overflow-x-auto">
             <table className="table">
               <thead>
                 <tr>
-                  <th className="min-w-56">Produk</th>
-                  <th className="w-28">Qty</th>
-                  <th className="w-40">Harga</th>
+                  <th className="min-w-52">Varietas</th>
+                  {usesPack && <th className="min-w-28">Gramasi</th>}
+                  <th className="w-28">Qty ({ch.unit})</th>
+                  <th className="w-36">Harga / {ch.unit}</th>
                   <th className="num">Jumlah</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {lines.map((l) => {
-                  const p = products.find((x) => x.id === l.product_id);
+                  const options = packsOf(l.product_id);
+                  const pack = options.find((k) => k.pack_size === l.pack_size);
                   return (
                     <tr key={l.key}>
                       <td>
                         <select
                           value={l.product_id || ""}
                           onChange={(e) => {
-                            const np = products.find((x) => x.id === Number(e.target.value));
-                            update(l.key, { product_id: Number(e.target.value), price: np?.price ?? 0 });
+                            const id = Number(e.target.value);
+                            const ks = packsOf(id);
+                            update(l.key, { product_id: id, ...(usesPack ? packPatch(ks.length === 1 ? ks[0] : undefined) : {}) });
                           }}
                           className="input"
                         >
@@ -87,18 +124,48 @@ export function OrderForm({ customers, products, defaultCustomer, today }: { cus
                           </option>
                           {products.map((x) => (
                             <option key={x.id} value={x.id}>
-                              {x.name} — {x.crop}{x.pack_size ? ` (${x.pack_size})` : ""}{x.price ? "" : " · harga belum diisi"}
+                              {x.name} — {x.crop}
                             </option>
                           ))}
                         </select>
-                        {p && (
-                          <div className={`mt-1 text-xs ${p.available < l.qty ? "text-red-700" : "text-muted"}`}>
-                            Tersedia {p.available} kemasan{p.available < l.qty && " — stok kurang, perlu produksi"}
+                        {channel === "kemasan" && pack && (
+                          <div className={`mt-1 text-xs ${pack.available < l.qty ? "text-red-700" : "text-muted"}`}>
+                            Tersedia {pack.available} kemasan {pack.pack_size}
+                            {pack.available < l.qty && " — stok kurang, perlu produksi"}
                           </div>
                         )}
+                        {usesPack && l.product_id > 0 && !options.length && (
+                          <div className="mt-1 text-xs text-red-700">Varietas ini belum punya gramasi. Tambahkan di menu Produk.</div>
+                        )}
                       </td>
+                      {usesPack && (
+                        <td>
+                          <select
+                            value={l.pack_size}
+                            disabled={!options.length}
+                            onChange={(e) => update(l.key, packPatch(options.find((k) => k.pack_size === e.target.value)))}
+                            className="input"
+                          >
+                            <option value="" disabled>
+                              Pilih…
+                            </option>
+                            {options.map((k) => (
+                              <option key={k.pack_size} value={k.pack_size}>
+                                {k.pack_size}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
                       <td>
-                        <input type="number" min={1} value={l.qty} onChange={(e) => update(l.key, { qty: Number(e.target.value) })} className="input" />
+                        <input
+                          type="number"
+                          min={channel === "bulky" ? 0.01 : 1}
+                          step={channel === "bulky" ? 0.01 : 1}
+                          value={l.qty}
+                          onChange={(e) => update(l.key, { qty: Number(e.target.value) })}
+                          className="input"
+                        />
                       </td>
                       <td>
                         <input type="number" min={0} value={l.price} onChange={(e) => update(l.key, { price: Number(e.target.value) })} className="input" />
@@ -125,9 +192,9 @@ export function OrderForm({ customers, products, defaultCustomer, today }: { cus
             <button
               type="button"
               className="btn-secondary btn-sm"
-              onClick={() => setLines((ls) => [...ls, { key: Math.max(...ls.map((x) => x.key)) + 1, product_id: 0, qty: 1, price: 0 }])}
+              onClick={() => setLines((ls) => [...ls, { key: Math.max(...ls.map((x) => x.key)) + 1, product_id: 0, pack_size: "", qty: 1, price: 0 }])}
             >
-              + Tambah produk
+              + Tambah varietas
             </button>
           </div>
         </section>

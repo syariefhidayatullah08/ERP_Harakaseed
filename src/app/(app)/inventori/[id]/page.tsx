@@ -18,7 +18,7 @@ export default async function LotDetail({ params, searchParams }: PageProps<"/in
     id: number; lot_no: string; product_id: number; name: string; crop: string; pack_size: string; qty_initial: number; qty_available: number;
     germination: number; purity: number; moisture: number; prod_date: string; expiry_date: string; location: string; production_id: number | null; prd_code: string | null; grower: string | null;
   }>(
-    `SELECT l.*, p.name, p.crop, p.pack_size, pr.code prd_code, g.name grower FROM lots l
+    `SELECT l.*, p.name, p.crop, pr.code prd_code, g.name grower FROM lots l
      JOIN products p ON p.id = l.product_id
      LEFT JOIN productions pr ON pr.id = l.production_id
      LEFT JOIN growers g ON g.id = pr.grower_id

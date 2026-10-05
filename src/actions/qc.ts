@@ -40,6 +40,10 @@ export async function labDecision(fd: FormData) {
 
   const qty = Math.round(numf(fd, "qty"));
   if (qty <= 0) redirect(withMsg(back, "Isi jumlah kemasan yang lulus.", "error"));
+  const packSize = str(fd, "pack_size");
+  if (!(await get("SELECT id FROM product_packs WHERE product_id = ? AND pack_size = ?", p.product_id, packSize))) {
+    redirect(withMsg(back, "Pilih gramasi kemasan. Bila belum ada, tambahkan di menu Produk.", "error"));
+  }
   const lotNo = (str(fd, "lot_no") || `L${p.code.replace(/\D/g, "")}-${p.sku.split("-")[1] ?? "X"}`).toUpperCase();
   if (await get("SELECT id FROM lots WHERE lot_no = ?", lotNo)) redirect(withMsg(back, `Nomor lot ${lotNo} sudah ada.`, "error"));
   const prodDate = str(fd, "prod_date") || testDate;
@@ -48,6 +52,7 @@ export async function labDecision(fd: FormData) {
     const lotId = await createLot({
       lotNo,
       productId: p.product_id,
+      packSize,
       productionId: id,
       qty,
       germination,
@@ -67,8 +72,8 @@ export async function labDecision(fd: FormData) {
   revalidatePath("/qc");
   revalidatePath("/produksi");
   revalidatePath("/inventori");
-  await logActivity("qc", "Keputusan uji lab: lulus", `${p.code} → lot ${lotNo} (${qty} kemasan) · DK ${germination}%`);
-  redirect(withMsg(back, `Batch ${p.code} LULUS. Lot ${lotNo} (${qty} kemasan) masuk stok gudang.`));
+  await logActivity("qc", "Keputusan uji lab: lulus", `${p.code} → lot ${lotNo} (${qty} kemasan ${packSize}) · DK ${germination}%`);
+  redirect(withMsg(back, `Batch ${p.code} LULUS. Lot ${lotNo} (${qty} kemasan ${packSize}) masuk stok gudang.`));
 }
 
 /** Uji ulang lot (mis. menjelang kadaluarsa atau ada keluhan). Hasil gagal → lot dikarantina, tidak bisa dijual. */

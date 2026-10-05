@@ -59,6 +59,7 @@ export const CUSTOMER_KIND: Record<string, string> = {
   petani: "Petani / Kelompok Tani",
   ekspor: "Ekspor",
   instansi: "Instansi / Proyek",
+  umum: "Umum (diisi manual di pesanan)",
 };
 
 export function paymentStatus(total: number, paid: number) {

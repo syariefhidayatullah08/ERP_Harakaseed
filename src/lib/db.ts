@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { Pool, types, type PoolClient } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
 import { hashPassword } from "./password";
-import { CATALOG } from "./catalog";
+import { CATALOG, PRICELIST } from "./catalog";
 
 // COUNT/SUM di Postgres bertipe bigint/numeric → kembalikan sebagai number, bukan string.
 types.setTypeParser(20, (v) => Number(v));
@@ -131,6 +131,14 @@ async function init() {
           CATALOG_VERSION,
         );
       }
+      const pl = await ex("SELECT value FROM settings WHERE key = 'pricelist_version'");
+      if (pl.rows[0]?.value !== PRICELIST_VERSION) {
+        await syncPacks(ex);
+        await ex(
+          "INSERT INTO settings (key, value) VALUES ('pricelist_version', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+          PRICELIST_VERSION,
+        );
+      }
     }
     await client.query("COMMIT");
   } catch (e) {
@@ -168,6 +176,45 @@ async function syncCatalog(ex: Ex) {
       );
     }
   }
+}
+
+/** Naikkan bila PRICELIST berubah agar gramasi & harga di database yang sudah berjalan ikut diperbarui sekali. */
+const PRICELIST_VERSION = "2025";
+
+/**
+ * Ringkasan gramasi di tabel products: pack_size = daftar gramasi aktif ("5 g, 10 g"), unit_price = harga termurah.
+ * Sumber aslinya product_packs; tambahkan " WHERE p.id = ?" untuk satu produk.
+ */
+export const PACK_SUMMARY_SQL = `UPDATE products p SET
+  pack_size = COALESCE((SELECT string_agg(k.pack_size, ', ' ORDER BY k.id) FROM product_packs k WHERE k.product_id = p.id AND k.active = 1), ''),
+  unit_price = COALESCE((SELECT MIN(k.price) FROM product_packs k WHERE k.product_id = p.id AND k.active = 1), 0)`;
+
+/**
+ * Isi gramasi & harga per varietas dari pricelist resmi. Baris pesanan dan lot lama lebih dulu mewarisi
+ * ukuran kemasan produknya. Kemasan lama tetap dipertahankan untuk varietas di luar pricelist dan
+ * untuk kemasan yang masih punya stok lot, agar stok itu tetap bisa dijual.
+ */
+async function syncPacks(ex: Ex) {
+  await ex("UPDATE so_items i SET pack_size = p.pack_size FROM products p WHERE p.id = i.product_id AND i.pack_size = ''");
+  await ex("UPDATE lots l SET pack_size = p.pack_size FROM products p WHERE p.id = l.product_id AND l.pack_size = ''");
+  for (const [name, packs] of Object.entries(PRICELIST)) {
+    const found = await ex("SELECT id FROM products WHERE upper(name) = upper(?)", name);
+    if (!found.rows.length) continue;
+    for (const [gram, price] of packs) {
+      await ex(
+        "INSERT INTO product_packs (product_id, pack_size, price) VALUES (?,?,?) ON CONFLICT (product_id, pack_size) DO UPDATE SET price = excluded.price",
+        Number(found.rows[0].id), `${gram} g`, price,
+      );
+    }
+  }
+  await ex(
+    `INSERT INTO product_packs (product_id, pack_size, price) SELECT p.id, p.pack_size, p.unit_price FROM products p
+     WHERE p.pack_size <> '' AND (
+       NOT EXISTS (SELECT 1 FROM product_packs k WHERE k.product_id = p.id)
+       OR EXISTS (SELECT 1 FROM lots l WHERE l.product_id = p.id AND l.pack_size = p.pack_size AND l.qty_available > 0)
+     ) ON CONFLICT (product_id, pack_size) DO NOTHING`,
+  );
+  await ex(PACK_SUMMARY_SQL);
 }
 
 const SCHEMA_SQL = `
@@ -287,7 +334,7 @@ const SCHEMA_SQL = `
       id SERIAL PRIMARY KEY,
       so_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
       product_id INTEGER NOT NULL REFERENCES products(id),
-      qty INTEGER NOT NULL,
+      qty DOUBLE PRECISION NOT NULL,
       price DOUBLE PRECISION NOT NULL
     );
 
@@ -573,6 +620,26 @@ const SCHEMA_SQL = `
     CREATE INDEX IF NOT EXISTS activity_log_at_idx ON activity_log (at DESC, id DESC);
 
     INSERT INTO settings (key, value) VALUES ('backup_email', 'harian') ON CONFLICT (key) DO NOTHING;
+
+    -- Penjualan dibagi tiga jenis (kemasan / bulky / label); gramasi dipisah dari varietas.
+    ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'kemasan';
+    ALTER TABLE so_items ADD COLUMN IF NOT EXISTS pack_size TEXT NOT NULL DEFAULT '';
+    ALTER TABLE lots ADD COLUMN IF NOT EXISTS pack_size TEXT NOT NULL DEFAULT '';
+    -- Bulky dijual per kg (desimal).
+    DO $$ BEGIN
+      IF (SELECT data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'so_items' AND column_name = 'qty') = 'integer' THEN
+        ALTER TABLE so_items ALTER COLUMN qty TYPE DOUBLE PRECISION;
+      END IF;
+    END $$;
+    -- Gramasi & harga per varietas (satu varietas bisa punya beberapa gramasi).
+    CREATE TABLE IF NOT EXISTS product_packs (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      pack_size TEXT NOT NULL,
+      price DOUBLE PRECISION NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      UNIQUE (product_id, pack_size)
+    );
   `;
 
 
@@ -598,10 +665,12 @@ async function seed(ex: Ex) {
     auto_email_shipping: "1",
     auto_email_invoice: "1",
     catalog_version: CATALOG_VERSION,
+    pricelist_version: PRICELIST_VERSION,
   };
   for (const [k, v] of Object.entries(settings)) await ex("INSERT INTO settings (key, value) VALUES (?, ?)", k, v);
 
   await syncCatalog(ex);
+  await syncPacks(ex);
 
   if (process.env.SEED_DEMO !== "0") await seedDemo(ex);
 }
@@ -640,20 +709,20 @@ async function seedDemo(ex: Ex) {
   await ex("INSERT INTO suppliers (name, category) VALUES (?, ?)", "Supplier Fungisida Seed Treatment (Contoh)", "Bahan Perlakuan Benih");
 
   // Lot awal per produk
-  const products = (await ex("SELECT id, sku, name, min_stock, unit_price FROM products WHERE unit_price > 0 ORDER BY id")).rows as {
-    name: string;
-    id: number;
-    sku: string;
-    min_stock: number;
-    unit_price: number;
-  }[];
+  const products = (
+    await ex(
+      `SELECT p.id, p.sku, p.name, p.min_stock, k.pack_size, k.price unit_price FROM products p
+       JOIN product_packs k ON k.id = (SELECT MIN(id) FROM product_packs WHERE product_id = p.id)
+       WHERE p.min_stock > 0 ORDER BY p.id`,
+    )
+  ).rows as { name: string; id: number; sku: string; min_stock: number; pack_size: string; unit_price: number }[];
   for (const [i, p] of products.entries()) {
     const qty = i % 4 === 3 ? Math.round(p.min_stock * 0.6) : p.min_stock * (3 + (i % 3));
     const lotNo = `L${today.getFullYear()}${String(i + 1).padStart(3, "0")}-${p.sku.split("-")[1]}`;
     const expiry = i === 5 ? addDays(40) : addDays(300 + i * 15);
     const lotId = await ins(
-      "INSERT INTO lots (lot_no, product_id, qty_initial, qty_available, germination, purity, moisture, prod_date, expiry_date) VALUES (?,?,?,?,?,?,?,?,?)",
-      lotNo, p.id, qty, qty, 85 + (i % 4) * 2.5, 98 + (i % 2), 7, addDays(-120 + i), expiry,
+      "INSERT INTO lots (lot_no, product_id, pack_size, qty_initial, qty_available, germination, purity, moisture, prod_date, expiry_date) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      lotNo, p.id, p.pack_size, qty, qty, 85 + (i % 4) * 2.5, 98 + (i % 2), 7, addDays(-120 + i), expiry,
     );
     await ex(
       "INSERT INTO stock_moves (lot_id, product_id, kind, qty, ref, note, created_at) VALUES (?,?,?,?,?,?,?)",
@@ -691,7 +760,7 @@ async function seedDemo(ex: Ex) {
         `SO-${d.getFullYear()}-${String(n).padStart(4, "0")}`, customers[n % 4], date, status, subtotal, subtotal, paid, inv, iso(due),
         status === "dikonfirmasi" ? null : date,
       );
-      for (const [j, l] of lines.entries()) await ex("INSERT INTO so_items (so_id, product_id, qty, price) VALUES (?,?,?,?)", soId, l.id, qtys[j], l.unit_price);
+      for (const [j, l] of lines.entries()) await ex("INSERT INTO so_items (so_id, product_id, pack_size, qty, price) VALUES (?,?,?,?,?)", soId, l.id, l.pack_size, qtys[j], l.unit_price);
       if (paid > 0) await ex("INSERT INTO payments (so_id, pay_date, amount, method) VALUES (?,?,?, 'Transfer')", soId, date, paid);
     }
   }

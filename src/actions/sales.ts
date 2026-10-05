@@ -9,6 +9,7 @@ import { logActivity } from "@/lib/activity";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
 import { addDays, rupiah, today } from "@/lib/format";
+import { CHANNELS, toChannel } from "@/lib/sales-channel";
 import {
   invoiceEmail,
   loadOrderForEmail,
@@ -20,7 +21,7 @@ import {
   shippingEmail,
 } from "@/lib/email";
 
-type Line = { product_id: number; qty: number; price: number };
+type Line = { product_id: number; pack_size: string; qty: number; price: number };
 
 /** Nomor pesanan untuk log aktivitas. */
 const soNo = async (id: number) => (await get<{ so_no: string }>("SELECT so_no FROM sales_orders WHERE id = ?", id))?.so_no ?? `#${id}`;
@@ -31,24 +32,46 @@ function totals(lines: Line[], discountPct: number, taxPct: number) {
   return { subtotal, total: Math.round(afterDisc * (1 + taxPct / 100)) };
 }
 
+/**
+ * Pelanggan di form pesanan diketik bebas: nama yang sama dengan pelanggan terdaftar (mis. distributor utama)
+ * memakai data itu; nama baru otomatis didaftarkan sebagai pelanggan umum agar invoice & piutangnya tetap tercatat.
+ */
+async function findOrCreateCustomer(name: string) {
+  const found = await get<{ id: number }>("SELECT id FROM customers WHERE lower(trim(name)) = lower(?) ORDER BY id LIMIT 1", name);
+  if (found) return found.id;
+  const last = (await get<{ n: number }>("SELECT COUNT(*) n FROM customers"))!.n;
+  let code = `CUST-${String(last + 1).padStart(3, "0")}`;
+  while (await get("SELECT id FROM customers WHERE code = ?", code)) code = await nextNumber("CUST", "customers", "code");
+  return insert("INSERT INTO customers (code, name, kind) VALUES (?,?, 'umum')", code, name);
+}
+
 export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: string }> {
   await requireAccess("penjualan");
-  const customerId = numf(fd, "customer_id");
+  const channel = toChannel(str(fd, "channel"));
+  const customerName = str(fd, "customer_name").replace(/\s+/g, " ");
   const intent = str(fd, "intent");
   let lines: Line[] = [];
   try {
-    lines = (JSON.parse(str(fd, "lines")) as Line[]).filter((l) => l.product_id && l.qty > 0);
+    lines = (JSON.parse(str(fd, "lines")) as Line[])
+      .filter((l) => l.product_id && l.qty > 0)
+      .map((l) => ({ product_id: l.product_id, pack_size: channel === "bulky" ? "" : String(l.pack_size ?? "").trim(), qty: Number(l.qty), price: Number(l.price) }));
   } catch {
     return { error: "Data item tidak valid." };
   }
-  if (!customerId) return { error: "Pilih pelanggan." };
+  if (!customerName) return { error: "Isi nama pelanggan." };
   if (!lines.length) return { error: "Tambahkan minimal satu produk." };
   if (lines.some((l) => !Number.isInteger(l.product_id) || !Number.isFinite(l.qty) || !Number.isFinite(l.price) || l.price < 0)) {
     return { error: "Data item tidak valid." };
   }
+  // Kemasan & label dihitung satuan utuh; bulky per kg boleh desimal.
+  if (channel !== "bulky" && lines.some((l) => !Number.isInteger(l.qty))) return { error: `Qty ${CHANNELS[channel].unit} harus bilangan bulat.` };
   const known = await all<{ id: number }>("SELECT id FROM products WHERE active = 1 AND id = ANY(?::int[])", `{${lines.map((l) => l.product_id).join(",")}}`);
   if (known.length !== new Set(lines.map((l) => l.product_id)).size) return { error: "Ada produk yang tidak ditemukan atau sudah nonaktif. Muat ulang halaman." };
-  if (!(await get("SELECT id FROM customers WHERE id = ?", customerId))) return { error: "Pelanggan tidak ditemukan." };
+  if (channel !== "bulky") {
+    const packs = await all<{ product_id: number; pack_size: string }>("SELECT product_id, pack_size FROM product_packs WHERE active = 1");
+    const ok = (l: Line) => packs.some((k) => k.product_id === l.product_id && k.pack_size === l.pack_size);
+    if (lines.some((l) => !ok(l))) return { error: "Pilih gramasi untuk setiap varietas. Gramasi dikelola di menu Produk." };
+  }
 
   const discountPct = numf(fd, "discount_pct");
   const taxPct = numf(fd, "tax_pct");
@@ -56,11 +79,13 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
   const orderDate = str(fd, "order_date") || today();
 
   const soId = await tx(async () => {
+    const customerId = await findOrCreateCustomer(customerName);
     const soNo = await nextNumber("SO", "sales_orders", "so_no");
     const id = await insert(
-      `INSERT INTO sales_orders (so_no, customer_id, order_date, status, discount_pct, tax_pct, subtotal, total, notes)
-       VALUES (?,?,?, 'draft', ?,?,?,?,?)`,
+      `INSERT INTO sales_orders (so_no, channel, customer_id, order_date, status, discount_pct, tax_pct, subtotal, total, notes)
+       VALUES (?,?,?,?, 'draft', ?,?,?,?,?)`,
       soNo,
+      channel,
       customerId,
       orderDate,
       discountPct,
@@ -69,11 +94,11 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
       total,
       str(fd, "notes"),
     );
-    for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, qty, price) VALUES (?,?,?,?)", id, l.product_id, Math.round(l.qty), l.price);
+    for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price) VALUES (?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price);
     return id;
   });
 
-  await logActivity("penjualan", "Membuat pesanan", `${await soNo(soId)} · ${rupiah(total)}`);
+  await logActivity("penjualan", "Membuat pesanan", `${await soNo(soId)} · ${CHANNELS[channel].label} · ${customerName} · ${rupiah(total)}`);
   if (intent === "confirm") {
     const note = await doConfirm(soId);
     redirect(withMsg(`/penjualan/${soId}`, `Pesanan dibuat & dikonfirmasi. ${note}`));
@@ -111,7 +136,7 @@ export async function shipOrder(fd: FormData) {
   const id = numf(fd, "id");
   // Warehouse tidak membuka halaman penjualan; kembalikan ke halaman pengiriman.
   const back = can(user, "penjualan") ? `/penjualan/${id}` : `/pengiriman/${id}`;
-  const so = await get<{ id: number; so_no: string; status: string; customer_id: number; payment_terms: number }>(
+  const so = await get<{ id: number; so_no: string; channel: string; status: string; customer_id: number; payment_terms: number }>(
     "SELECT so.*, c.payment_terms FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
     id,
   );
@@ -120,8 +145,11 @@ export async function shipOrder(fd: FormData) {
   const shipDate = str(fd, "shipped_at") || today();
   try {
     await tx(async () => {
-      const items = await all<{ id: number; product_id: number; qty: number }>("SELECT id, product_id, qty FROM so_items WHERE so_id = ?", id);
-      for (const it of items) await allocateFefo(it.id, it.product_id, it.qty, so.so_no);
+      // Hanya penjualan kemasan yang memotong stok lot (per varietas + gramasi).
+      if (toChannel(so.channel) === "kemasan") {
+        const items = await all<{ id: number; product_id: number; pack_size: string; qty: number }>("SELECT id, product_id, pack_size, qty FROM so_items WHERE so_id = ?", id);
+        for (const it of items) await allocateFefo(it.id, it.product_id, it.pack_size, it.qty, so.so_no);
+      }
       const invoiceNo = await nextNumber("INV", "sales_orders", "invoice_no");
       await run(
         `UPDATE sales_orders SET status='dikirim', shipped_at=?, courier=?, tracking_no=?, invoice_no=?, due_date=? WHERE id=?`,
@@ -144,7 +172,7 @@ export async function shipOrder(fd: FormData) {
   revalidatePath("/penjualan");
   revalidatePath("/pengiriman");
   revalidatePath("/inventori");
-  redirect(withMsg(back, `Barang dikirim, stok dipotong per lot (FEFO). ${notes.join(" ")}`));
+  redirect(withMsg(back, `Barang dikirim${toChannel(so.channel) === "kemasan" ? ", stok dipotong per lot (FEFO)" : ""}. ${notes.join(" ")}`));
 }
 
 export async function recordPayment(fd: FormData) {

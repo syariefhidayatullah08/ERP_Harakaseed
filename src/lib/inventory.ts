@@ -29,11 +29,36 @@ export async function productStock(where = "1=1", ...params: (string | number)[]
     `SELECT p.*,
        COALESCE((SELECT SUM(qty_available) FROM lots l WHERE l.product_id = p.id AND l.expiry_date >= ? AND l.qc_status = 'lulus'), 0) AS stock,
        COALESCE((SELECT SUM(i.qty) FROM so_items i JOIN sales_orders so ON so.id = i.so_id
-                 WHERE i.product_id = p.id AND so.status = 'dikonfirmasi'), 0) AS reserved
+                 WHERE i.product_id = p.id AND so.status = 'dikonfirmasi' AND so.channel = 'kemasan'), 0) AS reserved
      FROM products p WHERE ${where} ORDER BY p.category, p.name`,
     today(),
     ...params,
   );
+}
+
+export type PackStock = { id: number; product_id: number; pack_size: string; price: number; stock: number; reserved: number };
+
+/** Gramasi aktif per varietas beserta harga, stok layak jual, dan qty yang sudah dipesan (belum dikirim). */
+export async function packStock(): Promise<PackStock[]> {
+  return await all<PackStock>(
+    `SELECT k.id, k.product_id, k.pack_size, k.price,
+       COALESCE((SELECT SUM(qty_available) FROM lots l WHERE l.product_id = k.product_id AND l.pack_size = k.pack_size AND l.expiry_date >= ? AND l.qc_status = 'lulus'), 0) AS stock,
+       COALESCE((SELECT SUM(i.qty) FROM so_items i JOIN sales_orders so ON so.id = i.so_id
+                 WHERE i.product_id = k.product_id AND i.pack_size = k.pack_size AND so.status = 'dikonfirmasi' AND so.channel = 'kemasan'), 0) AS reserved
+     FROM product_packs k WHERE k.active = 1 ORDER BY k.product_id, k.id`,
+    today(),
+  );
+}
+
+export const packKey = (productId: number, packSize: string) => `${productId}|${packSize}`;
+
+/** Stok layak jual per varietas + gramasi (kunci: packKey), untuk memeriksa kesiapan kirim pesanan kemasan. */
+export async function stockByPack(): Promise<Map<string, number>> {
+  const rows = await all<{ product_id: number; pack_size: string; stock: number }>(
+    "SELECT product_id, pack_size, SUM(qty_available) stock FROM lots WHERE expiry_date >= ? AND qc_status = 'lulus' GROUP BY product_id, pack_size",
+    today(),
+  );
+  return new Map(rows.map((r) => [packKey(r.product_id, r.pack_size), r.stock]));
 }
 
 export async function lowStockProducts() {
@@ -45,13 +70,14 @@ export async function lowStockProducts() {
  * Mengurangi qty_available lot, mencatat stock_moves dan so_allocations.
  * Harus dipanggil di dalam transaksi (lot dikunci FOR UPDATE agar tidak terjual ganda).
  */
-export async function allocateFefo(soItemId: number, productId: number, qty: number, ref: string) {
+export async function allocateFefo(soItemId: number, productId: number, packSize: string, qty: number, ref: string) {
   const lots = await all<{ id: number; lot_no: string; qty_available: number }>(
     `SELECT id, lot_no, qty_available FROM lots
-     WHERE product_id = ? AND qty_available > 0 AND expiry_date >= ? AND qc_status = 'lulus'
+     WHERE product_id = ? AND pack_size = ? AND qty_available > 0 AND expiry_date >= ? AND qc_status = 'lulus'
      ORDER BY expiry_date, id
      FOR UPDATE`,
     productId,
+    packSize,
     today(),
   );
   let remaining = qty;
@@ -71,7 +97,7 @@ export async function allocateFefo(soItemId: number, productId: number, qty: num
   }
   if (remaining > 0) {
     const p = await get<{ name: string }>("SELECT name FROM products WHERE id = ?", productId);
-    throw new Error(`Stok ${p?.name ?? "produk"} tidak cukup (kurang ${remaining}).`);
+    throw new Error(`Stok ${p?.name ?? "produk"} ${packSize} tidak cukup (kurang ${remaining}).`);
   }
 }
 
@@ -98,6 +124,7 @@ export async function releaseAllocations(soId: number, ref: string) {
 export async function createLot(input: {
   lotNo: string;
   productId: number;
+  packSize: string;
   productionId?: number | null;
   qty: number;
   germination: number;
@@ -109,10 +136,11 @@ export async function createLot(input: {
   note: string;
 }) {
   const lotId = await insert(
-    `INSERT INTO lots (lot_no, product_id, production_id, qty_initial, qty_available, germination, purity, moisture, prod_date, expiry_date, location)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO lots (lot_no, product_id, pack_size, production_id, qty_initial, qty_available, germination, purity, moisture, prod_date, expiry_date, location)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     input.lotNo,
     input.productId,
+    input.packSize,
     input.productionId ?? null,
     input.qty,
     input.qty,

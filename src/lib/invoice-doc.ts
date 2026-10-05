@@ -1,6 +1,7 @@
 import "server-only";
 import { all, get, getSettings } from "./db";
 import { terbilang } from "./terbilang";
+import { CHANNELS, toChannel } from "./sales-channel";
 
 /** Isi invoice yang dirender ke PDF maupun Word dengan tata letak template resmi Haraka. */
 export type InvoiceDoc = {
@@ -40,7 +41,7 @@ export function signers(settings: Record<string, string>) {
 /** Invoice dari pesanan penjualan, dengan tata letak template resmi. */
 export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> {
   const o = await get<{
-    so_no: string; invoice_no: string | null; order_date: string; shipped_at: string | null; subtotal: number; discount_pct: number; tax_pct: number;
+    so_no: string; channel: string; invoice_no: string | null; order_date: string; shipped_at: string | null; subtotal: number; discount_pct: number; tax_pct: number;
     total: number; paid: number; due_date: string | null; notes: string; customer: string; address: string; city: string; phone: string;
   }>(
     `SELECT so.*, c.name customer, c.address, c.city, c.phone FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?`,
@@ -48,7 +49,7 @@ export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> 
   );
   if (!o) return null;
   const items = await all<{ sku: string; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    "SELECT p.sku, p.name, p.crop, p.pack_size, i.qty, i.price FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id",
+    "SELECT p.sku, p.name, p.crop, i.pack_size, i.qty, i.price FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id",
     soId,
   );
   const disc = o.subtotal * (o.discount_pct / 100);
@@ -57,14 +58,16 @@ export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> 
     ...(o.discount_pct ? [{ label: `Diskon ${o.discount_pct}%`, amount: -disc }] : []),
     ...(o.tax_pct ? [{ label: `PPN ${o.tax_pct}%`, amount: tax }] : []),
   ];
+  const channel = toChannel(o.channel);
+  const itemName = (i: { name: string; pack_size: string }) => `${channel === "label" ? "Label " : ""}${i.name}${i.pack_size ? ` (${i.pack_size})` : ""}`;
   const noteParts = [`Pesanan ${o.so_no}`, o.due_date ? `jatuh tempo ${ddmmyyyy(o.due_date)}` : "", o.notes].filter(Boolean);
   return {
     number: o.invoice_no ?? o.so_no,
     date: o.shipped_at ?? o.order_date,
     customer: { name: o.customer, address: o.address, city: o.city, phone: o.phone },
-    labels: { code: "Kode", name: "Produk", qty: "Qty (kms)" },
-    qtyDecimals: 0,
-    rows: items.map((i) => ({ code: i.sku, name: `${i.name} ${i.pack_size ? `(${i.pack_size})` : ""}`.trim(), qty: i.qty, price: i.price })),
+    labels: { code: "Kode", name: "Produk", qty: channel === "bulky" ? "Bobot (Kg)" : `Qty (${CHANNELS[channel].short})` },
+    qtyDecimals: channel === "bulky" ? 2 : 0,
+    rows: items.map((i) => ({ code: i.sku, name: itemName(i), qty: i.qty, price: i.price })),
     adjustments: adjustments.length ? [{ label: "Subtotal", amount: o.subtotal }, ...adjustments] : [],
     total: o.total,
     after: o.paid > 0 ? [{ label: "Sudah dibayar", amount: o.paid }, { label: "Sisa tagihan", amount: o.total - o.paid }] : [],

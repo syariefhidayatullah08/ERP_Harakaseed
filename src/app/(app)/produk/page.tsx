@@ -43,7 +43,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/produk"
       {incomplete.length > 0 && (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
           <span>
-            <b>{incomplete.length} varietas</b> belum punya harga atau ukuran kemasan. Lengkapi agar bisa dijual dengan benar.
+            <b>{incomplete.length} varietas</b> belum punya gramasi & harga. Lengkapi di halaman produknya agar bisa dijual per kemasan.
           </span>
           <Link href={onlyIncomplete ? "/produk" : "/produk?lengkapi=1"} className="btn-secondary btn-sm">
             {onlyIncomplete ? "Tampilkan semua" : "Tampilkan yang perlu dilengkapi"}
@@ -87,11 +87,11 @@ export default async function ProductsPage({ searchParams }: PageProps<"/produk"
                       {specs.length > 0 && <div className="mt-1 truncate text-[11px] text-muted">{specs.join(" · ")}</div>}
                       <div className="mt-2 grid grid-cols-3 gap-2 border-t border-line pt-2 text-xs">
                         <div>
-                          <div className="text-muted">Kemasan</div>
+                          <div className="text-muted">Gramasi</div>
                           <div className="font-medium">{p.pack_size || <span className="text-orange-700">—</span>}</div>
                         </div>
                         <div>
-                          <div className="text-muted">Harga</div>
+                          <div className="text-muted">Harga mulai</div>
                           <div className="font-medium tabular-nums">{p.unit_price ? rupiah(p.unit_price) : <span className="text-orange-700">Belum diisi</span>}</div>
                         </div>
                         <div>

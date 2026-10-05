@@ -4,6 +4,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { all, get, getSetting, getSettings, run } from "./db";
 import { nowWib, num, rupiah, tanggal } from "./format";
+import { CHANNELS, ITEM_PACK_SQL, toChannel } from "./sales-channel";
 
 /*
  * Koneksi email memakai SMTP (kirim) dan IMAP (kotak masuk).
@@ -221,6 +222,7 @@ async function layout(title: string, body: string) {
 }
 
 type OrderForEmail = {
+  channel?: string;
   id: number;
   so_no: string;
   order_date: string;
@@ -247,7 +249,7 @@ export async function loadOrderForEmail(soId: number) {
     soId,
   );
   const items = await all<ItemForEmail>(
-    `SELECT p.name, p.crop, p.pack_size, i.qty, i.price FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ?`,
+    `SELECT p.name, p.crop, ${ITEM_PACK_SQL}, i.qty, i.price FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     soId,
   );
   return order ? { order, items } : null;
@@ -268,7 +270,7 @@ function itemsTable(o: OrderForEmail, items: ItemForEmail[]) {
   const line = (label: string, value: string, bold = false) =>
     `<tr><td colspan="3" style="padding:6px 8px;text-align:right;${bold ? "font-weight:700" : "color:#5f6b76"}">${label}</td><td style="padding:6px 8px;text-align:right;${bold ? "font-weight:700" : ""}">${value}</td></tr>`;
   return `<table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;border-collapse:collapse;margin:16px 0">
-    <tr style="background:#eef6fb"><th style="padding:8px;text-align:left">Produk</th><th style="padding:8px;text-align:right">Qty</th><th style="padding:8px;text-align:right">Harga</th><th style="padding:8px;text-align:right">Jumlah</th></tr>
+    <tr style="background:#eef6fb"><th style="padding:8px;text-align:left">Produk</th><th style="padding:8px;text-align:right">Qty (${CHANNELS[toChannel(o.channel)].unit})</th><th style="padding:8px;text-align:right">Harga</th><th style="padding:8px;text-align:right">Jumlah</th></tr>
     ${rows}
     ${line("Subtotal", rupiah(o.subtotal))}
     ${o.discount_pct ? line(`Diskon ${o.discount_pct}%`, "− " + rupiah(disc)) : ""}

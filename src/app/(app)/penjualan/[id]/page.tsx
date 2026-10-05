@@ -8,7 +8,8 @@ import { Badge, Card, DL, Empty, Field, Flash, PageHeader } from "@/components/u
 import { SubmitButton } from "@/components/buttons";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { cancelOrder, confirmOrder, deleteDraft, emailOrderDocument, recordPayment, shipOrder } from "@/actions/sales";
-import { productStock } from "@/lib/inventory";
+import { packKey, stockByPack } from "@/lib/inventory";
+import { CHANNELS, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
 import { orderWhatsappMessages, waLink } from "@/lib/whatsapp";
 import { can, requireAccess } from "@/lib/session";
 import { Attachments } from "@/components/attachments";
@@ -20,7 +21,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
   const { id } = await params;
   const sp = await searchParams;
   const o = await get<{
-    id: number; so_no: string; customer_id: number; customer: string; contact_person: string; email: string; phone: string; city: string; address: string;
+    id: number; so_no: string; channel: string; customer_id: number; customer: string; contact_person: string; email: string; phone: string; city: string; address: string;
     order_date: string; status: string; discount_pct: number; tax_pct: number; subtotal: number; total: number; paid: number;
     invoice_no: string | null; due_date: string | null; shipped_at: string | null; courier: string; tracking_no: string; notes: string;
   }>(
@@ -30,8 +31,10 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
   );
   if (!o) notFound();
 
-  const items = await all<{ id: number; product_id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    "SELECT i.*, p.name, p.crop, p.pack_size FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ?",
+  const channel = toChannel(o.channel);
+  const ch = CHANNELS[channel];
+  const items = await all<{ id: number; product_id: number; name: string; crop: string; pack: string; pack_size: string; qty: number; price: number }>(
+    `SELECT i.id, i.product_id, i.qty, i.price, i.pack_size pack, p.name, p.crop, ${ITEM_PACK_SQL} FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
   );
   const allocs = await all<{ so_item_id: number; lot_id: number; lot_no: string; qty: number }>(
@@ -49,10 +52,12 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
     `SELECT * FROM emails WHERE ref_type IN ${finance ? "('sales_order','invoice')" : "('sales_order')"} AND ref_id = ? ORDER BY id DESC`,
     o.id,
   );
-  const stock = o.status === "dikonfirmasi" ? await productStock() : [];
+  // Hanya penjualan kemasan yang memotong stok lot (per varietas + gramasi).
+  const checkStock = channel === "kemasan" && o.status === "dikonfirmasi";
+  const stock = checkStock ? await stockByPack() : new Map<string, number>();
   const shortages = items
-    .map((i) => ({ name: i.name, need: i.qty, have: stock.find((s) => s.id === i.product_id)?.stock ?? 0 }))
-    .filter((s) => o.status === "dikonfirmasi" && s.have < s.need);
+    .map((i) => ({ name: `${i.name} ${i.pack}`.trim(), need: i.qty, have: stock.get(packKey(i.product_id, i.pack)) ?? 0 }))
+    .filter((s) => checkStock && s.have < s.need);
 
   const st = SO_STATUS[o.status];
   const ps = paymentStatus(o.total, o.paid);
@@ -65,12 +70,12 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
       <PageHeader
         title={
           <span className="flex flex-wrap items-center gap-3">
-            {o.so_no} <Badge tone={st?.tone}>{st?.label}</Badge>
+            {o.so_no} <Badge tone="brand">{ch.label}</Badge> <Badge tone={st?.tone}>{st?.label}</Badge>
             {finance && o.invoice_no && o.status !== "batal" && <Badge tone={ps.tone}>{ps.label}</Badge>}
           </span>
         }
         subtitle={`${tanggal(o.order_date)}${finance && o.invoice_no ? ` · Invoice ${o.invoice_no}` : ""}`}
-        back={sales ? { href: "/penjualan", label: "Penjualan" } : { href: "/keuangan", label: "Keuangan" }}
+        back={sales ? { href: `/penjualan/${channel}`, label: ch.title } : { href: "/keuangan", label: "Keuangan" }}
         actions={
           <>
             {(finance || !o.invoice_no) && (
@@ -106,8 +111,8 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                 <thead>
                   <tr>
                     <th>Produk</th>
-                    <th className="num">Qty</th>
-                    <th className="num">Harga</th>
+                    <th className="num">Qty ({ch.unit})</th>
+                    <th className="num">Harga / {ch.unit}</th>
                     <th className="num">Jumlah</th>
                   </tr>
                 </thead>

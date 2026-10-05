@@ -32,12 +32,6 @@ export function ProductForm({ product }: { product?: ProductStock }) {
             <option value="OP">OP (Open Pollinated)</option>
           </select>
         </Field>
-        <Field label="Ukuran kemasan">
-          <input name="pack_size" defaultValue={product?.pack_size} className="input" placeholder="10 g / 50 butir" />
-        </Field>
-        <Field label="Harga jual per kemasan (Rp)">
-          <input name="unit_price" type="number" min={0} defaultValue={product?.unit_price ?? 0} className="input" />
-        </Field>
         <Field label="Stok minimum (kemasan)">
           <input name="min_stock" type="number" min={0} defaultValue={product?.min_stock ?? 100} className="input" />
         </Field>

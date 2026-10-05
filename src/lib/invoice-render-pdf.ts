@@ -120,7 +120,7 @@ export async function renderInvoicePdf(doc: InvoiceDoc): Promise<Uint8Array> {
 
   // ---------------- Tabel ----------------
   const tx = 80;
-  const cols = [24, 78, 96, 60, 80, 97]; // No, Kode, Nama, Qty, Harga, Total
+  const cols = [24, 68, 116, 55, 78, 94]; // No, Kode, Nama, Qty, Harga, Total
   const colX = cols.reduce<number[]>((a, w, i) => [...a, i === 0 ? tx : a[i - 1] + cols[i - 1]], []);
   const tw = cols.reduce((a, b) => a + b, 0);
   const rowH = 13;
@@ -153,8 +153,11 @@ export async function renderInvoicePdf(doc: InvoiceDoc): Promise<Uint8Array> {
       rect(colX[j], y - rowH + 3, cols[j], rowH);
       const maxW = cols[j] - 6;
       let str = clean(c);
-      while (times.widthOfTextAtSize(str, 9.5) > maxW && str.length > 1) str = str.slice(0, -2) + "…";
-      text(str, colX[j] + cols[j] / 2, y - rowH + 6.5, { size: 9.5, align: "center" });
+      // Teks panjang (mis. "Label CALLINA MADU (10 g)") dikecilkan dulu, baru dipotong bila masih tidak muat.
+      let size = 9.5;
+      while (times.widthOfTextAtSize(str, size) > maxW && size > 7.5) size -= 0.5;
+      while (times.widthOfTextAtSize(str, size) > maxW && str.length > 1) str = str.slice(0, -2) + "…";
+      text(str, colX[j] + cols[j] / 2, y - rowH + 6.5, { size, align: "center" });
     });
     rect(colX[4], y - rowH + 3, cols[4], rowH);
     rect(colX[5], y - rowH + 3, cols[5], rowH);

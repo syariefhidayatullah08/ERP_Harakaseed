@@ -16,11 +16,12 @@ export default async function QcPage({ searchParams }: PageProps<"/qc">) {
   const tab = sp.tab === "lot" ? "lot" : "antrian";
   const minDk = Number(await getSetting("qc_min_germination", "85"));
 
-  const queue = await all<{ id: number; code: string; name: string; crop: string; pack_size: string; harvest_kg: number | null; grower: string | null; plant_date: string; sku: string }>(
-    `SELECT pr.id, pr.code, pr.harvest_kg, pr.plant_date, p.name, p.crop, p.pack_size, p.sku, g.name grower
+  const queue = await all<{ id: number; product_id: number; code: string; name: string; crop: string; harvest_kg: number | null; grower: string | null; plant_date: string; sku: string }>(
+    `SELECT pr.id, pr.product_id, pr.code, pr.harvest_kg, pr.plant_date, p.name, p.crop, p.sku, g.name grower
      FROM productions pr JOIN products p ON p.id = pr.product_id LEFT JOIN growers g ON g.id = pr.grower_id
      WHERE pr.status = 'uji_lab' ORDER BY pr.id`,
   );
+  const packs = await all<{ id: number; product_id: number; pack_size: string }>("SELECT id, product_id, pack_size FROM product_packs WHERE active = 1 ORDER BY id");
   const lots = await all<{ id: number; lot_no: string; name: string; qty_available: number; germination: number; purity: number; moisture: number; expiry_date: string; qc_status: string; last_test: string | null; tests: number }>(
     `SELECT l.id, l.lot_no, p.name, l.qty_available, l.germination, l.purity, l.moisture, l.expiry_date, l.qc_status,
             (SELECT MAX(test_date) FROM lot_tests t WHERE t.lot_id = l.id) last_test,
@@ -80,7 +81,16 @@ export default async function QcPage({ searchParams }: PageProps<"/qc">) {
                   <Field label="Kadar air (%) *">
                     <input name="moisture" type="number" step="0.1" min={0} max={100} required defaultValue={7} className="input" />
                   </Field>
-                  <Field label={`Kemasan lulus${q.pack_size ? ` (${q.pack_size})` : ""}`}>
+                  <Field label="Gramasi kemasan">
+                    <select name="pack_size" className="input">
+                      {packs
+                        .filter((k) => k.product_id === q.product_id)
+                        .map((k) => (
+                          <option key={k.id}>{k.pack_size}</option>
+                        ))}
+                    </select>
+                  </Field>
+                  <Field label="Kemasan lulus">
                     <input name="qty" type="number" min={1} className="input" placeholder="wajib bila lulus" />
                   </Field>
                   <Field label="No. lot (opsional)">

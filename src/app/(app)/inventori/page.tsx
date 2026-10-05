@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { all } from "@/lib/db";
-import { productStock } from "@/lib/inventory";
+import { packStock, productStock } from "@/lib/inventory";
 import { daysUntil, num, rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, Field, Flash, PageHeader, StatCard } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
@@ -31,8 +31,9 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const productFilter = Number(sp.product ?? 0);
   const showEmpty = sp.all === "1";
   const stock = await productStock("p.active = 1");
+  const packs = await packStock();
   const lots = await all<LotRow>(
-    `SELECT l.*, p.name, p.pack_size FROM lots l JOIN products p ON p.id = l.product_id
+    `SELECT l.*, p.name FROM lots l JOIN products p ON p.id = l.product_id
      WHERE (? = 0 OR l.product_id = ?) AND (? = 1 OR l.qty_available > 0)
      ORDER BY l.expiry_date`,
     productFilter,
@@ -180,15 +181,21 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       <Card title="Terima lot baru" className="scroll-mt-6">
         <form id="lot-baru" action={createLotAction} className="grid gap-4 p-5 sm:grid-cols-4">
           <Field label="Produk *" className="sm:col-span-2">
-            <select name="product_id" required defaultValue={productFilter || ""} className="input">
+            <select name="product_pack" required defaultValue="" className="input">
               <option value="" disabled>
-                Pilih varietas…
+                Pilih varietas & gramasi…
               </option>
-              {stock.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {p.crop} ({p.pack_size})
-                </option>
-              ))}
+              {stock
+                .filter((p) => !productFilter || p.id === productFilter)
+                .flatMap((p) =>
+                  packs
+                    .filter((k) => k.product_id === p.id)
+                    .map((k) => (
+                      <option key={k.id} value={`${p.id}|${k.pack_size}`}>
+                        {p.name} — {p.crop} · {k.pack_size}
+                      </option>
+                    )),
+                )}
             </select>
           </Field>
           <Field label="No. lot *">

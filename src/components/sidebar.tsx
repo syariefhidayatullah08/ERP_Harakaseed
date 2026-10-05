@@ -30,14 +30,20 @@ import {
   ClipboardCheck,
   Receipt,
   History,
+  Package,
+  Weight,
+  Tag,
 } from "lucide-react";
 
-type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean; ownerOnly?: boolean } | { section: string };
+type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean; ownerOnly?: boolean; sub?: boolean } | { section: string };
 
 const NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { section: "Penjualan & Keuangan" },
   { href: "/penjualan", label: "Penjualan", icon: ShoppingCart },
+  { href: "/penjualan/kemasan", label: "Penjualan Kemasan", icon: Package, sub: true },
+  { href: "/penjualan/bulky", label: "Penjualan Bulky", icon: Weight, sub: true },
+  { href: "/penjualan/label", label: "Penjualan Label", icon: Tag, sub: true },
   { href: "/pelanggan", label: "Pelanggan", icon: Users },
   { href: "/keluhan", label: "Keluhan Pelanggan", icon: MessageSquareWarning },
   { href: "/keuangan", label: "Keuangan", icon: Wallet },
@@ -126,13 +132,13 @@ export function Sidebar({
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className={`mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`mb-0.5 flex items-center gap-3 rounded-lg transition-colors ${item.sub ? "ml-5 px-3 py-1.5 text-[13px]" : "px-3 py-2 text-sm"} ${
                   isActive(item.href)
                     ? "bg-linear-to-r from-accent to-gold font-semibold text-accent-ink shadow-md shadow-accent/30"
                     : "text-brand-100 hover:bg-white/10 hover:text-white"
                 }`}
               >
-                <item.icon size={17} strokeWidth={1.8} />
+                <item.icon size={item.sub ? 15 : 17} strokeWidth={1.8} />
                 <span className="flex-1">{item.label}</span>
                 {item.badge && unread > 0 && (
                   <span className="rounded-full bg-gold px-1.5 text-[11px] font-bold text-accent-ink">{unread}</span>

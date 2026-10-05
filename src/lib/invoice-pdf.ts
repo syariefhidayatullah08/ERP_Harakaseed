@@ -2,6 +2,7 @@ import "server-only";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { all, get, getSettings } from "./db";
 import { num, rupiah, tanggal } from "./format";
+import { CHANNELS, ITEM_PACK_SQL, toChannel } from "./sales-channel";
 import { LOGO_PNG_BASE64 } from "./logo-data";
 import { invoiceFileBase, orderInvoiceDoc } from "./invoice-doc";
 import { renderInvoicePdf } from "./invoice-render-pdf";
@@ -9,6 +10,7 @@ import { renderInvoicePdf } from "./invoice-render-pdf";
 type Order = {
   id: number;
   so_no: string;
+  channel: string;
   customer: string;
   contact_person: string;
   phone: string;
@@ -69,7 +71,7 @@ export async function loadOrderPdfData(soId: number) {
   );
   if (!order) return null;
   const items = await all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    "SELECT i.id, i.qty, i.price, p.name, p.crop, p.pack_size FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id",
+    `SELECT i.id, i.qty, i.price, p.name, p.crop, ${ITEM_PACK_SQL} FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     soId,
   );
   const lots = await all<{ so_item_id: number; lot_no: string; qty: number; expiry_date: string }>(
@@ -92,6 +94,7 @@ export async function orderPdf(soId: number, doc: PdfDoc = "invoice"): Promise<{
   const { order: o, items, lots, settings } = data;
   const s = (k: string) => clean(settings[k] ?? "");
   const isSj = doc === "sj";
+  const qtyHead = `Qty (${CHANNELS[toChannel(o.channel)].unit})`;
   const title = isSj ? "SURAT JALAN" : o.invoice_no ? "INVOICE" : "PESANAN PENJUALAN";
   const docNo = isSj ? `SJ/${o.so_no}` : (o.invoice_no ?? o.so_no);
 
@@ -179,10 +182,10 @@ export async function orderPdf(soId: number, doc: PdfDoc = "invoice"): Promise<{
     text("Produk", cols.prod, y, { f: bold, size: 8 });
     if (isSj) {
       text("No. Lot / Kadaluarsa", (cols as { lot: number }).lot, y, { f: bold, size: 8 });
-      text("Qty", cols.qty, y, { f: bold, size: 8, align: "right" });
+      text(qtyHead, cols.qty, y, { f: bold, size: 8, align: "right" });
     } else {
       const c = cols as { qty: number; price: number; amount: number };
-      text("Qty", c.qty, y, { f: bold, size: 8, align: "right" });
+      text(qtyHead, c.qty, y, { f: bold, size: 8, align: "right" });
       text("Harga", c.price, y, { f: bold, size: 8, align: "right" });
       text("Jumlah", c.amount, y, { f: bold, size: 8, align: "right" });
     }
@@ -200,7 +203,7 @@ export async function orderPdf(soId: number, doc: PdfDoc = "invoice"): Promise<{
     }
     text(String(n + 1), cols.no, y);
     text(it.name, cols.prod, y, { f: bold });
-    text(`Benih ${it.crop} · kemasan ${it.pack_size}`, cols.prod, y - 11, { size: 7.5, color: MUTED });
+    text(`${it.crop} · ${it.pack_size}`, cols.prod, y - 11, { size: 7.5, color: MUTED });
     if (isSj) {
       itemLots.forEach((l, i) =>
         text(`${l.lot_no}  x${num(l.qty)}  ·  ED ${tanggal(l.expiry_date)}`, (cols as { lot: number }).lot, y - i * 11, { size: 8 }),
