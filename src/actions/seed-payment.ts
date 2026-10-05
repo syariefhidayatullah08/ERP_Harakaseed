@@ -55,16 +55,27 @@ export async function saveIntake(fd: FormData) {
   redirect(withMsg(`${BASE}?kind=${kind}`, `Benih dari ${farmer} tersimpan: nilai pembayaran ${rupiah(amount)}${badDebt ? `, kredit macet ${rupiah(badDebt)}` : ""}.`));
 }
 
+/**
+ * Hapus satu baris buku induk yang salah catat. Baris di surat PB yang belum dibayar ikut keluar dari suratnya
+ * (surat yang jadi kosong ikut dihapus); baris di surat yang sudah dibayar hanya bisa dihapus Founder.
+ */
 export async function deleteIntake(fd: FormData) {
-  await requireAccess("pembayaran_benih");
+  const user = await requireAccess("pembayaran_benih");
   const id = numf(fd, "id");
-  const row = await get<{ farmer: string; production_code: string; pb_id: number | null }>("SELECT farmer, production_code, pb_id FROM seed_intakes WHERE id = ?", id);
+  const row = await get<{ farmer: string; production_code: string; net_kg: number; amount: number; kind: string; pb_id: number | null; pb_no: string | null; pb_status: string | null }>(
+    "SELECT i.farmer, i.production_code, i.net_kg, i.amount, i.kind, i.pb_id, pb.number pb_no, pb.status pb_status FROM seed_intakes i LEFT JOIN seed_pb pb ON pb.id = i.pb_id WHERE i.id = ?", id);
   if (!row) redirect(withMsg(BASE, "Data tidak ditemukan.", "error"));
-  if (row.pb_id) redirect(withMsg(`${BASE}/${id}`, "Baris ini sudah masuk surat PB. Hapus surat PB-nya dulu.", "error"));
-  await run("DELETE FROM seed_intakes WHERE id = ?", id);
+  if (row.pb_status === "dibayar" && user.role !== "owner") redirect(withMsg(`${BASE}/${id}`, `Baris ini sudah dibayar lewat surat ${row.pb_no}; hanya Founder yang bisa menghapusnya.`, "error"));
+  const pbGone = await tx(async () => {
+    await run("DELETE FROM seed_intakes WHERE id = ?", id);
+    if (!row.pb_id || (await get("SELECT 1 FROM seed_intakes WHERE pb_id = ? LIMIT 1", row.pb_id))) return false;
+    await run("DELETE FROM seed_pb WHERE id = ?", row.pb_id);
+    return true;
+  });
   revalidatePath(BASE);
-  await logActivity("pembayaran_benih", "Menghapus data benih masuk", `${row.farmer} · ${row.production_code}`);
-  redirect(withMsg(BASE, `Data benih ${row.farmer} dihapus.`));
+  await logActivity("pembayaran_benih", "Menghapus data benih masuk", `${row.farmer} · ${row.production_code} · ${row.net_kg} kg · ${rupiah(row.amount)}${row.pb_no ? ` · dari surat ${row.pb_no}` : ""}`);
+  const note = !row.pb_no ? "" : pbGone ? ` Surat ${row.pb_no} ikut dihapus karena tidak ada baris lain.` : ` Baris ini juga dikeluarkan dari surat ${row.pb_no}.`;
+  redirect(withMsg(`${BASE}?kind=${row.kind}`, `Data benih ${row.farmer} (${row.production_code || "tanpa kode"}) dihapus.${note}`));
 }
 
 /** Buat surat pengajuan pembayaran benih (PB) dari baris buku induk yang dipilih. */

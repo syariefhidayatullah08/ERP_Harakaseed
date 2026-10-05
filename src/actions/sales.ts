@@ -9,6 +9,7 @@ import { logActivity } from "@/lib/activity";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
 import { nextInvoiceNumber } from "@/lib/invoice-doc";
+import { salesCashCategory } from "@/lib/cash";
 import { addDays, rupiah, today } from "@/lib/format";
 import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, toChannel } from "@/lib/sales-channel";
 import {
@@ -192,18 +193,29 @@ export async function recordPayment(fd: FormData) {
   await requireAccess("keuangan");
   const id = numf(fd, "id");
   const amount = numf(fd, "amount");
-  const so = await get<{ total: number; paid: number; status: string }>("SELECT total, paid, status FROM sales_orders WHERE id = ?", id);
+  const so = await get<{ total: number; paid: number; status: string; so_no: string; invoice_no: string | null; channel: string; customer: string }>(
+    "SELECT so.total, so.paid, so.status, so.so_no, so.invoice_no, so.channel, c.name customer FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?", id);
   if (!so || amount <= 0) redirect(withMsg(`/penjualan/${id}`, "Nominal pembayaran tidak valid.", "error"));
   if (amount > so.total - so.paid + 0.5) redirect(withMsg(`/penjualan/${id}`, "Nominal melebihi sisa tagihan.", "error"));
 
+  const payDate = str(fd, "pay_date") || today();
   await tx(async () => {
-    await run(
+    const paymentId = await insert(
       "INSERT INTO payments (so_id, pay_date, amount, method, note) VALUES (?,?,?,?,?)",
       id,
-      str(fd, "pay_date") || today(),
+      payDate,
       amount,
       str(fd, "method") || "Transfer",
       str(fd, "note"),
+    );
+    // Uang masuk dari penjualan langsung tercatat di Buku Kas.
+    await run(
+      "INSERT INTO cash_entries (entry_date, description, category, amount_in, payment_id) VALUES (?,?,?,?,?)",
+      payDate,
+      `Pembayaran ${toChannel(so.channel) === "label" ? "Label" : `Benih ${CHANNELS[toChannel(so.channel)].label}`} ${so.customer} (${so.invoice_no ?? so.so_no})`,
+      salesCashCategory(toChannel(so.channel), so.customer),
+      amount,
+      paymentId,
     );
     await run("UPDATE sales_orders SET paid = paid + ? WHERE id = ?", amount, id);
     await run("UPDATE sales_orders SET status = 'selesai' WHERE id = ? AND status = 'dikirim' AND paid >= total", id);
@@ -219,7 +231,8 @@ export async function recordPayment(fd: FormData) {
     }
   }
   revalidatePath("/penjualan");
-  redirect(withMsg(`/penjualan/${id}`, `Pembayaran dicatat. ${note}`));
+  revalidatePath("/kas");
+  redirect(withMsg(`/penjualan/${id}`, `Pembayaran dicatat dan masuk Buku Kas. ${note}`));
 }
 
 export async function cancelOrder(fd: FormData) {

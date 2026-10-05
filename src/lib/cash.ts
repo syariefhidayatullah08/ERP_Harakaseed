@@ -19,4 +19,14 @@ export const CASH_CATEGORIES: Record<string, { label: string; code: string }> = 
 export const isCashCategory = (v: string) => v in CASH_CATEGORIES;
 export const cashCategoryLabel = (v: string) => CASH_CATEGORIES[v]?.label ?? v;
 
-export type CashEntry = { id: number; entry_date: string; description: string; category: string; amount_in: number; amount_out: number };
+/**
+ * Kategori kas untuk pembayaran pesanan penjualan: mengikuti jenis penjualan (kemasan / bulky & label),
+ * kecuali dua pelanggan kontrak eksternal yang punya kode sendiri di laporan keuangan.
+ */
+export function salesCashCategory(channel: string, customer: string) {
+  if (/nusa\s*heulang/i.test(customer)) return "in_nh";
+  if (/muara\s*tirta\s*mas/i.test(customer)) return "in_mtm";
+  return channel === "kemasan" ? "in_kemasan" : "in_bulky";
+}
+
+export type CashEntry = { id: number; entry_date: string; description: string; category: string; amount_in: number; amount_out: number; so_id: number | null };

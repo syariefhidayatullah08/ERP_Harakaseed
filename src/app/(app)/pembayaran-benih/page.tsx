@@ -4,6 +4,8 @@ import { all, get } from "@/lib/db";
 import { addDays, num, rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { requireAccess } from "@/lib/session";
+import { SubmitButton } from "@/components/buttons";
+import { deleteIntake } from "@/actions/seed-payment";
 import { ExportMenu } from "@/components/export-menu";
 import { INTAKE_KIND, INTAKE_STATUS, PB_STATUS, type Intake } from "@/lib/seed-payment";
 
@@ -194,6 +196,7 @@ export default async function SeedPaymentPage({ searchParams }: PageProps<"/pemb
                       <th className="num">Pinjaman</th>
                       <th className="num">Nilai pembayaran</th>
                       <th>Status</th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>
@@ -228,6 +231,20 @@ export default async function SeedPaymentPage({ searchParams }: PageProps<"/pemb
                                   {r.pb_no}
                                 </Link>
                               </div>
+                            )}
+                          </td>
+                          <td>
+                            {/* Baris yang sudah lunas dihapus dari halaman rinciannya, supaya tidak terhapus tak sengaja. */}
+                            {r.status !== "lunas" && (
+                              <form action={deleteIntake}>
+                                <input type="hidden" name="id" value={r.id} />
+                                <SubmitButton
+                                  className="btn-danger btn-sm"
+                                  confirm={`Hapus data benih ${r.farmer} (${r.production_code || "tanpa kode"}, ${kg(r.net_kg)} kg)${r.pb_no ? ` dan keluarkan dari surat ${r.pb_no}` : ""}?`}
+                                >
+                                  Hapus
+                                </SubmitButton>
+                              </form>
                             )}
                           </td>
                         </tr>

@@ -23,7 +23,7 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
   const to = `${month}-31`;
 
   const opening = (await get<{ v: number }>("SELECT COALESCE(SUM(amount_in - amount_out), 0) v FROM cash_entries WHERE entry_date < ?", from))!.v;
-  const entries = await all<CashEntry>("SELECT id, entry_date, description, category, amount_in, amount_out FROM cash_entries WHERE entry_date >= ? AND entry_date <= ? ORDER BY entry_date, id", from, to);
+  const entries = await all<CashEntry>("SELECT k.id, k.entry_date, k.description, k.category, k.amount_in, k.amount_out, p.so_id FROM cash_entries k LEFT JOIN payments p ON p.id = k.payment_id WHERE k.entry_date >= ? AND k.entry_date <= ? ORDER BY k.entry_date, k.id", from, to);
   const totalIn = entries.reduce((s, e) => s + e.amount_in, 0);
   const totalOut = entries.reduce((s, e) => s + e.amount_out, 0);
   // Saldo berjalan: saldo baris sebelumnya + masuk − keluar.
@@ -85,18 +85,30 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
                       <td className="whitespace-nowrap text-muted">{tanggal(e.entry_date)}</td>
                       <td>
                         <div className="font-medium">{e.description}</div>
-                        <div className="text-xs text-muted">{cashCategoryLabel(e.category)}</div>
+                        <div className="text-xs text-muted">
+                          {cashCategoryLabel(e.category)}
+                          {e.so_id && (
+                            <>
+                              {" · "}
+                              <Link href={`/penjualan/${e.so_id}`} className="text-brand-700 hover:underline">
+                                otomatis dari pesanan
+                              </Link>
+                            </>
+                          )}
+                        </div>
                       </td>
                       <td className="num text-emerald-700">{e.amount_in ? rupiah(e.amount_in) : ""}</td>
                       <td className="num text-red-700">{e.amount_out ? rupiah(e.amount_out) : ""}</td>
                       <td className="num font-medium">{rupiah(e.balance)}</td>
                       <td>
-                        <form action={deleteCashEntry}>
-                          <input type="hidden" name="id" value={e.id} />
-                          <SubmitButton className="btn-danger btn-sm" confirm={`Hapus transaksi "${e.description}"?`}>
-                            Hapus
-                          </SubmitButton>
-                        </form>
+                        {!e.so_id && (
+                          <form action={deleteCashEntry}>
+                            <input type="hidden" name="id" value={e.id} />
+                            <SubmitButton className="btn-danger btn-sm" confirm={`Hapus transaksi "${e.description}"?`}>
+                              Hapus
+                            </SubmitButton>
+                          </form>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -142,6 +154,7 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
                 <input name="amount" type="number" min={1} step="any" required className="input" />
               </Field>
               <SubmitButton className="btn-primary w-full">Simpan transaksi</SubmitButton>
+              <p className="text-xs text-muted">Pembayaran pesanan penjualan yang dicatat di menu Penjualan otomatis masuk ke sini, jadi tidak perlu diketik ulang.</p>
             </form>
           </Card>
 

@@ -14,10 +14,10 @@ import { IntakeForm } from "../intake-form";
 export const metadata: Metadata = { title: "Data benih masuk" };
 
 export default async function IntakePage({ params, searchParams }: PageProps<"/pembayaran-benih/[id]">) {
-  await requireAccess("pembayaran_benih");
+  const user = await requireAccess("pembayaran_benih");
   const { id } = await params;
   const sp = await searchParams;
-  const row = await get<Intake & { pb_no: string | null }>("SELECT i.*, (SELECT number FROM seed_pb WHERE id = i.pb_id) pb_no FROM seed_intakes i WHERE i.id = ?", toId(id));
+  const row = await get<Intake & { pb_no: string | null; pb_status: string | null }>("SELECT i.*, (SELECT number FROM seed_pb WHERE id = i.pb_id) pb_no, (SELECT status FROM seed_pb WHERE id = i.pb_id) pb_status FROM seed_intakes i WHERE i.id = ?", toId(id));
   if (!row) notFound();
   const companies = (await all<{ company: string }>("SELECT DISTINCT company FROM seed_intakes WHERE company <> '' ORDER BY 1")).map((c) => c.company);
   return (
@@ -43,12 +43,15 @@ export default async function IntakePage({ params, searchParams }: PageProps<"/p
         </div>
       )}
       <IntakeForm row={row} kind={row.kind} companies={companies} />
-      {!row.pb_id && (
+      {(row.pb_status !== "dibayar" || user.role === "owner") && (
         <Card title="Hapus data" className="mt-5">
           <form action={deleteIntake} className="flex items-center justify-between gap-3 p-5 text-sm">
             <input type="hidden" name="id" value={row.id} />
-            <span className="text-muted">Hapus baris ini dari buku induk bila salah catat.</span>
-            <SubmitButton className="btn-danger" confirm={`Hapus data benih ${row.farmer}?`}>
+            <span className="text-muted">
+              Hapus baris ini dari buku induk bila salah catat.
+              {row.pb_no && ` Baris juga dikeluarkan dari surat ${row.pb_no}${row.pb_status === "dibayar" ? " yang sudah dibayar" : ""}.`}
+            </span>
+            <SubmitButton className="btn-danger" confirm={`Hapus data benih ${row.farmer}${row.pb_no ? ` dan keluarkan dari surat ${row.pb_no}` : ""}?`}>
               Hapus
             </SubmitButton>
           </form>

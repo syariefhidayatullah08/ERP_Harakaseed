@@ -677,6 +677,9 @@ const SCHEMA_SQL = `
     );
     CREATE INDEX IF NOT EXISTS cash_entries_date_idx ON cash_entries (entry_date, id);
 
+    -- Pembayaran pesanan penjualan otomatis tercatat di buku kas; baris kasnya ikut hilang bila pembayarannya dihapus.
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS payment_id INTEGER REFERENCES payments(id) ON DELETE CASCADE;
+
     -- Invoice terakhir sebelum memakai ERP bernomor 180/INV/X/2026; ERP melanjutkan dari 181.
     INSERT INTO settings (key, value) VALUES ('invoice_start', '2026:181') ON CONFLICT (key) DO NOTHING;
 
