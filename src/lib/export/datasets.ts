@@ -7,6 +7,7 @@ import { CUSTOMER_KIND, PO_STATUS, PRD_STATUS, SO_STATUS } from "../format";
 import { ACTIVITY_MODULES } from "../activity";
 import { INTAKE_KIND, INTAKE_STATUS, PB_STATUS } from "../seed-payment";
 import { CHANNELS, toChannel } from "../sales-channel";
+import { cashCategoryLabel } from "../cash";
 import {
   complaintLines,
   findingLines,
@@ -298,6 +299,47 @@ export const DATASETS: Record<string, Dataset> = {
       { key: "status", label: "Status", width: 14 },
     ],
     rows: async (r) => mapRows(await productionLines(r.from, r.to), (x) => ({ ...x, status: label(PRD_STATUS)(x.status) })),
+  },
+  "stok-bahan": {
+    title: "Stok Bahan Baku Benih",
+    need: "stok_bahan",
+    columns: () => [
+      { key: "production_code", label: "Kode Produksi", width: 16 },
+      { key: "product_name", label: "Nama Produk", width: 26 },
+      { key: "untested_kg", label: "Belum uji (kg)", type: "decimal" },
+      { key: "testing_kg", label: "Proses uji (kg)", type: "decimal" },
+      { key: "ready_kg", label: "Siap jual (kg)", type: "decimal" },
+      { key: "total_kg", label: "Total (kg)", type: "decimal" },
+      { key: "packing", label: "Packing (dus)", width: 14 },
+      { key: "note", label: "Keterangan", width: 34 },
+      { key: "updated_at", label: "Diperbarui", type: "date" },
+    ],
+    rows: () => all("SELECT *, untested_kg + testing_kg + ready_kg AS total_kg FROM bulk_stock ORDER BY id"),
+  },
+  kas: {
+    title: "Buku Kas",
+    need: "kas",
+    range: true,
+    columns: () => [
+      { key: "entry_date", label: "Tanggal", type: "date" },
+      { key: "description", label: "Keterangan", width: 44 },
+      { key: "category", label: "Kategori", width: 34 },
+      { key: "amount_in", label: "Pemasukan", type: "money" },
+      { key: "amount_out", label: "Pengeluaran", type: "money" },
+      { key: "balance", label: "Saldo", type: "money" },
+    ],
+    rows: async (r) =>
+      mapRows(
+        // Saldo berjalan dihitung dari seluruh riwayat, jadi tetap benar walau yang diunduh hanya satu periode.
+        await all<Row & { category: string }>(
+          `SELECT * FROM (SELECT entry_date, id, description, category, amount_in, amount_out,
+                    SUM(amount_in - amount_out) OVER (ORDER BY entry_date, id) AS balance FROM cash_entries) t
+           WHERE entry_date >= ? AND entry_date <= ? ORDER BY entry_date, id`,
+          r.from,
+          r.to,
+        ),
+        (x) => ({ ...x, category: cashCategoryLabel(x.category) }),
+      ),
   },
   mitra: {
     title: "Petani Mitra",

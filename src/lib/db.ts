@@ -651,6 +651,32 @@ const SCHEMA_SQL = `
     -- Hak akses khusus per orang (JSON daftar modul); NULL = mengikuti divisinya.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS modules TEXT;
 
+    -- Stok bahan baku benih (kg) per kode produksi, mengikuti lembar "STOCK KOMERSIL".
+    CREATE TABLE IF NOT EXISTS bulk_stock (
+      id SERIAL PRIMARY KEY,
+      production_code TEXT NOT NULL,
+      product_name TEXT NOT NULL DEFAULT '',
+      untested_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+      testing_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+      ready_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+      packing TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD'))
+    );
+
+    -- Buku kas: pemasukan & pengeluaran harian. Saldo = jumlah berjalan (amount_in - amount_out).
+    CREATE TABLE IF NOT EXISTS cash_entries (
+      id SERIAL PRIMARY KEY,
+      entry_date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'lain',
+      amount_in DOUBLE PRECISION NOT NULL DEFAULT 0,
+      amount_out DOUBLE PRECISION NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE INDEX IF NOT EXISTS cash_entries_date_idx ON cash_entries (entry_date, id);
+
     -- Owner berganti sebutan menjadi Founder (kode peran di database tetap 'owner').
     UPDATE users SET name = 'Founder' WHERE role = 'owner' AND name = 'Owner';
   `;

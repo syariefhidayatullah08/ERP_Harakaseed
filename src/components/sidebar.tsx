@@ -33,6 +33,8 @@ import {
   Package,
   Weight,
   Tag,
+  Banknote,
+  Warehouse,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean; ownerOnly?: boolean; sub?: boolean } | { section: string };
@@ -47,10 +49,12 @@ const NAV: NavItem[] = [
   { href: "/pelanggan", label: "Pelanggan", icon: Users },
   { href: "/keluhan", label: "Keluhan Pelanggan", icon: MessageSquareWarning },
   { href: "/keuangan", label: "Keuangan", icon: Wallet },
+  { href: "/kas", label: "Buku Kas", icon: Banknote },
   { href: "/pembayaran-benih", label: "Pembayaran Benih", icon: Receipt },
   { section: "Operasional" },
   { href: "/pengiriman", label: "Pengiriman", icon: PackageCheck },
   { href: "/inventori", label: "Gudang & Lot", icon: Boxes },
+  { href: "/stok-bahan", label: "Stok Bahan Baku", icon: Warehouse },
   { href: "/produksi", label: "Produksi Benih", icon: Tractor },
   { href: "/mitra", label: "Petani Mitra", icon: Wheat },
   { href: "/qc", label: "Lab / QC", icon: FlaskConical },

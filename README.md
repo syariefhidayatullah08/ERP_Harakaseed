@@ -16,7 +16,7 @@ Setiap karyawan login dengan **email pribadinya**. Hak akses mengikuti divisi; d
 | **Mutu** | Audit ISO 9001 (internal/eksternal/surveilan), temuan & CAPA, pengendalian dokumen mutu, Produk, Laporan mutu |
 | **Admin / SDM** | Karyawan, Pembelian, Pembayaran Benih, Pelanggan, Email, Laporan SDM |
 
-Founder bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. Modul Keuangan dan Akun Pengguna terkunci khusus Founder. Akses dicek di setiap halaman, aksi, dan unduhan, jadi bukan sekadar menu yang disembunyikan.
+Founder bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. Modul Keuangan, Buku Kas, dan Akun Pengguna terkunci khusus Founder. Akses dicek di setiap halaman, aksi, dan unduhan, jadi bukan sekadar menu yang disembunyikan.
 
 **Akun:** Founder (moderator ERP) mengundang email dan memilih divisinya di menu **Akun Pengguna**. Pengguna menerima email undangan untuk membuat kata sandinya sendiri (berlaku 72 jam). **Lupa kata sandi** bisa dilakukan sendiri dari halaman login; tautan reset dikirim ke email (berlaku 1 jam, sekali pakai). Akun yang dinonaktifkan langsung keluar dari semua perangkat.
 
@@ -27,9 +27,11 @@ Founder bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. 
 | **Dashboard** | Founder: omzet, piutang, grafik 12 bulan, varietas terlaris. Divisi lain: kartu & daftar sesuai modulnya |
 | **Penjualan** | Pesanan → konfirmasi → kirim (stok dipotong per lot dengan FEFO) → invoice. Cetak pesanan, invoice, dan surat jalan |
 | **Keuangan** | Piutang & umur piutang, pembayaran masuk, pengingat telat bayar (massal, invoice PDF terlampir) |
+| **Buku Kas** | Pemasukan & pengeluaran harian per kategori, saldo berjalan per bulan (khusus Founder) |
 | **Pengiriman** | Antrian pesanan siap kirim untuk gudang, input kurir & resi, surat jalan, bukti pengiriman |
 | **Pelanggan** | Distributor, toko tani, petani, ekspor. Riwayat pesanan, email, dokumen |
 | **Gudang & Lot** | Stok per lot dengan data mutu, kadaluarsa, penyesuaian stok, ketertelusuran |
+| **Stok Bahan Baku** | Bahan baku benih (kg) per kode produksi: belum uji, proses uji, siap jual |
 | **Produksi Benih** | Tanam → panen → prosesing → serah ke Lab/QC |
 | **Lab / QC** | Uji daya kecambah/kemurnian/kadar air; lulus → lot masuk stok; uji ulang; lot gagal dikarantina (tidak bisa dijual) |
 | **Mutu & Audit ISO** | Jadwal & laporan audit, temuan per klausul ISO 9001 → divisi penanggung jawab mengisi akar masalah & tindakan → Mutu memverifikasi & menutup (notifikasi email di tiap langkah). Daftar dokumen mutu (SOP, IK, formulir) dengan revisi & jadwal tinjau |

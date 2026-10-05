@@ -4,9 +4,11 @@ export const MODULES = {
   penjualan: "Penjualan",
   pengiriman: "Pengiriman",
   keuangan: "Keuangan",
+  kas: "Buku Kas",
   pelanggan: "Pelanggan",
   produk: "Produk / Varietas",
   inventori: "Gudang & Lot",
+  stok_bahan: "Stok Bahan Baku",
   produksi: "Produksi Benih",
   mitra: "Petani Mitra",
   qc: "Lab / QC",
@@ -27,9 +29,11 @@ export const MODULE_HINT: Record<Module, string> = {
   penjualan: "Pesanan, harga jual, konfirmasi ke pelanggan",
   pengiriman: "Siapkan & kirim barang, surat jalan (tanpa harga)",
   keuangan: "Pembayaran, piutang, invoice, omzet, laporan keuangan",
+  kas: "Pemasukan & pengeluaran harian perusahaan, saldo kas (khusus Founder)",
   pelanggan: "Data distributor, toko, petani",
   produk: "Daftar varietas & spesifikasi",
   inventori: "Stok per lot, terima barang, penyesuaian stok",
+  stok_bahan: "Stok bahan baku benih (kg) per kode produksi: belum uji, proses uji, siap jual",
   produksi: "Batch tanam → panen → prosesing",
   mitra: "Petani penangkar",
   qc: "Uji laboratorium, daya kecambah, kelulusan lot",
@@ -57,13 +61,13 @@ export type Division = keyof typeof DIVISIONS;
 export const isDivision = (v: unknown): v is Division => typeof v === "string" && v in DIVISIONS;
 
 /** Modul yang hanya boleh dibuka Founder (kode peran 'owner'), tidak bisa diberikan ke divisi lain. */
-export const OWNER_ONLY: Module[] = ["keuangan", "pengguna"];
+export const OWNER_ONLY: Module[] = ["keuangan", "kas", "pengguna"];
 
 /** Hak akses bawaan. Founder bisa mengubahnya di Pengaturan → Hak akses divisi (kecuali modul OWNER_ONLY). */
 export const DEFAULT_ACCESS: Record<Exclude<Division, "owner">, Module[]> = {
   produksi: ["produksi", "mitra", "produk", "laporan"],
-  lab_qc: ["qc", "produk", "laporan"],
-  warehouse: ["inventori", "pengiriman", "produk", "laporan"],
+  lab_qc: ["qc", "stok_bahan", "produk", "laporan"],
+  warehouse: ["inventori", "stok_bahan", "pengiriman", "produk", "laporan"],
   admin_sdm: ["sdm", "pembelian", "pembayaran_benih", "pelanggan", "email", "laporan"],
   mutu: ["mutu", "produk", "laporan"],
   marketing: ["penjualan", "pelanggan", "keluhan", "produk", "email", "laporan"],

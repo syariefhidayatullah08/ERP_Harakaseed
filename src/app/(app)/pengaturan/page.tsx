@@ -138,7 +138,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-4">
             <p className="text-xs text-muted">
-              <Lock size={12} className="inline text-orange-600" /> Keuangan dan Akun Pengguna selalu khusus Founder. Perubahan berlaku langsung untuk semua pengguna. ({modules.length} modul
+              <Lock size={12} className="inline text-orange-600" /> Keuangan, Buku Kas, dan Akun Pengguna selalu khusus Founder. Perubahan berlaku langsung untuk semua pengguna. ({modules.length} modul
               bisa diatur)
             </p>
             <div className="flex gap-2">
