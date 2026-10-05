@@ -648,6 +648,9 @@ const SCHEMA_SQL = `
       UNIQUE (product_id, pack_size)
     );
 
+    -- Hak akses khusus per orang (JSON daftar modul); NULL = mengikuti divisinya.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS modules TEXT;
+
     -- Owner berganti sebutan menjadi Founder (kode peran di database tetap 'owner').
     UPDATE users SET name = 'Founder' WHERE role = 'owner' AND name = 'Owner';
   `;

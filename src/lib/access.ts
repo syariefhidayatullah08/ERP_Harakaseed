@@ -71,11 +71,25 @@ export const DEFAULT_ACCESS: Record<Exclude<Division, "owner">, Module[]> = {
 
 export type AccessMatrix = Partial<Record<Division, Module[]>>;
 
-/** Daftar modul efektif untuk sebuah divisi. Founder selalu semua; divisi lain tidak pernah mendapat modul OWNER_ONLY. */
-export function resolveModules(role: string, matrix?: AccessMatrix | null): Module[] {
+/** Hak akses khusus satu orang (kolom users.modules, JSON). Null = mengikuti divisinya. */
+export function parseModules(raw: string | null | undefined): Module[] | null {
+  if (!raw) return null;
+  try {
+    const list = JSON.parse(raw) as unknown;
+    return Array.isArray(list) ? list.filter((m): m is Module => typeof m === "string" && m in MODULES) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Daftar modul efektif. Founder selalu semua; yang lain mengikuti divisinya, kecuali bila orang itu diberi
+ * hak akses khusus (`custom`). Selain Founder tidak pernah mendapat modul OWNER_ONLY.
+ */
+export function resolveModules(role: string, matrix?: AccessMatrix | null, custom?: Module[] | null): Module[] {
   if (role === "owner") return [...ALL_MODULES];
   if (!isDivision(role)) return [];
-  const list: Module[] = matrix?.[role] ?? DEFAULT_ACCESS[role as Exclude<Division, "owner">];
+  const list: Module[] = custom ?? matrix?.[role] ?? DEFAULT_ACCESS[role as Exclude<Division, "owner">];
   return list.filter((m) => m in MODULES && !OWNER_ONLY.includes(m));
 }
 

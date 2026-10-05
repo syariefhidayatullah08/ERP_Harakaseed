@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { all } from "@/lib/db";
 import { tanggal } from "@/lib/format";
-import { DIVISIONS, type Division } from "@/lib/access";
+import { ALL_MODULES, DIVISIONS, MODULES, OWNER_ONLY, parseModules, resolveModules, type Division } from "@/lib/access";
 import { Badge, Card, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
-import { deleteUser, inviteUser, sendUserLink, updateUser } from "@/actions/users";
-import { requireAccess } from "@/lib/session";
+import { deleteUser, inviteUser, saveUserAccess, sendUserLink, updateUser } from "@/actions/users";
+import { getAccessMatrix, requireAccess } from "@/lib/session";
 import { ExportMenu } from "@/components/export-menu";
 
 export const metadata: Metadata = { title: "Akun Pengguna" };
@@ -15,12 +15,14 @@ const TONE: Record<string, string> = { owner: "purple", marketing: "brand", ware
 export default async function UsersPage({ searchParams }: PageProps<"/pengguna">) {
   const me = await requireAccess("pengguna");
   const sp = await searchParams;
-  const users = await all<{ id: number; name: string; email: string; role: string; active: number; last_login: string | null; created_at: string; locked: boolean }>(
+  const users = await all<{ id: number; name: string; email: string; role: string; active: number; last_login: string | null; created_at: string; locked: boolean; modules: string | null }>(
     // locked_until disimpan sebagai waktu ISO (UTC), jadi bisa dibandingkan sebagai teks.
-    `SELECT id, name, email, role, active, last_login, created_at,
+    `SELECT id, name, email, role, active, last_login, created_at, modules,
             COALESCE(locked_until > to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), false) locked
      FROM users ORDER BY active DESC, role, name`,
   );
+  const matrix = await getAccessMatrix();
+  const grantable = ALL_MODULES.filter((m) => !OWNER_ONLY.includes(m));
   // Menu ini khusus Founder; penyaring di bawah berjaga bila aturan aksesnya dilonggarkan lagi.
   const assignable = (Object.keys(DIVISIONS) as Division[]).filter((d) => d !== "owner" || me.role === "owner");
 
@@ -42,6 +44,8 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
               <tbody>
                 {users.map((u) => {
                   const editable = u.role !== "owner" || me.role === "owner";
+                  const custom = u.role === "owner" ? null : parseModules(u.modules);
+                  const effective = resolveModules(u.role, matrix, custom);
                   return (
                     <tr key={u.id} className={u.active ? "" : "opacity-60"}>
                       <td>
@@ -85,11 +89,40 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
                                 </form>
                               )}
                             </div>
+                            {u.role !== "owner" && (
+                              <form action={saveUserAccess} className="mt-3 rounded-lg bg-canvas p-3">
+                                <input type="hidden" name="id" value={u.id} />
+                                <div className="text-xs font-semibold">Hak akses khusus orang ini</div>
+                                <p className="mt-0.5 text-xs text-muted">
+                                  {custom ? "Sedang memakai akses khusus, tidak mengikuti divisinya." : "Sedang mengikuti divisinya. Ubah centang lalu simpan bila orang ini perlu akses berbeda."}
+                                </p>
+                                <div className="mt-2 grid gap-x-3 gap-y-1 sm:grid-cols-2">
+                                  {grantable.map((m) => (
+                                    <label key={m} className="flex items-center gap-1.5 text-xs">
+                                      <input type="checkbox" name={`m:${m}`} defaultChecked={effective.includes(m)} className="accent-brand-700" /> {MODULES[m]}
+                                    </label>
+                                  ))}
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <SubmitButton className="btn-secondary btn-sm">Simpan akses khusus</SubmitButton>
+                                  {custom && (
+                                    <SubmitButton className="btn-secondary btn-sm" name="reset" value="1">
+                                      Ikuti divisi lagi
+                                    </SubmitButton>
+                                  )}
+                                </div>
+                              </form>
+                            )}
                           </details>
                         )}
                       </td>
                       <td className="align-top">
                         <Badge tone={TONE[u.role]}>{DIVISIONS[u.role as Division]?.label ?? u.role}</Badge>
+                        {custom && (
+                          <div className="mt-1" title={effective.map((m) => MODULES[m]).join(", ") || "Tanpa modul"}>
+                            <Badge tone="orange">Akses khusus</Badge>
+                          </div>
+                        )}
                         {u.locked && (
                           <div className="mt-1" title="Terkunci sementara karena salah kata sandi berulang. Klik Kelola akun → Simpan untuk membuka.">
                             <Badge tone="red">Terkunci</Badge>
@@ -149,7 +182,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
                 </li>
               ))}
             </ul>
-            <p className="px-5 pb-5 text-xs text-muted">Atur modul tiap divisi di Pengaturan → Hak akses divisi.</p>
+            <p className="px-5 pb-5 text-xs text-muted">Atur modul tiap divisi di Pengaturan → Hak akses divisi. Untuk satu orang saja, buka Kelola akun → Hak akses khusus.</p>
           </Card>
         </div>
       </div>

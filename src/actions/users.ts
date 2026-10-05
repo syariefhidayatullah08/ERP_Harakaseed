@@ -9,7 +9,7 @@ import { createPasswordToken, requireAccess, type SessionUser } from "@/lib/sess
 import { hashPassword } from "@/lib/password";
 import { numf, str, withMsg } from "@/lib/form";
 import { logActivity } from "@/lib/activity";
-import { DIVISIONS, isDivision } from "@/lib/access";
+import { ALL_MODULES, DIVISIONS, isDivision, MODULES, OWNER_ONLY } from "@/lib/access";
 import { passwordLinkEmail, sendEmail } from "@/lib/email";
 
 const BACK = "/pengguna";
@@ -75,10 +75,34 @@ export async function updateUser(fd: FormData) {
   if (target.role === "owner" && target.active && (role !== "owner" || !active) && (await activeOwners()) <= 1) {
     redirect(withMsg(BACK, "Harus ada minimal satu Founder aktif.", "error"));
   }
-  await run("UPDATE users SET name = ?, role = ?, active = ?, failed_logins = 0, locked_until = NULL WHERE id = ?", str(fd, "name") || "Pengguna", role, active, id);
+  // Pindah divisi = hak akses khusus orang itu dilepas, kembali mengikuti divisi barunya.
+  await run(
+    "UPDATE users SET name = ?, role = ?, active = ?, failed_logins = 0, locked_until = NULL, modules = CASE WHEN role = ? THEN modules ELSE NULL END WHERE id = ?",
+    str(fd, "name") || "Pengguna", role, active, role, id,
+  );
   revalidatePath(BACK);
   await logActivity("pengguna", active ? "Mengubah akun pengguna" : "Menonaktifkan akun pengguna", `${target.email} · ${DIVISIONS[role].label}`);
   redirect(withMsg(BACK, active ? "Akun diperbarui." : "Akun dinonaktifkan; pengguna langsung keluar dari ERP."));
+}
+
+/** Hak akses khusus satu orang: modul yang dicentang menggantikan bawaan divisinya. `reset` = kembali mengikuti divisi. */
+export async function saveUserAccess(fd: FormData) {
+  await requireAccess("pengguna");
+  const id = numf(fd, "id");
+  const target = await get<{ email: string; role: string }>("SELECT email, role FROM users WHERE id = ?", id);
+  if (!target) redirect(withMsg(BACK, "Pengguna tidak ditemukan.", "error"));
+  if (target.role === "owner") redirect(withMsg(BACK, "Founder selalu punya semua akses.", "error"));
+  if (fd.get("reset")) {
+    await run("UPDATE users SET modules = NULL WHERE id = ?", id);
+    revalidatePath("/", "layout");
+    await logActivity("pengguna", "Mengembalikan hak akses pengguna ke divisinya", target.email);
+    redirect(withMsg(BACK, `Hak akses ${target.email} kembali mengikuti divisinya.`));
+  }
+  const modules = ALL_MODULES.filter((m) => !OWNER_ONLY.includes(m) && fd.get(`m:${m}`));
+  await run("UPDATE users SET modules = ? WHERE id = ?", JSON.stringify(modules), id);
+  revalidatePath("/", "layout");
+  await logActivity("pengguna", "Mengatur hak akses khusus pengguna", `${target.email}: ${modules.join("/") || "tanpa modul"}`);
+  redirect(withMsg(BACK, `Hak akses khusus ${target.email} disimpan: ${modules.map((m) => MODULES[m]).join(", ") || "tanpa modul"}. Berlaku langsung.`));
 }
 
 export async function sendUserLink(fd: FormData) {

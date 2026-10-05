@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { get } from "./db";
 import { cache } from "react";
-import { hasAny, MODULES, resolveModules, type AccessMatrix, type Module } from "./access";
+import { hasAny, MODULES, parseModules, resolveModules, type AccessMatrix, type Module } from "./access";
 
 export const SESSION_COOKIE = "haraka_session";
 const SECRET =
@@ -46,7 +46,7 @@ function safeEqual(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-type UserRow = SessionUser & { password_hash: string; active: number };
+type UserRow = Omit<SessionUser, "modules"> & { password_hash: string; active: number; custom_modules?: string | null };
 
 /** Ambil matriks hak akses sekali per request. */
 export const getAccessMatrix = cache(async (): Promise<AccessMatrix | null> => {
@@ -62,9 +62,9 @@ export const currentUser = cache(async (): Promise<SessionUser | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const [id, exp, sig] = token?.split(".") ?? [];
   if (!id || !exp || !sig || !/^\d+$/.test(id) || Number(exp) < Date.now()) return null;
-  const row = await get<UserRow>("SELECT id, name, email, role, password_hash, active FROM users WHERE id = ?", Number(id));
+  const row = await get<UserRow>("SELECT id, name, email, role, password_hash, active, modules AS custom_modules FROM users WHERE id = ?", Number(id));
   if (!row || !row.active || !safeEqual(sig, sign(`${id}.${exp}.${fingerprint(row.password_hash)}`))) return null;
-  const modules = resolveModules(row.role, await getAccessMatrix());
+  const modules = resolveModules(row.role, await getAccessMatrix(), parseModules(row.custom_modules));
   return { id: row.id, name: row.name, email: row.email, role: row.role, modules };
 });
 
