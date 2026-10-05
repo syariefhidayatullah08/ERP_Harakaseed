@@ -174,16 +174,6 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
               </p>
             </form>
           </Card>
-          <Card title="Divisi & cakupan akses">
-            <ul className="space-y-2 p-5 text-xs">
-              {(Object.keys(DIVISIONS) as Division[]).map((d) => (
-                <li key={d}>
-                  <Badge tone={TONE[d]}>{DIVISIONS[d].label}</Badge> <span className="text-muted">{DIVISIONS[d].description}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="px-5 pb-5 text-xs text-muted">Atur modul tiap divisi di Pengaturan → Hak akses divisi. Untuk satu orang saja, buka Kelola akun → Hak akses khusus.</p>
-          </Card>
         </div>
       </div>
     </>
