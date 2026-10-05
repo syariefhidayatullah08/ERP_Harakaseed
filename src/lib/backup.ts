@@ -124,7 +124,7 @@ const mb = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(b
 
 /**
  * Buat backup, simpan ke penyimpanan file privat, hapus yang lebih lama dari BACKUP_KEEP hari, salin file lampiran,
- * dan (untuk backup terjadwal) kirim salinannya ke email semua Owner aktif.
+ * dan (untuk backup terjadwal) kirim salinannya ke email semua Founder aktif.
  */
 export async function runBackup(opts: { scheduled: boolean }): Promise<{ ok: boolean; message: string }> {
   try {
@@ -161,7 +161,7 @@ export async function runBackup(opts: { scheduled: boolean }): Promise<{ ok: boo
         });
         if (res.ok) sent++;
       }
-      emailNote = ` Email ke ${sent}/${owners.length} Owner.`;
+      emailNote = ` Email ke ${sent}/${owners.length} Founder.`;
     }
 
     const message = `Backup ${b.name} tersimpan: ${b.tables} tabel, ${b.rows} baris, ${mb(b.buffer.length)}; ${filesNote}.${emailNote}`;

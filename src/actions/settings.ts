@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { del } from "@vercel/blob";
 import { all, exec, get, run, setSetting, tx } from "@/lib/db";
+import { readSignature, SIGNATURE_KEYS, SIGNATURE_MAX_BYTES, type SignatureKey } from "@/lib/signature";
 import { createToken, requireUser, SESSION_COOKIE } from "@/lib/session";
 import { str, withMsg } from "@/lib/form";
 import { logActivity } from "@/lib/activity";
@@ -24,7 +25,7 @@ const CHOICE_KEYS = Object.keys(CHOICES);
 
 async function requireOwner() {
   const user = await requireUser();
-  if (user.role !== "owner") redirect(withMsg(BACK, "Hanya Owner yang dapat mengubah pengaturan ini.", "error"));
+  if (user.role !== "owner") redirect(withMsg(BACK, "Hanya Founder yang dapat mengubah pengaturan ini.", "error"));
   return user;
 }
 
@@ -38,7 +39,29 @@ export async function saveSettings(fd: FormData) {
   redirect(withMsg(BACK, "Pengaturan disimpan."));
 }
 
-/** Simpan modul yang boleh dibuka tiap divisi. Modul khusus Owner (keuangan) tidak pernah bisa diberikan. */
+/** Unggah atau hapus gambar tanda tangan (kiri/kanan) yang ditempel di PDF & Word invoice dan surat PB. */
+export async function saveSignature(fd: FormData) {
+  await requireOwner();
+  const back = (msg: string, kind: "msg" | "error" = "msg") => redirect(withMsg(BACK, msg, kind) + "#ttd");
+  const slot = str(fd, "slot") as SignatureKey;
+  if (!SIGNATURE_KEYS.includes(slot)) back("Penanda tangan tidak dikenal.", "error");
+  const side = slot === "signer_sig" ? "kiri" : "kanan";
+  if (fd.get("remove")) {
+    await run("DELETE FROM settings WHERE key = ?", slot);
+    await logActivity("pengaturan", "Menghapus gambar tanda tangan", side);
+    back(`Gambar tanda tangan ${side} dihapus.`);
+  }
+  const file = fd.get("file");
+  if (!(file instanceof File) || !file.size) return back("Pilih file gambar tanda tangan (PNG atau JPG).", "error");
+  if (file.size > SIGNATURE_MAX_BYTES) back(`Ukuran file maksimal ${SIGNATURE_MAX_BYTES / 1024} KB. Perkecil gambarnya dulu.`, "error");
+  const sig = await readSignature(new Uint8Array(await file.arrayBuffer()), file.type);
+  if (!sig) return back("File harus berupa gambar PNG atau JPG yang valid.", "error");
+  await setSetting(slot, JSON.stringify(sig));
+  await logActivity("pengaturan", "Mengunggah gambar tanda tangan", side);
+  back(`Gambar tanda tangan ${side} disimpan. Invoice dan surat PB berikutnya langsung memakainya.`);
+}
+
+/** Simpan modul yang boleh dibuka tiap divisi. Modul khusus Founder (keuangan, akun pengguna) tidak pernah bisa diberikan. */
 export async function saveAccessMatrix(fd: FormData) {
   await requireOwner();
   if (fd.get("reset")) {
@@ -88,7 +111,7 @@ export async function changePassword(fd: FormData) {
   redirect(withMsg(BACK, "Kata sandi diganti. Perangkat lain yang memakai akun ini otomatis keluar."));
 }
 
-/** Owner membuat backup saat itu juga (mis. sebelum menghapus data atau perubahan besar). */
+/** Founder membuat backup saat itu juga (mis. sebelum menghapus data atau perubahan besar). */
 export async function backupNow() {
   await requireOwner();
   const res = await runBackup({ scheduled: false });

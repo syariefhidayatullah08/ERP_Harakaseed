@@ -1,5 +1,5 @@
 import "server-only";
-import { all, get, getSettings } from "./db";
+import { all, get, getDocSettings } from "./db";
 import { ROMAN } from "./invoice-doc";
 
 // Pembayaran benih petani: buku induk benih masuk (internal & eksternal) + surat pengajuan pembayaran (PB).
@@ -58,5 +58,5 @@ export async function pbDoc(id: number): Promise<PbDoc | null> {
   const pb = await get<Pb>("SELECT * FROM seed_pb WHERE id = ?", id);
   if (!pb) return null;
   const rows = await all<Intake>("SELECT * FROM seed_intakes WHERE pb_id = ? ORDER BY due_date, id", id);
-  return { pb, rows, total: rows.reduce((s, r) => s + r.amount, 0), settings: await getSettings() };
+  return { pb, rows, total: rows.reduce((s, r) => s + r.amount, 0), settings: await getDocSettings() };
 }

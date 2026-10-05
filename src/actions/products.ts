@@ -6,6 +6,7 @@ import { get, insert, PACK_SUMMARY_SQL, run } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { logActivity } from "@/lib/activity";
+import { GRAM_MAX, GRAM_MIN, gramPack } from "@/lib/sales-channel";
 
 function read(fd: FormData) {
   return {
@@ -56,16 +57,19 @@ export async function saveProduct(fd: FormData) {
   redirect(withMsg("/produk", `Produk ${p.name} disimpan.`));
 }
 
-/** Tambah gramasi baru atau ubah harga gramasi yang ada. Nama gramasi tidak diubah karena lot & pesanan merujuknya. */
+/**
+ * Tambah gramasi baru (angka 1–100 gram, kolom `gram`) atau ubah harga gramasi yang ada (kolom `pack_size`).
+ * Nama gramasi tidak diubah karena lot & pesanan merujuknya.
+ */
 export async function savePack(fd: FormData) {
   await requireAccess("produk");
   const productId = numf(fd, "product_id");
   const back = `/produk/${productId}`;
-  const packSize = str(fd, "pack_size").replace(/\s+/g, " ");
+  const packSize = fd.has("gram") ? gramPack(str(fd, "gram")) : str(fd, "pack_size").replace(/\s+/g, " ");
   const price = numf(fd, "price");
   const product = await get<{ name: string }>("SELECT name FROM products WHERE id = ?", productId);
   if (!product) redirect(withMsg("/produk", "Produk tidak ditemukan.", "error"));
-  if (!packSize) redirect(withMsg(back, "Isi gramasi, mis. 10 g.", "error"));
+  if (!packSize) redirect(withMsg(back, `Gramasi diisi angka ${GRAM_MIN}–${GRAM_MAX} (gram).`, "error"));
   if (packSize.includes("|") || price < 0) redirect(withMsg(back, "Gramasi atau harga tidak valid.", "error"));
   await run(
     "INSERT INTO product_packs (product_id, pack_size, price) VALUES (?,?,?) ON CONFLICT (product_id, pack_size) DO UPDATE SET price = excluded.price, active = 1",

@@ -38,17 +38,17 @@ export const MODULE_HINT: Record<Module, string> = {
   pembelian: "Supplier & purchase order",
   pembayaran_benih: "Buku induk benih masuk dari petani & surat pengajuan pembayaran (PB)",
   sdm: "Data karyawan per divisi",
-  pengguna: "Membuat & mengelola akun login ERP",
+  pengguna: "Mengundang email & memberi hak akses per divisi (khusus Founder)",
   email: "Kotak masuk & kirim email perusahaan",
   laporan: "Laporan sesuai modul yang bisa diakses",
 };
 
 export const DIVISIONS = {
-  owner: { label: "Owner (Keuangan)", description: "Melihat & mengatur seluruh ERP, termasuk keuangan" },
+  owner: { label: "Founder & Moderator", description: "Mengatur seluruh ERP termasuk keuangan, mengundang pengguna, dan memberi hak akses tiap divisi" },
   produksi: { label: "Produksi", description: "Batch produksi benih & petani mitra" },
   lab_qc: { label: "Lab / QC", description: "Uji laboratorium & kelulusan lot" },
   warehouse: { label: "Warehouse", description: "Stok gudang, lot, dan pengiriman barang" },
-  admin_sdm: { label: "Admin / SDM", description: "Karyawan, akun pengguna, pembelian, administrasi" },
+  admin_sdm: { label: "Admin / SDM", description: "Karyawan, pembelian, pembayaran benih, administrasi" },
   mutu: { label: "Mutu", description: "Sistem manajemen mutu ISO: audit, temuan, dokumen" },
   marketing: { label: "Marketing", description: "Pesanan, pelanggan, komunikasi email" },
 } as const;
@@ -56,22 +56,22 @@ export const DIVISIONS = {
 export type Division = keyof typeof DIVISIONS;
 export const isDivision = (v: unknown): v is Division => typeof v === "string" && v in DIVISIONS;
 
-/** Modul yang hanya boleh dibuka Owner, tidak bisa diberikan ke divisi lain. */
-export const OWNER_ONLY: Module[] = ["keuangan"];
+/** Modul yang hanya boleh dibuka Founder (kode peran 'owner'), tidak bisa diberikan ke divisi lain. */
+export const OWNER_ONLY: Module[] = ["keuangan", "pengguna"];
 
-/** Hak akses bawaan. Owner bisa mengubahnya di Pengaturan → Hak akses divisi (kecuali modul OWNER_ONLY). */
+/** Hak akses bawaan. Founder bisa mengubahnya di Pengaturan → Hak akses divisi (kecuali modul OWNER_ONLY). */
 export const DEFAULT_ACCESS: Record<Exclude<Division, "owner">, Module[]> = {
   produksi: ["produksi", "mitra", "produk", "laporan"],
   lab_qc: ["qc", "produk", "laporan"],
   warehouse: ["inventori", "pengiriman", "produk", "laporan"],
-  admin_sdm: ["sdm", "pengguna", "pembelian", "pembayaran_benih", "pelanggan", "email", "laporan"],
+  admin_sdm: ["sdm", "pembelian", "pembayaran_benih", "pelanggan", "email", "laporan"],
   mutu: ["mutu", "produk", "laporan"],
   marketing: ["penjualan", "pelanggan", "keluhan", "produk", "email", "laporan"],
 };
 
 export type AccessMatrix = Partial<Record<Division, Module[]>>;
 
-/** Daftar modul efektif untuk sebuah divisi. Owner selalu semua; divisi lain tidak pernah mendapat modul OWNER_ONLY. */
+/** Daftar modul efektif untuk sebuah divisi. Founder selalu semua; divisi lain tidak pernah mendapat modul OWNER_ONLY. */
 export function resolveModules(role: string, matrix?: AccessMatrix | null): Module[] {
   if (role === "owner") return [...ALL_MODULES];
   if (!isDivision(role)) return [];

@@ -623,7 +623,7 @@ export const DATASETS: Record<string, Dataset> = {
   },
   aktivitas: {
     title: "Log Aktivitas ERP",
-    // Hanya Owner: keuangan adalah modul yang tidak bisa diberikan ke divisi lain.
+    // Hanya Founder: keuangan adalah modul yang tidak bisa diberikan ke divisi lain.
     need: "keuangan",
     range: true,
     columns: () => [

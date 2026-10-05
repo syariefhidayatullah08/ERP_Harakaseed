@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { CheckCircle2, Lock, XCircle } from "lucide-react";
-import { get, getSettings } from "@/lib/db";
+import Image from "next/image";
+import { get, getDocSettings } from "@/lib/db";
 import { emailInfo } from "@/lib/email";
 import { getAccessMatrix, requireUser } from "@/lib/session";
 import { Badge, Card, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
-import { backupNow, changePassword, clearTransactions, saveAccessMatrix, saveSettings, updateMyName } from "@/actions/settings";
+import { backupNow, changePassword, clearTransactions, saveAccessMatrix, saveSettings, saveSignature, updateMyName } from "@/actions/settings";
+import { fitSignature, parseSignature, signatureDataUrl, SIGNATURE_MAX_BYTES } from "@/lib/signature";
 import { BACKUP_KEEP, listBackups, type BackupFile } from "@/lib/backup";
 import { tanggal } from "@/lib/format";
 import { formatBytes } from "@/lib/attachments";
@@ -52,7 +54,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
   if (!isOwner) {
     return (
       <>
-        <PageHeader title="Pengaturan" subtitle="Akun Anda. Pengaturan perusahaan hanya bisa diubah Owner." />
+        <PageHeader title="Pengaturan" subtitle="Akun Anda. Pengaturan perusahaan hanya bisa diubah Founder." />
         <Flash msg={sp.msg as string} error={sp.error as string} />
         <div className="max-w-2xl">{myAccount}</div>
       </>
@@ -60,7 +62,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
   }
 
   const info = emailInfo();
-  const settings = await getSettings();
+  const settings = await getDocSettings();
   const s = (k: string) => settings[k] ?? "";
   const matrix = await getAccessMatrix();
   const divisions = Object.keys(DEFAULT_ACCESS) as Exclude<Division, "owner">[];
@@ -136,7 +138,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-4">
             <p className="text-xs text-muted">
-              <Lock size={12} className="inline text-orange-600" /> Keuangan selalu khusus Owner. Perubahan berlaku langsung untuk semua pengguna. ({modules.length} modul
+              <Lock size={12} className="inline text-orange-600" /> Keuangan dan Akun Pengguna selalu khusus Founder. Perubahan berlaku langsung untuk semua pengguna. ({modules.length} modul
               bisa diatur)
             </p>
             <div className="flex gap-2">
@@ -214,7 +216,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
             )}
             {backupError && <p className="text-red-700">Daftar backup tidak bisa dibaca: {backupError}</p>}
             <form action={saveSettings} className="flex items-end gap-2">
-              <Field label="Kirim salinan backup ke email Owner" className="flex-1">
+              <Field label="Kirim salinan backup ke email Founder" className="flex-1">
                 <select name="backup_email" defaultValue={s("backup_email") || "harian"} className="input">
                   <option value="harian">Setiap hari</option>
                   <option value="mingguan">Seminggu sekali (Senin)</option>
@@ -311,7 +313,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
               <Field label="Kota tanda tangan">
                 <input name="invoice_city" defaultValue={s("invoice_city")} className="input" placeholder="Jember" />
               </Field>
-              <div className="text-xs text-muted sm:col-span-3">Dua penanda tangan di invoice dan surat pengajuan pembayaran benih (PB): kiri dan kanan.</div>
+              <div className="text-xs text-muted sm:col-span-3">Dua penanda tangan di invoice dan surat pengajuan pembayaran benih (PB): kiri dan kanan. Gambar tanda tangannya diunggah di kartu di bawah.</div>
               <Field label="Jabatan penanda tangan kiri">
                 <input name="signer_title" defaultValue={s("signer_title")} className="input" placeholder="Direktur" />
               </Field>
@@ -329,6 +331,57 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
               <SubmitButton>Simpan profil</SubmitButton>
             </div>
           </form>
+        </Card>
+
+        <Card title={<span id="ttd">Gambar tanda tangan (invoice & surat PB)</span>} className="scroll-mt-6 lg:col-span-2">
+          <div className="grid gap-5 p-5 sm:grid-cols-2">
+            {(
+              [
+                ["signer_sig", "kiri", s("signer_title") || "Direktur", s("signer_name")],
+                ["signer2_sig", "kanan", s("signer2_title") || "ADM & SDM", s("signer2_name")],
+              ] as const
+            ).map(([slot, side, title, name]) => {
+              const sig = parseSignature(settings[slot]);
+              const size = sig && fitSignature(sig, 220, 90);
+              return (
+                <div key={slot} className="space-y-3 rounded-lg bg-canvas p-4 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="font-medium">
+                        {title} <span className="text-xs text-muted">· {side}</span>
+                      </div>
+                      <div className="text-xs text-muted">{name || "Nama belum diisi"}</div>
+                    </div>
+                    {sig ? <Badge tone="green">Terpasang</Badge> : <Badge tone="amber">Belum ada</Badge>}
+                  </div>
+                  {sig && size && (
+                    <div className="flex h-24 items-center justify-center rounded-lg border border-line bg-white">
+                      <Image src={signatureDataUrl(sig)} alt={`Tanda tangan ${name || title}`} width={Math.round(size.width)} height={Math.round(size.height)} unoptimized />
+                    </div>
+                  )}
+                  <form action={saveSignature} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="slot" value={slot} />
+                    <input name="file" type="file" accept="image/png,image/jpeg" required className="input min-w-0 flex-1 text-xs" aria-label={`Gambar tanda tangan ${side}`} />
+                    <SubmitButton className="btn-secondary" pendingText="Mengunggah…">
+                      {sig ? "Ganti" : "Unggah"}
+                    </SubmitButton>
+                  </form>
+                  {sig && (
+                    <form action={saveSignature}>
+                      <input type="hidden" name="slot" value={slot} />
+                      <SubmitButton className="btn-danger btn-sm" name="remove" value="1" confirm={`Hapus gambar tanda tangan ${side}?`}>
+                        Hapus gambar
+                      </SubmitButton>
+                    </form>
+                  )}
+                </div>
+              );
+            })}
+            <p className="text-xs text-muted sm:col-span-2">
+              Gambar ditempel otomatis di atas nama penanda tangan pada PDF & Word invoice serta PDF surat pengajuan PB, termasuk yang dikirim ke pelanggan lewat email. Pakai PNG berlatar
+              transparan (atau JPG berlatar putih), maksimal {SIGNATURE_MAX_BYTES / 1024} KB. Tanpa gambar, dokumen menyisakan ruang kosong untuk tanda tangan basah.
+            </p>
+          </div>
         </Card>
       </div>
     </>

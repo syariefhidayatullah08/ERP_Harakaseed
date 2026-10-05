@@ -4,7 +4,7 @@ import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Masuk" };
 
-const DIVISIONS = ["Owner", "Marketing", "Warehouse", "Produksi", "Lab/QC", "Mutu", "Admin/SDM"];
+const DIVISIONS = ["Founder", "Marketing", "Warehouse", "Produksi", "Lab/QC", "Mutu", "Admin/SDM"];
 
 export default function LoginPage() {
   return (

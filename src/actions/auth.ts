@@ -47,7 +47,7 @@ export async function login(_: unknown, formData: FormData) {
     await logActivity("login", "Login gagal: kata sandi salah", `percobaan ke-${fails} dari ${MAX_FAILED_LOGINS}`, user);
     return { error: "Email atau kata sandi salah." };
   }
-  if (!user.active) return { error: "Akun ini dinonaktifkan. Hubungi Owner atau Admin/SDM." };
+  if (!user.active) return { error: "Akun ini dinonaktifkan. Hubungi Founder." };
   await run(
     "UPDATE users SET failed_logins = 0, locked_until = NULL, last_login = to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS') WHERE id = ?",
     user.id,

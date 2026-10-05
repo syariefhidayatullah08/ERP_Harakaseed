@@ -10,7 +10,7 @@ import { toCsvCols } from "@/lib/export/render";
 
 type FileRow = { id: number; ref_type: string; ref_id: number; category: string; note: string; pathname: string; filename: string; size: number; created_at: string; uploader: string | null };
 
-/** Unduh semua file lampiran sebagai satu ZIP, berikut daftar-lampiran.csv. Hanya Owner. */
+/** Unduh semua file lampiran sebagai satu ZIP, berikut daftar-lampiran.csv. Hanya Founder. */
 export async function GET() {
   const user = await currentUser();
   if (!user) return new Response("Unauthorized", { status: 401 });

@@ -15,7 +15,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
   const user = await requireUser();
   // Peran tanpa akses penjualan (mis. gudang) melihat dasbor operasional saja.
-  // Owner melihat ringkasan perusahaan; divisi lain melihat dasbor sesuai modulnya.
+  // Founder melihat ringkasan perusahaan; divisi lain melihat dasbor sesuai modulnya.
   if (user.role !== "owner") return <DivisionDashboard user={user} msg={sp.msg as string} error={sp.error as string} />;
   const t = today();
   const monthStart = t.slice(0, 8) + "01";
@@ -289,7 +289,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
 }
 
 
-/** Dasbor untuk divisi selain Owner: hanya kartu & daftar dari modul yang boleh diakses. Tanpa angka keuangan. */
+/** Dasbor untuk divisi selain Founder: hanya kartu & daftar dari modul yang boleh diakses. Tanpa angka keuangan. */
 async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?: string; error?: string }) {
   const t = today();
   const has = (m: Parameters<typeof can>[1]) => can(user, m);
@@ -368,7 +368,7 @@ async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?
         </div>
       ) : (
         <Card>
-          <Empty>Divisi Anda belum diberi akses modul apa pun. Hubungi Owner.</Empty>
+          <Empty>Divisi Anda belum diberi akses modul apa pun. Hubungi Founder.</Empty>
         </Card>
       )}
 

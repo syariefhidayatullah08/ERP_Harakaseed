@@ -2,6 +2,7 @@ import "server-only";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import { HARAKA_LOGO, KAN_LOGO } from "./doc-assets";
 import { ddmmyyyy, qtyFmt, rp, signers, sumQty, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
+import { embedSignature, fitSignature } from "./signature";
 
 // Warna mengikuti template invoice resmi
 const BLACK = rgb(0, 0, 0);
@@ -229,6 +230,10 @@ export async function renderInvoicePdf(doc: InvoiceDoc): Promise<Uint8Array> {
     if (!who.name) continue;
     text(who.title, sx, sy - 14, { font: timesB, size: 10.5, align: "center" });
     const nameY = sy - 84;
+    if (who.sig) {
+      const d = fitSignature(who.sig, 175, 62);
+      page.drawImage(await embedSignature(pdf, who.sig), { x: sx - d.width / 2, y: nameY + 3, ...d });
+    }
     const nw = text(who.name, sx, nameY, { font: timesB, size: 10.5, align: "center" });
     page.drawLine({ start: { x: sx - nw / 2, y: nameY - 2 }, end: { x: sx + nw / 2, y: nameY - 2 }, thickness: 0.7, color: BLACK });
   }

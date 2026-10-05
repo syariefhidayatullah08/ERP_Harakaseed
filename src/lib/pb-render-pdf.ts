@@ -3,6 +3,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import { HARAKA_LOGO } from "./doc-assets";
 import { ddmmyyyy, qtyFmt, rp, signers, tanggalPanjang } from "./invoice-doc";
 import type { PbDoc } from "./seed-payment";
+import { embedSignature, fitSignature } from "./signature";
 
 const BLACK = rgb(0, 0, 0);
 const GRAY = rgb(0.85, 0.85, 0.85);
@@ -133,6 +134,10 @@ export async function renderPbPdf(doc: PbDoc): Promise<Uint8Array> {
   y -= 14;
   for (const [who, sx] of [[left, M + 110], [right, W - M - 110]] as const) {
     text(who.title, sx, y, { size: 9.5, align: "center" });
+    if (who.sig) {
+      const d = fitSignature(who.sig, 175, 58);
+      page.drawImage(await embedSignature(pdf, who.sig), { x: sx - d.width / 2, y: y - 65, ...d });
+    }
     const nw = text(who.name, sx, y - 68, { f: bold, size: 9.5, align: "center" });
     page.drawLine({ start: { x: sx - nw / 2, y: y - 70 }, end: { x: sx + nw / 2, y: y - 70 }, thickness: 0.6, color: BLACK });
   }

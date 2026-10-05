@@ -3,7 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { createOrder } from "@/actions/sales";
-import { CHANNELS, type Channel } from "@/lib/sales-channel";
+import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, type Channel } from "@/lib/sales-channel";
 
 type P = { id: number; name: string; crop: string };
 type K = { product_id: number; pack_size: string; price: number; available: number };
@@ -45,8 +45,14 @@ export function OrderForm({
 
   const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const packsOf = (productId: number) => packs.filter((k) => k.product_id === productId);
-  // Harga kemasan mengikuti gramasi; bulky & label diisi manual.
+  // Harga kemasan mengikuti gramasi yang sudah terdaftar; gramasi baru, bulky & label diisi manual.
   const packPatch = (k?: K): Partial<Line> => ({ pack_size: k?.pack_size ?? "", ...(channel === "kemasan" ? { price: k?.price ?? 0 } : {}) });
+  // Gramasi diketik sebagai angka gram dan disimpan sebagai teks "10 g".
+  const gramPatch = (options: K[], value: string): Partial<Line> => {
+    const pack = value === "" ? "" : `${Number(value)} g`;
+    const k = options.find((x) => x.pack_size === pack);
+    return k ? packPatch(k) : { pack_size: pack };
+  };
 
   return (
     <form action={action} className="grid gap-5 lg:grid-cols-3">
@@ -96,7 +102,7 @@ export function OrderForm({
               <thead>
                 <tr>
                   <th className="min-w-52">Varietas</th>
-                  {usesPack && <th className="min-w-28">Gramasi</th>}
+                  {usesPack && <th className="min-w-28">Gramasi (gram)</th>}
                   <th className="w-28">Qty ({ch.unit})</th>
                   <th className="w-36">Harga / {ch.unit}</th>
                   <th className="num">Jumlah</th>
@@ -134,27 +140,36 @@ export function OrderForm({
                             {pack.available < l.qty && " — stok kurang, perlu produksi"}
                           </div>
                         )}
-                        {usesPack && l.product_id > 0 && !options.length && (
-                          <div className="mt-1 text-xs text-red-700">Varietas ini belum punya gramasi. Tambahkan di menu Produk.</div>
+                        {usesPack && l.product_id > 0 && l.pack_size && !pack && (
+                          <div className={`mt-1 text-xs ${gramPack(packGram(l.pack_size)) ? "text-amber-700" : "text-red-700"}`}>
+                            {gramPack(packGram(l.pack_size))
+                              ? `Gramasi ${l.pack_size} baru untuk varietas ini — otomatis ditambahkan ke Produk${channel === "kemasan" ? "; isi harganya, stoknya masih kosong" : ""}.`
+                              : `Gramasi diisi angka ${GRAM_MIN}–${GRAM_MAX} gram.`}
+                          </div>
                         )}
                       </td>
                       {usesPack && (
                         <td>
-                          <select
-                            value={l.pack_size}
-                            disabled={!options.length}
-                            onChange={(e) => update(l.key, packPatch(options.find((k) => k.pack_size === e.target.value)))}
-                            className="input"
-                          >
-                            <option value="" disabled>
-                              Pilih…
-                            </option>
-                            {options.map((k) => (
-                              <option key={k.pack_size} value={k.pack_size}>
-                                {k.pack_size}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={GRAM_MIN}
+                              step={1}
+                              list={`gramasi-${l.key}`}
+                              value={packGram(l.pack_size) ?? ""}
+                              disabled={!l.product_id}
+                              onChange={(e) => update(l.key, gramPatch(options, e.target.value))}
+                              className="input"
+                              placeholder={`${GRAM_MIN}–${GRAM_MAX}`}
+                              aria-label="Gramasi (gram)"
+                            />
+                            <span className="text-xs text-muted">g</span>
+                            <datalist id={`gramasi-${l.key}`}>
+                              {options.map((k) => packGram(k.pack_size)).filter((g) => g !== null).map((g) => (
+                                <option key={g} value={g} />
+                              ))}
+                            </datalist>
+                          </div>
                         </td>
                       )}
                       <td>

@@ -2,14 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { all, get, getSetting, insert, nextNumber, run, tx } from "@/lib/db";
+import { all, get, getSetting, insert, nextNumber, PACK_SUMMARY_SQL, run, tx } from "@/lib/db";
 import { can, requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { logActivity } from "@/lib/activity";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
 import { addDays, rupiah, today } from "@/lib/format";
-import { CHANNELS, toChannel } from "@/lib/sales-channel";
+import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, toChannel } from "@/lib/sales-channel";
 import {
   invoiceEmail,
   loadOrderForEmail,
@@ -67,10 +67,14 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
   if (channel !== "bulky" && lines.some((l) => !Number.isInteger(l.qty))) return { error: `Qty ${CHANNELS[channel].unit} harus bilangan bulat.` };
   const known = await all<{ id: number }>("SELECT id FROM products WHERE active = 1 AND id = ANY(?::int[])", `{${lines.map((l) => l.product_id).join(",")}}`);
   if (known.length !== new Set(lines.map((l) => l.product_id)).size) return { error: "Ada produk yang tidak ditemukan atau sudah nonaktif. Muat ulang halaman." };
+  // Gramasi diketik sebagai angka gram. Yang belum terdaftar untuk varietasnya ikut didaftarkan saat pesanan disimpan.
+  let newPacks: Line[] = [];
   if (channel !== "bulky") {
     const packs = await all<{ product_id: number; pack_size: string }>("SELECT product_id, pack_size FROM product_packs WHERE active = 1");
-    const ok = (l: Line) => packs.some((k) => k.product_id === l.product_id && k.pack_size === l.pack_size);
-    if (lines.some((l) => !ok(l))) return { error: "Pilih gramasi untuk setiap varietas. Gramasi dikelola di menu Produk." };
+    newPacks = lines.filter((l) => !packs.some((k) => k.product_id === l.product_id && k.pack_size === l.pack_size));
+    if (newPacks.some((l) => !l.pack_size || gramPack(packGram(l.pack_size)) !== l.pack_size)) {
+      return { error: `Isi gramasi setiap varietas dengan angka ${GRAM_MIN}–${GRAM_MAX} (gram).` };
+    }
   }
 
   const discountPct = numf(fd, "discount_pct");
@@ -94,6 +98,14 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
       total,
       str(fd, "notes"),
     );
+    for (const l of newPacks) {
+      // Harga hanya ikut tersimpan dari penjualan kemasan; harga label bukan harga kemasan.
+      await run(
+        "INSERT INTO product_packs (product_id, pack_size, price) VALUES (?,?,?) ON CONFLICT (product_id, pack_size) DO UPDATE SET active = 1",
+        l.product_id, l.pack_size, channel === "kemasan" ? l.price : 0,
+      );
+      await run(`${PACK_SUMMARY_SQL} WHERE p.id = ?`, l.product_id);
+    }
     for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price) VALUES (?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price);
     return id;
   });

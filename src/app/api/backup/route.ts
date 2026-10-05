@@ -3,7 +3,7 @@ import { currentUser } from "@/lib/session";
 import { backupPath } from "@/lib/backup";
 import { logActivity } from "@/lib/activity";
 
-/** Unduh file backup: /api/backup?file=haraka-erp-YYYY-MM-DD.json.gz. Hanya Owner. */
+/** Unduh file backup: /api/backup?file=haraka-erp-YYYY-MM-DD.json.gz. Hanya Founder. */
 export async function GET(request: Request) {
   const user = await currentUser();
   if (!user) return new Response("Unauthorized", { status: 401 });

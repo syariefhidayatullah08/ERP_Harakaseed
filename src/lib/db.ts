@@ -103,7 +103,14 @@ export async function getSetting(key: string, fallback = ""): Promise<string> {
   return (await get<{ value: string }>("SELECT value FROM settings WHERE key = ?", key))?.value ?? fallback;
 }
 
+/** Semua pengaturan kecuali gambar tanda tangan (besar; hanya dibutuhkan saat membuat dokumen cetak). */
 export async function getSettings(): Promise<Record<string, string>> {
+  const rows = await all<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key NOT IN ('signer_sig', 'signer2_sig')");
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+
+/** Pengaturan untuk dokumen cetak (invoice, surat PB): termasuk gambar tanda tangan signer_sig & signer2_sig. */
+export async function getDocSettings(): Promise<Record<string, string>> {
   const rows = await all<{ key: string; value: string }>("SELECT key, value FROM settings");
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
@@ -182,12 +189,12 @@ async function syncCatalog(ex: Ex) {
 const PRICELIST_VERSION = "2025";
 
 /**
- * Ringkasan gramasi di tabel products: pack_size = daftar gramasi aktif ("5 g, 10 g"), unit_price = harga termurah.
+ * Ringkasan gramasi di tabel products: pack_size = daftar gramasi aktif ("5 g, 10 g"), unit_price = harga termurah yang sudah diisi.
  * Sumber aslinya product_packs; tambahkan " WHERE p.id = ?" untuk satu produk.
  */
 export const PACK_SUMMARY_SQL = `UPDATE products p SET
   pack_size = COALESCE((SELECT string_agg(k.pack_size, ', ' ORDER BY k.id) FROM product_packs k WHERE k.product_id = p.id AND k.active = 1), ''),
-  unit_price = COALESCE((SELECT MIN(k.price) FROM product_packs k WHERE k.product_id = p.id AND k.active = 1), 0)`;
+  unit_price = COALESCE((SELECT MIN(k.price) FROM product_packs k WHERE k.product_id = p.id AND k.active = 1 AND k.price > 0), 0)`;
 
 /**
  * Isi gramasi & harga per varietas dari pricelist resmi. Baris pesanan dan lot lama lebih dulu mewarisi
@@ -640,13 +647,16 @@ const SCHEMA_SQL = `
       active INTEGER NOT NULL DEFAULT 1,
       UNIQUE (product_id, pack_size)
     );
+
+    -- Owner berganti sebutan menjadi Founder (kode peran di database tetap 'owner').
+    UPDATE users SET name = 'Founder' WHERE role = 'owner' AND name = 'Owner';
   `;
 
 
 async function seed(ex: Ex) {
   await ex(
     "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'owner')",
-    "Owner",
+    "Founder",
     (process.env.ADMIN_EMAIL ?? "nurainimaulidia@gmail.com").toLowerCase(),
     hashPassword(process.env.ADMIN_PASSWORD ?? "haraka123"),
   );

@@ -48,3 +48,7 @@ data/
 
 # Dokumen internal perusahaan (keuangan, template) — jangan pernah di-commit / di-deploy
 referensi/
+
+# Berkas lokal agen & skrip uji sementara
+.claude/
+scripts/_uji*.mjs

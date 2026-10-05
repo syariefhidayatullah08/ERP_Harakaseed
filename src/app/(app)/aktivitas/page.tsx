@@ -17,7 +17,7 @@ type Row = { id: number; at: string; user_name: string; user_email: string; role
 
 export default async function ActivityPage({ searchParams }: PageProps<"/aktivitas">) {
   const me = await requireUser();
-  if (me.role !== "owner") redirect(withMsg("/", "Log aktivitas hanya bisa dilihat Owner.", "error"));
+  if (me.role !== "owner") redirect(withMsg("/", "Log aktivitas hanya bisa dilihat Founder.", "error"));
   const sp = await searchParams;
   const date = (v: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : "");
   const f = { q: String(sp.q ?? "").trim(), user: String(sp.user ?? ""), module: String(sp.module ?? ""), from: date(sp.from), to: date(sp.to) };
@@ -45,7 +45,7 @@ export default async function ActivityPage({ searchParams }: PageProps<"/aktivit
     <>
       <PageHeader
         title="Log Aktivitas"
-        subtitle="Jejak audit: siapa melakukan apa dan kapan. Tercatat otomatis dan tidak bisa diubah dari ERP. Hanya Owner."
+        subtitle="Jejak audit: siapa melakukan apa dan kapan. Tercatat otomatis dan tidak bisa diubah dari ERP. Hanya Founder."
         actions={<ExportMenu type="aktivitas" from={f.from || undefined} to={f.to || undefined} />}
       />
       <form className="mb-4 flex flex-wrap items-end gap-2">

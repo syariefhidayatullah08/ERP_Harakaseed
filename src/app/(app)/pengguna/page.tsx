@@ -21,12 +21,12 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
             COALESCE(locked_until > to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), false) locked
      FROM users ORDER BY active DESC, role, name`,
   );
-  // Admin/SDM tidak bisa membuat/mengubah akun Owner.
+  // Menu ini khusus Founder; penyaring di bawah berjaga bila aturan aksesnya dilonggarkan lagi.
   const assignable = (Object.keys(DIVISIONS) as Division[]).filter((d) => d !== "owner" || me.role === "owner");
 
   return (
     <>
-      <PageHeader title="Akun Pengguna" subtitle="Setiap karyawan login dengan email pribadinya. Hak akses mengikuti divisi." actions={<ExportMenu type="pengguna" />} />
+      <PageHeader title="Akun Pengguna" subtitle="Founder sebagai moderator ERP mengundang email tiap karyawan dan memberi hak akses sesuai divisinya." actions={<ExportMenu type="pengguna" />} />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="grid gap-5 lg:grid-cols-3">
         <Card title={`Pengguna (${users.length})`} className="overflow-hidden lg:col-span-2">
@@ -121,7 +121,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
               <Field label="Email pribadi * (untuk login)">
                 <input name="email" type="email" required className="input" placeholder="nama@gmail.com" />
               </Field>
-              <Field label="Divisi *">
+              <Field label="Divisi * (menentukan hak akses)">
                 <select name="role" required defaultValue="" className="input">
                   <option value="" disabled>
                     Pilih divisi…
@@ -149,7 +149,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
                 </li>
               ))}
             </ul>
-            {me.role === "owner" && <p className="px-5 pb-5 text-xs text-muted">Atur modul tiap divisi di Pengaturan → Hak akses divisi.</p>}
+            <p className="px-5 pb-5 text-xs text-muted">Atur modul tiap divisi di Pengaturan → Hak akses divisi.</p>
           </Card>
         </div>
       </div>

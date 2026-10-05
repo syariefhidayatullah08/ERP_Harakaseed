@@ -22,9 +22,9 @@ async function baseUrl() {
   return `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
 }
 
-/** Hanya Owner yang boleh membuat/mengubah akun Owner. */
+/** Hanya Founder yang boleh membuat/mengubah akun Founder. */
 function assertCanManage(actor: SessionUser, targetRole: string) {
-  if (targetRole === "owner" && actor.role !== "owner") redirect(withMsg(BACK, "Hanya Owner yang dapat mengelola akun Owner.", "error"));
+  if (targetRole === "owner" && actor.role !== "owner") redirect(withMsg(BACK, "Hanya Founder yang dapat mengelola akun Founder.", "error"));
 }
 
 async function activeOwners() {
@@ -73,7 +73,7 @@ export async function updateUser(fd: FormData) {
   assertCanManage(actor, role);
   if (id === actor.id && (role !== actor.role || !active)) redirect(withMsg(BACK, "Anda tidak bisa mengubah divisi atau menonaktifkan akun sendiri.", "error"));
   if (target.role === "owner" && target.active && (role !== "owner" || !active) && (await activeOwners()) <= 1) {
-    redirect(withMsg(BACK, "Harus ada minimal satu Owner aktif.", "error"));
+    redirect(withMsg(BACK, "Harus ada minimal satu Founder aktif.", "error"));
   }
   await run("UPDATE users SET name = ?, role = ?, active = ?, failed_logins = 0, locked_until = NULL WHERE id = ?", str(fd, "name") || "Pengguna", role, active, id);
   revalidatePath(BACK);
@@ -101,7 +101,7 @@ export async function deleteUser(fd: FormData) {
   if (!target) redirect(withMsg(BACK, "Pengguna tidak ditemukan.", "error"));
   if (id === actor.id) redirect(withMsg(BACK, "Tidak bisa menghapus akun sendiri.", "error"));
   assertCanManage(actor, target.role);
-  if (target.role === "owner" && target.active && (await activeOwners()) <= 1) redirect(withMsg(BACK, "Harus ada minimal satu Owner aktif.", "error"));
+  if (target.role === "owner" && target.active && (await activeOwners()) <= 1) redirect(withMsg(BACK, "Harus ada minimal satu Founder aktif.", "error"));
   await run("DELETE FROM users WHERE id = ?", id);
   revalidatePath(BACK);
   await logActivity("pengguna", "Menghapus akun pengguna", target.email);

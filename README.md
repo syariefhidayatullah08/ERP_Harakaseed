@@ -4,27 +4,27 @@ Sistem ERP untuk **PT Benih Haraka Sejahtera (HARAKA SEED)**, produsen benih hor
 
 ## Divisi & hak akses
 
-Setiap karyawan login dengan **email pribadinya**. Hak akses mengikuti divisi; divisi tidak bisa melihat modul divisi lain, dan **keuangan hanya untuk Owner**.
+Setiap karyawan login dengan **email pribadinya**. Hak akses mengikuti divisi; divisi tidak bisa melihat modul divisi lain, dan **keuangan hanya untuk Founder**.
 
 | Divisi | Modul bawaan |
 |---|---|
-| **Owner (Keuangan)** | Semua modul, termasuk Keuangan (pembayaran, piutang, invoice, omzet) dan pengaturan perusahaan |
+| **Founder & Moderator** | Semua modul, termasuk Keuangan (pembayaran, piutang, invoice, omzet), Akun Pengguna (mengundang email & memberi hak akses per divisi), dan pengaturan perusahaan |
 | **Marketing** | Penjualan, Pelanggan, Keluhan Pelanggan, Produk, Email, Laporan penjualan (jumlah kemasan, tanpa omzet) |
 | **Warehouse** | Gudang & Lot, Pengiriman (tanpa harga), Produk, Laporan gudang |
 | **Produksi** | Produksi Benih, Petani Mitra, Produk, Laporan produksi |
 | **Lab / QC** | Antrian uji lab, kelulusan & karantina lot, Produk, Laporan QC |
 | **Mutu** | Audit ISO 9001 (internal/eksternal/surveilan), temuan & CAPA, pengendalian dokumen mutu, Produk, Laporan mutu |
-| **Admin / SDM** | Karyawan, Akun Pengguna, Pembelian, Pelanggan, Email, Laporan SDM |
+| **Admin / SDM** | Karyawan, Pembelian, Pembayaran Benih, Pelanggan, Email, Laporan SDM |
 
-Owner bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. Modul Keuangan terkunci khusus Owner. Akses dicek di setiap halaman, aksi, dan unduhan, jadi bukan sekadar menu yang disembunyikan.
+Founder bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. Modul Keuangan dan Akun Pengguna terkunci khusus Founder. Akses dicek di setiap halaman, aksi, dan unduhan, jadi bukan sekadar menu yang disembunyikan.
 
-**Akun:** Owner atau Admin/SDM membuat akun di menu **Akun Pengguna**. Pengguna menerima email undangan untuk membuat kata sandinya sendiri (berlaku 72 jam). **Lupa kata sandi** bisa dilakukan sendiri dari halaman login; tautan reset dikirim ke email (berlaku 1 jam, sekali pakai). Akun yang dinonaktifkan langsung keluar dari semua perangkat.
+**Akun:** Founder (moderator ERP) mengundang email dan memilih divisinya di menu **Akun Pengguna**. Pengguna menerima email undangan untuk membuat kata sandinya sendiri (berlaku 72 jam). **Lupa kata sandi** bisa dilakukan sendiri dari halaman login; tautan reset dikirim ke email (berlaku 1 jam, sekali pakai). Akun yang dinonaktifkan langsung keluar dari semua perangkat.
 
 ## Modul
 
 | Modul | Isi |
 |---|---|
-| **Dashboard** | Owner: omzet, piutang, grafik 12 bulan, varietas terlaris. Divisi lain: kartu & daftar sesuai modulnya |
+| **Dashboard** | Founder: omzet, piutang, grafik 12 bulan, varietas terlaris. Divisi lain: kartu & daftar sesuai modulnya |
 | **Penjualan** | Pesanan → konfirmasi → kirim (stok dipotong per lot dengan FEFO) → invoice. Cetak pesanan, invoice, dan surat jalan |
 | **Keuangan** | Piutang & umur piutang, pembayaran masuk, pengingat telat bayar (massal, invoice PDF terlampir) |
 | **Pengiriman** | Antrian pesanan siap kirim untuk gudang, input kurir & resi, surat jalan, bukti pengiriman |
@@ -39,7 +39,7 @@ Owner bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. Mo
 | **Petani Mitra / Pembelian / Produk** | Penangkar, PO ke supplier, 38 varietas katalog resmi dengan foto kemasan |
 | **Email** | Kotak masuk perusahaan (IMAP), terkirim, gagal, tulis, balas |
 | **Laporan** | Tab per divisi (Keuangan, Penjualan, Produksi, Lab/QC, Gudang, Mutu & Audit, Keluhan, SDM), semua bisa diunduh CSV |
-| **Pengaturan** | Akun saya (semua). Owner: hak akses divisi, profil perusahaan, email otomatis, hapus data contoh |
+| **Pengaturan** | Akun saya (semua). Founder: hak akses divisi, profil perusahaan, gambar tanda tangan dokumen, email otomatis, hapus data contoh |
 
 ### Email otomatis
 - **Pesanan dikonfirmasi**: email konfirmasi pesanan dikirim ke pelanggan.
@@ -66,7 +66,7 @@ Lupa kata sandi admin: `node --env-file=.env.local scripts/reset-password.mjs <e
 
 Tabel dibuat otomatis saat aplikasi pertama kali dibuka dan langsung diisi data contoh (pelanggan dan supplier bertanda "(Contoh)", pesanan 6 bulan, lot awal). Harga produk hanya perkiraan, jadi sesuaikan di menu Produk. Untuk mulai dengan data asli, buka **Pengaturan → Hapus data contoh & transaksi**.
 
-Akun Owner pertama dibuat dari `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Lokal tanpa variabel itu, default-nya `nurainimaulidia@gmail.com` / `haraka123`. **Segera ganti kata sandi** di Pengaturan. Email perusahaan (`EMAIL_USER`, ptbenihharakasejahtera@gmail.com) dipakai ERP untuk mengirim email, bukan untuk login.
+Akun Founder pertama dibuat dari `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Lokal tanpa variabel itu, default-nya `nurainimaulidia@gmail.com` / `haraka123`. **Segera ganti kata sandi** di Pengaturan. Email perusahaan (`EMAIL_USER`, ptbenihharakasejahtera@gmail.com) dipakai ERP untuk mengirim email, bukan untuk login.
 
 ### Menghubungkan Gmail
 1. Login ke akun Google perusahaan, lalu aktifkan **Verifikasi 2 Langkah**.

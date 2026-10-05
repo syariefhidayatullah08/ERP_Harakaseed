@@ -94,12 +94,12 @@ export default async function PbPage({ params, searchParams }: PageProps<"/pemba
           <Card title="Tanda tangan di surat cetak">
             <div className="space-y-1 p-5 text-sm">
               <div>
-                {left.title}: <span className="font-medium">{left.name || "—"}</span>
+                {left.title}: <span className="font-medium">{left.name || "—"}</span> <span className="text-xs text-muted">· {left.sig ? "gambar ttd terpasang" : "tanpa gambar ttd"}</span>
               </div>
               <div>
-                {right.title}: <span className="font-medium">{right.name || "—"}</span>
+                {right.title}: <span className="font-medium">{right.name || "—"}</span> <span className="text-xs text-muted">· {right.sig ? "gambar ttd terpasang" : "tanpa gambar ttd"}</span>
               </div>
-              <p className="pt-1 text-xs text-muted">Nama & jabatan diatur Owner di Pengaturan. {pb.notes && `Catatan: ${pb.notes}`}</p>
+              <p className="pt-1 text-xs text-muted">Nama, jabatan, dan gambar tanda tangan diatur Founder di Pengaturan. {pb.notes && `Catatan: ${pb.notes}`}</p>
             </div>
           </Card>
           {!paid && (
@@ -114,7 +114,7 @@ export default async function PbPage({ params, searchParams }: PageProps<"/pemba
                   <SubmitButton confirm={`Tandai ${pb.number} sudah dibayar ${rupiah(total)}?`}>Tandai sudah dibayar</SubmitButton>
                 </form>
               ) : (
-                <p className="p-5 text-sm text-muted">Menunggu Owner menandai surat ini sudah dibayar.</p>
+                <p className="p-5 text-sm text-muted">Menunggu Founder menandai surat ini sudah dibayar.</p>
               )}
             </Card>
           )}

@@ -56,7 +56,7 @@ export default async function FinancePage({ searchParams }: PageProps<"/keuangan
     <>
       <PageHeader
         title="Keuangan"
-        subtitle="Piutang, pembayaran masuk, dan arus kas. Hanya bisa dilihat Owner."
+        subtitle="Piutang, pembayaran masuk, dan arus kas. Hanya bisa dilihat Founder."
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />
 

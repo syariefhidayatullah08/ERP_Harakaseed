@@ -18,6 +18,7 @@ import {
 } from "docx";
 import { HARAKA_LOGO, KAN_LOGO } from "./doc-assets";
 import { ddmmyyyy, qtyFmt, rp, signers, sumQty, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
+import { fitSignature, signatureBytes, type Signature } from "./signature";
 
 const FONT = "Times New Roman";
 const PEACH = "F4B183";
@@ -187,12 +188,18 @@ export async function renderInvoiceDocx(doc: InvoiceDoc): Promise<Buffer> {
   });
   // Dua penanda tangan seperti template: kiri Direktur, kanan ADM & SDM (tempat & tanggal di atas yang kanan).
   const [left, right] = signers(doc.settings);
-  const signCell = (who: { title: string; name: string }, place: string) =>
+  // Ukuran gambar di Word dalam piksel (96 dpi); kotaknya sama dengan PDF (175 × 62 pt).
+  const sigImage = (sig: Signature) => {
+    const d = fitSignature(sig, (175 * 96) / 72, (62 * 96) / 72);
+    return para(new ImageRun({ type: sig.type, data: signatureBytes(sig), transformation: { width: Math.round(d.width), height: Math.round(d.height) } }), AlignmentType.CENTER);
+  };
+  const signCell = (who: { title: string; name: string; sig: Signature | null }, place: string) =>
     cell(
       who.name
         ? [
             para(run(place || " ", { size: 10.5 }), AlignmentType.CENTER),
-            para(run(who.title, { bold: true, size: 10.5 }), AlignmentType.CENTER, 1100),
+            para(run(who.title, { bold: true, size: 10.5 }), AlignmentType.CENTER, who.sig ? 40 : 1100),
+            ...(who.sig ? [sigImage(who.sig)] : []),
             para(run(who.name, { bold: true, size: 10.5, underline: true }), AlignmentType.CENTER),
           ]
         : para(run("")),

@@ -1,5 +1,6 @@
 import "server-only";
-import { all, get, getSettings } from "./db";
+import { all, get, getDocSettings } from "./db";
+import { parseSignature } from "./signature";
 import { terbilang } from "./terbilang";
 import { CHANNELS, toChannel } from "./sales-channel";
 
@@ -30,11 +31,11 @@ export const qtyFmt = (n: number, decimals: number) => new Intl.NumberFormat("id
 export const sumQty = (doc: InvoiceDoc) => doc.rows.reduce((s, r) => s + r.qty, 0);
 export const words = (doc: InvoiceDoc) => terbilang(doc.total);
 
-/** Dua penanda tangan dokumen cetak (invoice, surat pengajuan PB): kiri Direktur, kanan ADM & SDM. Diatur di Pengaturan. */
+/** Dua penanda tangan dokumen cetak (invoice, surat pengajuan PB): kiri Direktur, kanan ADM & SDM. Nama, jabatan, dan gambar tanda tangan diatur di Pengaturan. */
 export function signers(settings: Record<string, string>) {
   return [
-    { title: settings.signer_title || "Direktur", name: settings.signer_name || "" },
-    { title: settings.signer2_title || "ADM & SDM", name: settings.signer2_name || "" },
+    { title: settings.signer_title || "Direktur", name: settings.signer_name || "", sig: parseSignature(settings.signer_sig) },
+    { title: settings.signer2_title || "ADM & SDM", name: settings.signer2_name || "", sig: parseSignature(settings.signer2_sig) },
   ] as const;
 }
 
@@ -72,7 +73,7 @@ export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> 
     total: o.total,
     after: o.paid > 0 ? [{ label: "Sudah dibayar", amount: o.paid }, { label: "Sisa tagihan", amount: o.total - o.paid }] : [],
     notes: noteParts.join(" · "),
-    settings: await getSettings(),
+    settings: await getDocSettings(),
   };
 }
 

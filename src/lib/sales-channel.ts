@@ -17,6 +17,20 @@ export const toChannel = (v: unknown): Channel => (typeof v === "string" && v in
  * Keterangan baris pesanan untuk tampilan & dokumen ("kemasan 10 g", "curah per kg", "label kemasan 10 g").
  * Dipakai sebagai kolom `pack_size` pada query yang membaca so_items dengan alias `i`.
  */
+/** Gramasi kemasan diisi sebagai angka 1–100 (gram) dan disimpan sebagai teks, mis. "10 g". */
+export const GRAM_MIN = 1;
+export const GRAM_MAX = 100;
+/** Angka gram → teks gramasi; kosong bila bukan bilangan bulat 1–100. */
+export const gramPack = (v: unknown) => {
+  const n = Number(v);
+  return v !== "" && v != null && Number.isInteger(n) && n >= GRAM_MIN && n <= GRAM_MAX ? `${n} g` : "";
+};
+/** Teks gramasi → angka gram; null untuk kemasan lama yang bukan gram (mis. "50 butir"). */
+export const packGram = (pack: string) => {
+  const m = /^(\d+) g$/.exec(pack);
+  return m ? Number(m[1]) : null;
+};
+
 export const ITEM_PACK_SQL = `(CASE (SELECT channel FROM sales_orders WHERE id = i.so_id)
   WHEN 'bulky' THEN 'curah per kg'
   WHEN 'label' THEN trim('label kemasan ' || i.pack_size)

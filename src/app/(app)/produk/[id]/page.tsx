@@ -10,6 +10,7 @@ import { ProductForm } from "../product-form";
 import { SubmitButton } from "@/components/buttons";
 import { deletePack, savePack } from "@/actions/products";
 import { can, requireAccess } from "@/lib/session";
+import { GRAM_MAX, GRAM_MIN } from "@/lib/sales-channel";
 
 export default async function ProductDetail({ params, searchParams }: PageProps<"/produk/[id]">) {
   const user = await requireAccess("produk");
@@ -113,8 +114,11 @@ export default async function ProductDetail({ params, searchParams }: PageProps<
             <form action={savePack} className="flex flex-wrap items-end gap-3 border-t border-line p-5">
               <input type="hidden" name="product_id" value={product.id} />
               <label className="block">
-                <span className="label">Gramasi baru</span>
-                <input name="pack_size" required className="input w-32" placeholder="10 g" />
+                <span className="label">Gramasi baru (gram)</span>
+                <span className="flex items-center gap-2">
+                  <input name="gram" type="number" min={GRAM_MIN} max={GRAM_MAX} step={1} required className="input w-24" placeholder={`${GRAM_MIN}–${GRAM_MAX}`} />
+                  <span className="text-sm text-muted">gram</span>
+                </span>
               </label>
               <label className="block">
                 <span className="label">Harga per kemasan (Rp)</span>

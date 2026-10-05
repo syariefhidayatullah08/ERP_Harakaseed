@@ -22,7 +22,7 @@ export async function saveIntake(fd: FormData) {
   const old = id ? await get<{ status: string; pb_id: number | null; pb_status: string | null }>(
     "SELECT i.status, i.pb_id, pb.status pb_status FROM seed_intakes i LEFT JOIN seed_pb pb ON pb.id = i.pb_id WHERE i.id = ?", id) : undefined;
   if (id && !old) redirect(withMsg(BASE, "Data tidak ditemukan.", "error"));
-  if (old?.pb_status === "dibayar" && user.role !== "owner") redirect(withMsg(back, "Baris ini sudah dibayar lewat surat PB; hanya Owner yang bisa mengubahnya.", "error"));
+  if (old?.pb_status === "dibayar" && user.role !== "owner") redirect(withMsg(back, "Baris ini sudah dibayar lewat surat PB; hanya Founder yang bisa mengubahnya.", "error"));
 
   const kind = str(fd, "kind") === "eksternal" ? "eksternal" : "internal";
   const farmer = str(fd, "farmer");
@@ -92,13 +92,13 @@ export async function createPb(fd: FormData) {
   redirect(withMsg(`${BASE}/pb/${pbId}`, `Surat ${number} dibuat. Cetak, lalu minta tanda tangan.`));
 }
 
-/** Direktur/Owner menandai surat PB sudah dibayar → semua barisnya menjadi Lunas. */
+/** Direktur/Founder menandai surat PB sudah dibayar → semua barisnya menjadi Lunas. */
 export async function payPb(fd: FormData) {
   const user = await requireAccess("pembayaran_benih");
   const id = numf(fd, "id");
   const pb = await get<{ number: string; status: string }>("SELECT number, status FROM seed_pb WHERE id = ?", id);
   if (!pb) redirect(withMsg(`${BASE}?tab=pb`, "Surat PB tidak ditemukan.", "error"));
-  if (user.role !== "owner") redirect(withMsg(`${BASE}/pb/${id}`, "Hanya Owner yang bisa menandai surat PB sudah dibayar.", "error"));
+  if (user.role !== "owner") redirect(withMsg(`${BASE}/pb/${id}`, "Hanya Founder yang bisa menandai surat PB sudah dibayar.", "error"));
   if (pb.status === "dibayar") redirect(withMsg(`${BASE}/pb/${id}`, "Surat ini sudah ditandai dibayar."));
   const paidAt = date(fd, "paid_at") ?? today();
   await tx(async () => {
@@ -111,13 +111,13 @@ export async function payPb(fd: FormData) {
   redirect(withMsg(`${BASE}/pb/${id}`, `Surat ${pb.number} ditandai dibayar; barisnya menjadi ${INTAKE_STATUS.lunas.label}.`));
 }
 
-/** Hapus surat PB: barisnya kembali ke buku induk sebagai belum diajukan. Surat yang sudah dibayar hanya bisa dihapus Owner. */
+/** Hapus surat PB: barisnya kembali ke buku induk sebagai belum diajukan. Surat yang sudah dibayar hanya bisa dihapus Founder. */
 export async function deletePb(fd: FormData) {
   const user = await requireAccess("pembayaran_benih");
   const id = numf(fd, "id");
   const pb = await get<{ number: string; status: string }>("SELECT number, status FROM seed_pb WHERE id = ?", id);
   if (!pb) redirect(withMsg(`${BASE}?tab=pb`, "Surat PB tidak ditemukan.", "error"));
-  if (pb.status === "dibayar" && user.role !== "owner") redirect(withMsg(`${BASE}/pb/${id}`, "Surat yang sudah dibayar hanya bisa dihapus Owner.", "error"));
+  if (pb.status === "dibayar" && user.role !== "owner") redirect(withMsg(`${BASE}/pb/${id}`, "Surat yang sudah dibayar hanya bisa dihapus Founder.", "error"));
   await tx(async () => {
     await run("UPDATE seed_intakes SET pb_id = NULL, status = CASE WHEN status IN ('diajukan','lunas') THEN 'proses_uji' ELSE status END WHERE pb_id = ?", id);
     await run("DELETE FROM seed_pb WHERE id = ?", id);
