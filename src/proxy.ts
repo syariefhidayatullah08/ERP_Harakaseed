@@ -9,5 +9,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|api/cron/|_next/static|_next/image|icon.png|logo|products/|i/).*)"],
+  // Manifest & ikon aplikasi harus bisa diambil tanpa login agar ERP bisa dipasang sebagai aplikasi.
+  matcher: ["/((?!login|api/cron/|_next/static|_next/image|icon.png|apple-icon.png|manifest.webmanifest|icons/|logo|products/|i/).*)"],
 };

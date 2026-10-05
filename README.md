@@ -2,6 +2,10 @@
 
 Sistem ERP untuk **PT Benih Haraka Sejahtera (HARAKA SEED)**, produsen benih hortikultura di Jember. Dibangun dengan Next.js 16 dan Postgres (Neon), di-deploy di Vercel, dan terhubung ke email lewat SMTP dan IMAP.
 
+## Aplikasi (PWA)
+
+ERP bisa dipasang sebagai aplikasi di HP atau komputer lewat **Pengaturan → Pasang sebagai aplikasi** (atau menu browser "Tambahkan ke layar utama"). Tidak ada service worker, jadi aplikasi selalu memuat versi terbaru dan tetap butuh internet. Nama & ikon diatur di `src/app/manifest.ts` dan `public/icons/`.
+
 ## Divisi & hak akses
 
 Setiap karyawan login dengan **email pribadinya**. Hak akses mengikuti divisi; divisi tidak bisa melihat modul divisi lain, dan **keuangan hanya untuk Founder**.

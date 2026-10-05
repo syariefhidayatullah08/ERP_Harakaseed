@@ -12,6 +12,7 @@ import { BACKUP_KEEP, listBackups, type BackupFile } from "@/lib/backup";
 import { tanggal } from "@/lib/format";
 import { formatBytes } from "@/lib/attachments";
 import { testEmail } from "@/actions/email";
+import { InstallApp } from "@/components/install-app";
 import { ALL_MODULES, DEFAULT_ACCESS, DIVISIONS, MODULE_HINT, MODULES, OWNER_ONLY, divisionLabel, resolveModules, type Division } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Pengaturan" };
@@ -51,12 +52,23 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
     </Card>
   );
 
+  const installCard = (
+    <Card title="Pasang sebagai aplikasi">
+      <div className="p-5">
+        <InstallApp />
+      </div>
+    </Card>
+  );
+
   if (!isOwner) {
     return (
       <>
         <PageHeader title="Pengaturan" subtitle="Akun Anda. Pengaturan perusahaan hanya bisa diubah Founder." />
         <Flash msg={sp.msg as string} error={sp.error as string} />
-        <div className="max-w-2xl">{myAccount}</div>
+        <div className="max-w-2xl space-y-5">
+          {myAccount}
+          {installCard}
+        </div>
       </>
     );
   }
@@ -153,6 +165,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
 
       <div className="grid gap-5 lg:grid-cols-2">
         {myAccount}
+        {installCard}
 
         <Card title="Koneksi email perusahaan" actions={info.configured ? <Badge tone="green">Terkonfigurasi</Badge> : <Badge tone="amber">Belum terhubung</Badge>}>
           <div className="space-y-4 p-5 text-sm">
