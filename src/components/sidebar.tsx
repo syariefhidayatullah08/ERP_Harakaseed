@@ -36,6 +36,7 @@ import {
   Banknote,
   Warehouse,
   ChevronDown,
+  Camera,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean; ownerOnly?: boolean; sub?: boolean };
@@ -74,6 +75,7 @@ const GROUPS: NavGroup[] = [
       { href: "/inventori", label: "Gudang & Lot", icon: Boxes },
       { href: "/stok-bahan", label: "Stok Bahan Baku", icon: Warehouse },
       { href: "/produksi", label: "Produksi Benih", icon: Tractor },
+      { href: "/pengambilan", label: "Pengambilan Benih", icon: Camera },
       { href: "/mitra", label: "Petani Mitra", icon: Wheat },
       { href: "/produk", label: "Produk / Varietas", icon: Sprout },
       { href: "/pembelian", label: "Pembelian", icon: Truck },

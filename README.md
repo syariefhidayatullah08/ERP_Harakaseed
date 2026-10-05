@@ -31,6 +31,7 @@ Founder bisa mengubah modul tiap divisi di **Pengaturan → Hak akses divisi**. 
 | **Dashboard** | Founder: omzet, piutang, grafik 12 bulan, varietas terlaris. Divisi lain: kartu & daftar sesuai modulnya |
 | **Penjualan** | Pesanan → konfirmasi → kirim (stok dipotong per lot dengan FEFO) → invoice. Cetak pesanan, invoice, dan surat jalan |
 | **Keuangan** | Piutang & umur piutang, pembayaran masuk, pengingat telat bayar (massal, invoice PDF terlampir) |
+| **Pengambilan Benih** | Petugas lapangan mencatat benih yang diambil dari petani (kg, karung) dan mengunggah foto dari HP; admin meneruskannya ke buku induk |
 | **Buku Kas** | Pemasukan & pengeluaran harian per kategori, saldo berjalan per bulan (khusus Founder) |
 | **Pengiriman** | Antrian pesanan siap kirim untuk gudang, input kurir & resi, surat jalan, bukti pengiriman |
 | **Pelanggan** | Distributor, toko tani, petani, ekspor. Riwayat pesanan, email, dokumen |

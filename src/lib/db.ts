@@ -677,6 +677,25 @@ const SCHEMA_SQL = `
     );
     CREATE INDEX IF NOT EXISTS cash_entries_date_idx ON cash_entries (entry_date, id);
 
+    -- Pengambilan benih di lahan petani oleh petugas produksi (foto di tabel attachments, ref_type 'pickup').
+    -- intake_id terisi setelah admin meneruskannya ke buku induk; kembali kosong bila baris buku induknya dihapus.
+    CREATE TABLE IF NOT EXISTS seed_pickups (
+      id SERIAL PRIMARY KEY,
+      pickup_date TEXT NOT NULL,
+      farmer TEXT NOT NULL,
+      location TEXT NOT NULL DEFAULT '',
+      production_code TEXT NOT NULL DEFAULT '',
+      contract_no TEXT NOT NULL DEFAULT '',
+      kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+      sacks INTEGER NOT NULL DEFAULT 0,
+      notes TEXT NOT NULL DEFAULT '',
+      officer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      officer_name TEXT NOT NULL DEFAULT '',
+      intake_id INTEGER REFERENCES seed_intakes(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE INDEX IF NOT EXISTS seed_pickups_date_idx ON seed_pickups (pickup_date DESC, id DESC);
+
     -- Pembayaran pesanan penjualan otomatis tercatat di buku kas; baris kasnya ikut hilang bila pembayarannya dihapus.
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS payment_id INTEGER REFERENCES payments(id) ON DELETE CASCADE;
 

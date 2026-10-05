@@ -8,7 +8,7 @@ import { SubmitButton } from "./buttons";
 import { Badge, Card, Empty } from "./ui";
 
 /** Daftar lampiran bukti untuk satu dokumen + form unggah. */
-export async function Attachments({ refType, refId, title = "Lampiran & bukti" }: { refType: AttachmentRef; refId: number; title?: string }) {
+export async function Attachments({ refType, refId, title = "Lampiran & bukti", photoFirst = false }: { refType: AttachmentRef; refId: number; title?: string; photoFirst?: boolean }) {
   const rows = await all<AttachmentRow>(
     `SELECT a.*, u.name uploader FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
      WHERE a.ref_type = ? AND a.ref_id = ? ORDER BY a.id DESC`,
@@ -63,9 +63,9 @@ export async function Attachments({ refType, refId, title = "Lampiran & bukti" }
           ))}
         </ul>
       ) : (
-        <Empty>Belum ada lampiran. Unggah foto/scan sebagai bukti.</Empty>
+        <Empty>{photoFirst ? "Belum ada foto. Ambil foto benih dan timbangannya sebagai bukti." : "Belum ada lampiran. Unggah foto/scan sebagai bukti."}</Empty>
       )}
-      <AttachmentUploader refType={refType} refId={refId} categories={ATTACHMENT_CATEGORIES[refType]} />
+      <AttachmentUploader refType={refType} refId={refId} categories={ATTACHMENT_CATEGORIES[refType]} photoFirst={photoFirst} />
     </Card>
   );
 }

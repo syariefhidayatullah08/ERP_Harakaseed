@@ -49,7 +49,14 @@ export async function saveIntake(fd: FormData) {
   const cols = `kind, company, received_date, due_date, farmer, location, officer, contract_no, production_code, batch_no, gross_kg, net_kg,
     shipped_kg, fix_kg, ship_date, test_ka, test_km, test_db, loan, price, contract_price, deduction, deduction_note, amount, bad_debt, status, notes`;
   if (id) await run(`UPDATE seed_intakes SET (${cols}) = (${values.map(() => "?").join(",")}) WHERE id = ?`, ...values, id);
-  else await insert(`INSERT INTO seed_intakes (${cols}) VALUES (${values.map(() => "?").join(",")})`, ...values);
+  else {
+    const newId = await insert(`INSERT INTO seed_intakes (${cols}) VALUES (${values.map(() => "?").join(",")})`, ...values);
+    // Diteruskan dari Pengambilan Benih: tandai pengambilannya sudah masuk buku induk.
+    if (numf(fd, "pickup_id")) {
+      await run("UPDATE seed_pickups SET intake_id = ? WHERE id = ? AND intake_id IS NULL", newId, numf(fd, "pickup_id"));
+      revalidatePath("/pengambilan");
+    }
+  }
   revalidatePath(BASE);
   await logActivity("pembayaran_benih", id ? "Mengubah data benih masuk" : "Mencatat benih masuk", `${farmer} · ${str(fd, "production_code").toUpperCase()} · ${netKg} kg · ${rupiah(amount)}`);
   redirect(withMsg(`${BASE}?kind=${kind}`, `Benih dari ${farmer} tersimpan: nilai pembayaran ${rupiah(amount)}${badDebt ? `, kredit macet ${rupiah(badDebt)}` : ""}.`));

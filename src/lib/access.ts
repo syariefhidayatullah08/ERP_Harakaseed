@@ -10,6 +10,7 @@ export const MODULES = {
   inventori: "Gudang & Lot",
   stok_bahan: "Stok Bahan Baku",
   produksi: "Produksi Benih",
+  pengambilan: "Pengambilan Benih",
   mitra: "Petani Mitra",
   qc: "Lab / QC",
   mutu: "Mutu & Audit ISO",
@@ -35,6 +36,7 @@ export const MODULE_HINT: Record<Module, string> = {
   inventori: "Stok per lot, terima barang, penyesuaian stok",
   stok_bahan: "Stok bahan baku benih (kg) per kode produksi: belum uji, proses uji, siap jual",
   produksi: "Batch tanam → panen → prosesing",
+  pengambilan: "Petugas lapangan mencatat benih yang diambil dari petani: bobot (kg) dan foto",
   mitra: "Petani penangkar",
   qc: "Uji laboratorium, daya kecambah, kelulusan lot",
   mutu: "Audit ISO 9001, temuan & tindakan perbaikan (CAPA), pengendalian dokumen",
@@ -65,10 +67,10 @@ export const OWNER_ONLY: Module[] = ["keuangan", "kas", "pengguna"];
 
 /** Hak akses bawaan. Founder bisa mengubahnya di Pengaturan → Hak akses divisi (kecuali modul OWNER_ONLY). */
 export const DEFAULT_ACCESS: Record<Exclude<Division, "owner">, Module[]> = {
-  produksi: ["produksi", "mitra", "produk", "laporan"],
+  produksi: ["produksi", "pengambilan", "mitra", "produk", "laporan"],
   lab_qc: ["qc", "stok_bahan", "produk", "laporan"],
   warehouse: ["inventori", "stok_bahan", "pengiriman", "produk", "laporan"],
-  admin_sdm: ["sdm", "pembelian", "pembayaran_benih", "pelanggan", "email", "laporan"],
+  admin_sdm: ["sdm", "pembelian", "pembayaran_benih", "pengambilan", "pelanggan", "email", "laporan"],
   mutu: ["mutu", "produk", "laporan"],
   marketing: ["penjualan", "pelanggan", "keluhan", "produk", "email", "laporan"],
 };

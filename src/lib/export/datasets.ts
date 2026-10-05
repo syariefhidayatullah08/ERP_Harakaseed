@@ -341,6 +341,34 @@ export const DATASETS: Record<string, Dataset> = {
         (x) => ({ ...x, category: cashCategoryLabel(x.category) }),
       ),
   },
+  pengambilan: {
+    title: "Pengambilan Benih di Lahan",
+    need: "pengambilan",
+    range: true,
+    columns: () => [
+      { key: "pickup_date", label: "Tanggal ambil", type: "date" },
+      { key: "farmer", label: "Petani", width: 24 },
+      { key: "location", label: "Lokasi", width: 20 },
+      { key: "production_code", label: "Kode Produksi", width: 14 },
+      { key: "contract_no", label: "No Kontrak", width: 12 },
+      { key: "kg", label: "Bobot (kg)", type: "decimal" },
+      { key: "sacks", label: "Karung", type: "number" },
+      { key: "officer_name", label: "Petugas", width: 18 },
+      { key: "photos", label: "Jumlah foto", type: "number" },
+      { key: "status", label: "Buku induk", width: 22 },
+      { key: "notes", label: "Catatan", width: 34 },
+    ],
+    rows: async (r) =>
+      mapRows(
+        await all<Row & { intake_id: number | null }>(
+          `SELECT p.*, (SELECT COUNT(*) FROM attachments a WHERE a.ref_type = 'pickup' AND a.ref_id = p.id) photos
+           FROM seed_pickups p WHERE p.pickup_date >= ? AND p.pickup_date <= ? ORDER BY p.pickup_date DESC, p.id DESC`,
+          r.from,
+          r.to,
+        ),
+        (x) => ({ ...x, status: x.intake_id ? "Sudah di buku induk" : "Belum masuk buku induk" }),
+      ),
+  },
   mitra: {
     title: "Petani Mitra",
     need: "mitra",

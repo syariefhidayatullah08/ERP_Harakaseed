@@ -5,11 +5,13 @@ import { today } from "@/lib/format";
 import { DUE_RULES, type Intake } from "@/lib/seed-payment";
 
 /** Form satu baris buku induk. Nilai pembayaran & kredit macet dihitung otomatis saat disimpan. */
-export function IntakeForm({ row, kind, companies }: { row?: Intake; kind: string; companies: string[] }) {
-  const v = (k: keyof Intake) => (row?.[k] ?? "") as string | number;
+/** `prefill` + `pickupId`: baris baru yang diteruskan dari menu Pengambilan Benih (data lapangan terisi otomatis). */
+export function IntakeForm({ row, kind, companies, prefill, pickupId }: { row?: Intake; kind: string; companies: string[]; prefill?: Partial<Intake>; pickupId?: number }) {
+  const v = (k: keyof Intake) => (row?.[k] ?? prefill?.[k] ?? "") as string | number;
   return (
     <form action={saveIntake} className="space-y-5">
       {row && <input type="hidden" name="id" value={row.id} />}
+      {!row && pickupId && <input type="hidden" name="pickup_id" value={pickupId} />}
       <Card title="Benih masuk">
         <div className="grid gap-4 p-5 sm:grid-cols-3">
           <Field label="Jenis *">
@@ -25,7 +27,7 @@ export function IntakeForm({ row, kind, companies }: { row?: Intake; kind: strin
             <input name="location" defaultValue={v("location")} className="input" />
           </Field>
           <Field label="Tanggal benih masuk">
-            <input name="received_date" type="date" defaultValue={row ? v("received_date") : today()} className="input" />
+            <input name="received_date" type="date" defaultValue={row ? v("received_date") : (prefill?.received_date ?? today())} className="input" />
           </Field>
           <Field label="Lama jatuh tempo">
             <select name="due_days" defaultValue={DUE_RULES[0].days} className="input">
