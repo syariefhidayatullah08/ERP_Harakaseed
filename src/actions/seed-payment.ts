@@ -7,7 +7,9 @@ import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { logActivity } from "@/lib/activity";
 import { addDays, rupiah, today } from "@/lib/format";
-import { INTAKE_KIND, INTAKE_STATUS, nextPbNumber, settle } from "@/lib/seed-payment";
+import { INTAKE_KIND, INTAKE_STATUS, nextPbNumber, settle, syncPbCash } from "@/lib/seed-payment";
+import { setBulkMoves, syncIntakeStock } from "@/lib/bulk-stock";
+import { resolveGrower } from "@/lib/growers";
 
 const BASE = "/pembayaran-benih";
 const date = (fd: FormData, key: string) => (/^\d{4}-\d{2}-\d{2}$/.test(str(fd, key)) ? str(fd, key) : null);
@@ -45,18 +47,27 @@ export async function saveIntake(fd: FormData) {
     kind === "eksternal" ? optNum(fd, "shipped_kg") : null, kind === "eksternal" ? optNum(fd, "fix_kg") : null, kind === "eksternal" ? date(fd, "ship_date") : null,
     str(fd, "test_ka"), str(fd, "test_km"), str(fd, "test_db"), loan, price, kind === "eksternal" ? numf(fd, "contract_price") : 0,
     deduction, str(fd, "deduction_note"), amount, badDebt, status, str(fd, "notes"),
+    // Hubungkan ke Petani Mitra (dibuat baru bila namanya belum ada) supaya riwayat per petani terkumpul.
+    await resolveGrower(farmer, str(fd, "location"), true),
   ];
   const cols = `kind, company, received_date, due_date, farmer, location, officer, contract_no, production_code, batch_no, gross_kg, net_kg,
-    shipped_kg, fix_kg, ship_date, test_ka, test_km, test_db, loan, price, contract_price, deduction, deduction_note, amount, bad_debt, status, notes`;
-  if (id) await run(`UPDATE seed_intakes SET (${cols}) = (${values.map(() => "?").join(",")}) WHERE id = ?`, ...values, id);
-  else {
-    const newId = await insert(`INSERT INTO seed_intakes (${cols}) VALUES (${values.map(() => "?").join(",")})`, ...values);
-    // Diteruskan dari Pengambilan Benih: tandai pengambilannya sudah masuk buku induk.
-    if (numf(fd, "pickup_id")) {
-      await run("UPDATE seed_pickups SET intake_id = ? WHERE id = ? AND intake_id IS NULL", newId, numf(fd, "pickup_id"));
-      revalidatePath("/pengambilan");
+    shipped_kg, fix_kg, ship_date, test_ka, test_km, test_db, loan, price, contract_price, deduction, deduction_note, amount, bad_debt, status, notes, grower_id`;
+  await tx(async () => {
+    let intakeId = id;
+    if (id) await run(`UPDATE seed_intakes SET (${cols}) = (${values.map(() => "?").join(",")}) WHERE id = ?`, ...values, id);
+    else {
+      intakeId = await insert(`INSERT INTO seed_intakes (${cols}) VALUES (${values.map(() => "?").join(",")})`, ...values);
+      // Diteruskan dari Pengambilan Benih: tandai pengambilannya sudah masuk buku induk.
+      if (numf(fd, "pickup_id")) await run("UPDATE seed_pickups SET intake_id = ? WHERE id = ? AND intake_id IS NULL", intakeId, numf(fd, "pickup_id"));
     }
-  }
+    // Benih internal menambah Stok Bahan Baku (proses uji); perubahan nilai di surat PB yang sudah dibayar ikut ke Buku Kas.
+    await syncIntakeStock(intakeId, !id);
+    if (old?.pb_id) await syncPbCash(old.pb_id);
+  });
+  revalidatePath("/pengambilan");
+  revalidatePath("/stok-bahan");
+  revalidatePath("/kas");
+  revalidatePath("/mitra");
   revalidatePath(BASE);
   await logActivity("pembayaran_benih", id ? "Mengubah data benih masuk" : "Mencatat benih masuk", `${farmer} · ${str(fd, "production_code").toUpperCase()} · ${netKg} kg · ${rupiah(amount)}`);
   redirect(withMsg(`${BASE}?kind=${kind}`, `Benih dari ${farmer} tersimpan: nilai pembayaran ${rupiah(amount)}${badDebt ? `, kredit macet ${rupiah(badDebt)}` : ""}.`));
@@ -74,11 +85,18 @@ export async function deleteIntake(fd: FormData) {
   if (!row) redirect(withMsg(BASE, "Data tidak ditemukan.", "error"));
   if (row.pb_status === "dibayar" && user.role !== "owner") redirect(withMsg(`${BASE}/${id}`, `Baris ini sudah dibayar lewat surat ${row.pb_no}; hanya Founder yang bisa menghapusnya.`, "error"));
   const pbGone = await tx(async () => {
+    await setBulkMoves("intake", id, []); // kembalikan stok bahan baku yang ditambahkan baris ini
     await run("DELETE FROM seed_intakes WHERE id = ?", id);
-    if (!row.pb_id || (await get("SELECT 1 FROM seed_intakes WHERE pb_id = ? LIMIT 1", row.pb_id))) return false;
+    if (!row.pb_id) return false;
+    if (await get("SELECT 1 FROM seed_intakes WHERE pb_id = ? LIMIT 1", row.pb_id)) {
+      await syncPbCash(row.pb_id);
+      return false;
+    }
     await run("DELETE FROM seed_pb WHERE id = ?", row.pb_id);
     return true;
   });
+  revalidatePath("/stok-bahan");
+  revalidatePath("/kas");
   revalidatePath(BASE);
   await logActivity("pembayaran_benih", "Menghapus data benih masuk", `${row.farmer} · ${row.production_code} · ${row.net_kg} kg · ${rupiah(row.amount)}${row.pb_no ? ` · dari surat ${row.pb_no}` : ""}`);
   const note = !row.pb_no ? "" : pbGone ? ` Surat ${row.pb_no} ikut dihapus karena tidak ada baris lain.` : ` Baris ini juga dikeluarkan dari surat ${row.pb_no}.`;
@@ -122,11 +140,13 @@ export async function payPb(fd: FormData) {
   await tx(async () => {
     await run("UPDATE seed_pb SET status = 'dibayar', paid_at = ? WHERE id = ?", paidAt, id);
     await run("UPDATE seed_intakes SET status = 'lunas' WHERE pb_id = ? AND status = 'diajukan'", id);
+    await syncPbCash(id); // pengeluaran otomatis tercatat di Buku Kas
   });
+  revalidatePath("/kas");
   revalidatePath(BASE);
   const total = (await get<{ t: number }>("SELECT COALESCE(SUM(amount), 0) t FROM seed_intakes WHERE pb_id = ?", id))!.t;
   await logActivity("pembayaran_benih", "Menandai surat PB dibayar", `${pb.number} · ${rupiah(total)}`);
-  redirect(withMsg(`${BASE}/pb/${id}`, `Surat ${pb.number} ditandai dibayar; barisnya menjadi ${INTAKE_STATUS.lunas.label}.`));
+  redirect(withMsg(`${BASE}/pb/${id}`, `Surat ${pb.number} ditandai dibayar dan masuk Buku Kas; barisnya menjadi ${INTAKE_STATUS.lunas.label}.`));
 }
 
 /** Hapus surat PB: barisnya kembali ke buku induk sebagai belum diajukan. Surat yang sudah dibayar hanya bisa dihapus Founder. */
@@ -140,6 +160,7 @@ export async function deletePb(fd: FormData) {
     await run("UPDATE seed_intakes SET pb_id = NULL, status = CASE WHEN status IN ('diajukan','lunas') THEN 'proses_uji' ELSE status END WHERE pb_id = ?", id);
     await run("DELETE FROM seed_pb WHERE id = ?", id);
   });
+  revalidatePath("/kas");
   revalidatePath(BASE);
   await logActivity("pembayaran_benih", "Menghapus surat pengajuan PB", pb.number);
   redirect(withMsg(`${BASE}?tab=pb`, `Surat ${pb.number} dihapus; barisnya kembali belum diajukan.`));

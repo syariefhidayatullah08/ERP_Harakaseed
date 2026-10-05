@@ -18,9 +18,11 @@ export async function saveBulkStock(fd: FormData) {
   const code = str(fd, "production_code").toUpperCase().replace(/\s+/g, " ");
   const name = str(fd, "product_name");
   if (!code) redirect(withMsg(BACK, "Kode produksi wajib diisi.", "error"));
-  const vals = [code, name, kg(fd, "untested_kg"), kg(fd, "testing_kg"), kg(fd, "ready_kg"), str(fd, "packing"), str(fd, "note"), today()] as const;
-  if (id) await run("UPDATE bulk_stock SET production_code=?, product_name=?, untested_kg=?, testing_kg=?, ready_kg=?, packing=?, note=?, updated_at=? WHERE id=?", ...vals, id);
-  else await run("INSERT INTO bulk_stock (production_code, product_name, untested_kg, testing_kg, ready_kg, packing, note, updated_at) VALUES (?,?,?,?,?,?,?,?)", ...vals);
+  // Varietas pasangannya: penjualan bulky varietas ini akan mengurangi stok kode produksi ini.
+  const productId = numf(fd, "product_id") || null;
+  const vals = [code, name, kg(fd, "untested_kg"), kg(fd, "testing_kg"), kg(fd, "ready_kg"), str(fd, "packing"), str(fd, "note"), today(), productId] as const;
+  if (id) await run("UPDATE bulk_stock SET production_code=?, product_name=?, untested_kg=?, testing_kg=?, ready_kg=?, packing=?, note=?, updated_at=?, product_id=? WHERE id=?", ...vals, id);
+  else await run("INSERT INTO bulk_stock (production_code, product_name, untested_kg, testing_kg, ready_kg, packing, note, updated_at, product_id) VALUES (?,?,?,?,?,?,?,?,?)", ...vals);
   revalidatePath(BACK);
   await logActivity("stok_bahan", id ? "Memperbarui stok bahan baku" : "Menambah stok bahan baku", `${code} ${name} · belum uji ${vals[2]} kg · proses uji ${vals[3]} kg · siap jual ${vals[4]} kg`);
   redirect(withMsg(BACK, `Stok ${code}${name ? ` (${name})` : ""} disimpan.`));

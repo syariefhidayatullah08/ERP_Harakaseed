@@ -29,4 +29,4 @@ export function salesCashCategory(channel: string, customer: string) {
   return channel === "kemasan" ? "in_kemasan" : "in_bulky";
 }
 
-export type CashEntry = { id: number; entry_date: string; description: string; category: string; amount_in: number; amount_out: number; so_id: number | null };
+export type CashEntry = { id: number; entry_date: string; description: string; category: string; amount_in: number; amount_out: number; so_id: number | null; pb_id: number | null; po_id: number | null };

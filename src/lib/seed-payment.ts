@@ -1,5 +1,6 @@
 import "server-only";
-import { all, get, getDocSettings } from "./db";
+import { all, get, getDocSettings, run } from "./db";
+import { today } from "./format";
 import { ROMAN } from "./invoice-doc";
 
 // Pembayaran benih petani: buku induk benih masuk (internal & eksternal) + surat pengajuan pembayaran (PB).
@@ -51,6 +52,26 @@ export type Intake = {
 };
 
 export type Pb = { id: number; number: string; kind: string; pb_date: string; status: string; notes: string; paid_at: string | null };
+
+/**
+ * Samakan Buku Kas dengan satu surat PB: surat yang sudah dibayar punya satu baris pengeluaran sebesar totalnya,
+ * surat yang belum dibayar (atau totalnya nol) tidak punya. Dipanggil setiap kali surat atau barisnya berubah.
+ */
+export async function syncPbCash(pbId: number) {
+  const pb = await get<{ number: string; kind: string; status: string; paid_at: string | null }>("SELECT number, kind, status, paid_at FROM seed_pb WHERE id = ?", pbId);
+  await run("DELETE FROM cash_entries WHERE pb_id = ?", pbId);
+  if (!pb || pb.status !== "dibayar") return;
+  const total = (await get<{ t: number }>("SELECT COALESCE(SUM(amount), 0) t FROM seed_intakes WHERE pb_id = ?", pbId))!.t;
+  if (total <= 0) return;
+  await run(
+    "INSERT INTO cash_entries (entry_date, description, category, amount_out, pb_id) VALUES (?,?,?,?,?)",
+    pb.paid_at ?? today(),
+    `Pembayaran Benih Petani ${INTAKE_KIND[pb.kind] ?? pb.kind} · Surat ${pb.number}`,
+    pb.kind === "eksternal" ? "pb_eks" : "pb_in",
+    total,
+    pbId,
+  );
+}
 
 export type PbDoc = { pb: Pb; rows: Intake[]; total: number; settings: Record<string, string> };
 

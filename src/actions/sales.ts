@@ -10,6 +10,7 @@ import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
 import { nextInvoiceNumber } from "@/lib/invoice-doc";
 import { salesCashCategory } from "@/lib/cash";
+import { deductBulkySale, setBulkMoves } from "@/lib/bulk-stock";
 import { addDays, rupiah, today } from "@/lib/format";
 import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, toChannel } from "@/lib/sales-channel";
 import {
@@ -150,13 +151,14 @@ export async function shipOrder(fd: FormData) {
   const id = numf(fd, "id");
   // Warehouse tidak membuka halaman penjualan; kembalikan ke halaman pengiriman.
   const back = can(user, "penjualan") ? `/penjualan/${id}` : `/pengiriman/${id}`;
-  const so = await get<{ id: number; so_no: string; channel: string; status: string; customer_id: number; payment_terms: number }>(
-    "SELECT so.*, c.payment_terms FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
+  const so = await get<{ id: number; so_no: string; channel: string; status: string; customer_id: number; payment_terms: number; customer: string }>(
+    "SELECT so.*, c.payment_terms, c.name customer FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
     id,
   );
   if (!so || so.status !== "dikonfirmasi") redirect(withMsg(back, "Hanya pesanan dikonfirmasi yang bisa dikirim.", "error"));
 
   const shipDate = str(fd, "shipped_at") || today();
+  let stockNotes: string[] = [];
   try {
     await tx(async () => {
       // Hanya penjualan kemasan yang memotong stok lot (per varietas + gramasi).
@@ -164,6 +166,8 @@ export async function shipOrder(fd: FormData) {
         const items = await all<{ id: number; product_id: number; pack_size: string; qty: number }>("SELECT id, product_id, pack_size, qty FROM so_items WHERE so_id = ?", id);
         for (const it of items) await allocateFefo(it.id, it.product_id, it.pack_size, it.qty, so.so_no);
       }
+      // Penjualan bulky mengurangi Stok Bahan Baku (siap jual) varietasnya.
+      if (toChannel(so.channel) === "bulky") stockNotes = await deductBulkySale(id, so.so_no, so.customer, shipDate);
       const invoiceNo = await nextInvoiceNumber(shipDate);
       await run(
         `UPDATE sales_orders SET status='dikirim', shipped_at=?, courier=?, tracking_no=?, invoice_no=?, due_date=? WHERE id=?`,
@@ -186,7 +190,9 @@ export async function shipOrder(fd: FormData) {
   revalidatePath("/penjualan");
   revalidatePath("/pengiriman");
   revalidatePath("/inventori");
-  redirect(withMsg(back, `Barang dikirim${toChannel(so.channel) === "kemasan" ? ", stok dipotong per lot (FEFO)" : ""}. ${notes.join(" ")}`));
+  revalidatePath("/stok-bahan");
+  const stockMsg = toChannel(so.channel) === "kemasan" ? ", stok dipotong per lot (FEFO)" : toChannel(so.channel) === "bulky" ? ", stok bahan baku dikurangi" : "";
+  redirect(withMsg(back, `Barang dikirim${stockMsg}. ${[...stockNotes, ...notes].join(" ")}`));
 }
 
 export async function recordPayment(fd: FormData) {
@@ -242,10 +248,14 @@ export async function cancelOrder(fd: FormData) {
   if (!so || so.status === "batal" || so.status === "selesai") redirect(withMsg(`/penjualan/${id}`, "Pesanan ini tidak bisa dibatalkan.", "error"));
   if (so.paid > 0) redirect(withMsg(`/penjualan/${id}`, "Pesanan sudah ada pembayaran — selesaikan refund dahulu.", "error"));
   await tx(async () => {
-    if (so.status === "dikirim") await releaseAllocations(id, so.so_no);
+    if (so.status === "dikirim") {
+      await releaseAllocations(id, so.so_no);
+      await setBulkMoves("so", id, []); // penjualan bulky: kembalikan stok bahan baku
+    }
     await run("UPDATE sales_orders SET status = 'batal' WHERE id = ?", id);
   });
   revalidatePath("/penjualan");
+  revalidatePath("/stok-bahan");
   await logActivity("penjualan", "Membatalkan pesanan", so.so_no);
   redirect(withMsg(`/penjualan/${id}`, so.status === "dikirim" ? "Pesanan dibatalkan dan stok dikembalikan." : "Pesanan dibatalkan."));
 }

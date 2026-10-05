@@ -699,6 +699,39 @@ const SCHEMA_SQL = `
     -- Pembayaran pesanan penjualan otomatis tercatat di buku kas; baris kasnya ikut hilang bila pembayarannya dihapus.
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS payment_id INTEGER REFERENCES payments(id) ON DELETE CASCADE;
 
+    -- Integrasi antar modul:
+    -- 1) Buku Kas ← surat PB yang dibayar & PO pembelian yang dibayar (barisnya ikut hilang bila sumbernya dihapus).
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS pb_id INTEGER REFERENCES seed_pb(id) ON DELETE CASCADE;
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS po_id INTEGER REFERENCES purchase_orders(id) ON DELETE CASCADE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS paid_at TEXT;
+    -- 2) Stok bahan baku ← benih masuk internal (buku induk) & penjualan bulky. bulk_moves = jejak perubahan otomatisnya.
+    ALTER TABLE bulk_stock ADD COLUMN IF NOT EXISTS product_id INTEGER REFERENCES products(id) ON DELETE SET NULL;
+    CREATE TABLE IF NOT EXISTS bulk_moves (
+      id SERIAL PRIMARY KEY,
+      stock_id INTEGER NOT NULL REFERENCES bulk_stock(id) ON DELETE CASCADE,
+      move_date TEXT NOT NULL,
+      bucket TEXT NOT NULL,
+      kg DOUBLE PRECISION NOT NULL,
+      ref_type TEXT NOT NULL,
+      ref_id INTEGER NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS'))
+    );
+    CREATE INDEX IF NOT EXISTS bulk_moves_ref_idx ON bulk_moves (ref_type, ref_id);
+    CREATE INDEX IF NOT EXISTS bulk_moves_stock_idx ON bulk_moves (stock_id, id DESC);
+    -- Pasangkan kode produksi ke varietas dari nama produknya, sekali saja; sisanya dipasangkan pengguna di menu Stok Bahan Baku.
+    UPDATE bulk_stock b SET product_id = p.id FROM products p
+    WHERE b.product_id IS NULL AND b.product_name <> '' AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'bulk_map_v1')
+      AND (upper(p.name) = upper(trim(split_part(split_part(b.product_name, '/', 1), '(', 1)))
+        OR upper(p.name) = upper(trim(split_part(split_part(b.product_name, '/', 1), '(', 1))) || ' F1'
+        OR (upper(b.product_name) LIKE 'SYILFIA%' AND p.name = 'SYLVIA')
+        OR (upper(b.product_name) LIKE '%ORIMA%' AND p.name = 'ORIMA'));
+    INSERT INTO settings (key, value) VALUES ('bulk_map_v1', '1') ON CONFLICT (key) DO NOTHING;
+    -- 3) Petani mitra ← buku induk & pengambilan benih.
+    ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS grower_id INTEGER REFERENCES growers(id) ON DELETE SET NULL;
+    ALTER TABLE seed_pickups ADD COLUMN IF NOT EXISTS grower_id INTEGER REFERENCES growers(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS seed_intakes_grower_idx ON seed_intakes (grower_id);
+
     -- Invoice terakhir sebelum memakai ERP bernomor 180/INV/X/2026; ERP melanjutkan dari 181.
     INSERT INTO settings (key, value) VALUES ('invoice_start', '2026:181') ON CONFLICT (key) DO NOTHING;
 

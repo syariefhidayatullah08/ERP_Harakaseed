@@ -73,5 +73,5 @@ export async function saveGrower(fd: FormData) {
   else await run("INSERT INTO growers (name, village, phone, area_ha) VALUES (?,?,?,?)", ...vals);
   revalidatePath("/mitra");
   await logActivity("mitra", id ? "Mengubah petani mitra" : "Menambah petani mitra", name);
-  redirect(withMsg("/mitra", `Petani mitra ${name} disimpan.`));
+  redirect(withMsg(id ? `/mitra/${id}` : "/mitra", `Petani mitra ${name} disimpan.`));
 }

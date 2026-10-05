@@ -76,6 +76,44 @@ export async function sendPO(fd: FormData) {
   redirect(withMsg(`/pembelian/${id}`, res.ok ? `PO dikirim ke ${to}.` : `Gagal mengirim: ${res.error}`, res.ok ? "msg" : "error"));
 }
 
+/**
+ * Tandai PO sudah dibayar → pengeluarannya otomatis tercatat di Buku Kas; batalkan tanda = baris kasnya dihapus.
+ * Pembelian dari supplier berkategori benih masuk "Pembelian benih eksternal", lainnya "Operasional".
+ */
+export async function setPOPaid(fd: FormData) {
+  await requireAccess("pembelian");
+  const id = numf(fd, "id");
+  const po = await get<{ po_no: string; status: string; total: number; paid_at: string | null; supplier: string; category: string }>(
+    "SELECT po.po_no, po.status, po.total, po.paid_at, s.name supplier, s.category FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = ?", id);
+  if (!po) redirect("/pembelian");
+  const back = `/pembelian/${id}`;
+  if (fd.get("undo")) {
+    await tx(async () => {
+      await run("DELETE FROM cash_entries WHERE po_id = ?", id);
+      await run("UPDATE purchase_orders SET paid_at = NULL WHERE id = ?", id);
+    });
+    revalidatePath("/pembelian");
+    revalidatePath("/kas");
+    await logActivity("pembelian", "Membatalkan tanda dibayar PO", po.po_no);
+    redirect(withMsg(back, "Tanda dibayar dibatalkan; barisnya dihapus dari Buku Kas."));
+  }
+  if (po.status === "batal" || po.status === "draft") redirect(withMsg(back, "PO draft atau batal tidak bisa ditandai dibayar.", "error"));
+  if (po.paid_at) redirect(withMsg(back, "PO ini sudah ditandai dibayar."));
+  if (po.total <= 0) redirect(withMsg(back, "Total PO masih nol.", "error"));
+  const paidAt = /^\d{4}-\d{2}-\d{2}$/.test(str(fd, "paid_at")) ? str(fd, "paid_at") : today();
+  await tx(async () => {
+    await run("UPDATE purchase_orders SET paid_at = ? WHERE id = ?", paidAt, id);
+    await run(
+      "INSERT INTO cash_entries (entry_date, description, category, amount_out, po_id) VALUES (?,?,?,?,?)",
+      paidAt, `Pembelian ${po.supplier} (${po.po_no})`, /benih/i.test(po.category) ? "pe" : "add", po.total, id,
+    );
+  });
+  revalidatePath("/pembelian");
+  revalidatePath("/kas");
+  await logActivity("pembelian", "Menandai PO dibayar", `${po.po_no} · ${rupiah(po.total)}`);
+  redirect(withMsg(back, `PO ditandai dibayar ${rupiah(po.total)} dan masuk Buku Kas.`));
+}
+
 export async function setPOStatus(fd: FormData) {
   await requireAccess("pembelian");
   const id = numf(fd, "id");

@@ -1,11 +1,11 @@
 import { toId } from "@/lib/form";
 import { notFound } from "next/navigation";
 import { all, get } from "@/lib/db";
-import { PO_STATUS, num, rupiah, tanggal } from "@/lib/format";
+import { PO_STATUS, num, rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, DL, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { EmailList, type EmailRow } from "@/components/email-list";
-import { sendPO, setPOStatus } from "@/actions/purchasing";
+import { sendPO, setPOPaid, setPOStatus } from "@/actions/purchasing";
 import { requireAccess } from "@/lib/session";
 import { Attachments } from "@/components/attachments";
 
@@ -13,7 +13,7 @@ export default async function PODetail({ params, searchParams }: PageProps<"/pem
   await requireAccess("pembelian");
   const { id } = await params;
   const sp = await searchParams;
-  const po = await get<{ id: number; po_no: string; supplier: string; email: string; phone: string; order_date: string; status: string; total: number; notes: string; received_at: string | null }>(
+  const po = await get<{ id: number; po_no: string; supplier: string; email: string; phone: string; order_date: string; status: string; total: number; notes: string; received_at: string | null; paid_at: string | null }>(
     "SELECT po.*, s.name supplier, s.email, s.phone FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = ?",
     toId(id),
   );
@@ -100,6 +100,32 @@ export default async function PODetail({ params, searchParams }: PageProps<"/pem
               {po.status === "diterima" && <DL items={[["Diterima", tanggal(po.received_at)]]} />}
             </div>
           </Card>
+          {po.status !== "batal" && po.status !== "draft" && (
+            <Card title="Pembayaran ke supplier">
+              {po.paid_at ? (
+                <form action={setPOPaid} className="space-y-3 p-5 text-sm">
+                  <input type="hidden" name="id" value={po.id} />
+                  <p>
+                    Dibayar <b>{tanggal(po.paid_at)}</b> sebesar {rupiah(po.total)}. Sudah tercatat di Buku Kas.
+                  </p>
+                  <SubmitButton className="btn-secondary w-full" name="undo" value="1" confirm="Batalkan tanda dibayar? Barisnya dihapus dari Buku Kas.">
+                    Batalkan tanda dibayar
+                  </SubmitButton>
+                </form>
+              ) : (
+                <form action={setPOPaid} className="space-y-3 p-5 text-sm">
+                  <input type="hidden" name="id" value={po.id} />
+                  <Field label="Tanggal dibayar">
+                    <input name="paid_at" type="date" defaultValue={today()} className="input" />
+                  </Field>
+                  <SubmitButton className="btn-primary w-full" confirm={`Tandai ${po.po_no} dibayar ${rupiah(po.total)}? Otomatis masuk Buku Kas.`}>
+                    Tandai dibayar
+                  </SubmitButton>
+                  <p className="text-xs text-muted">Pengeluaran sebesar total PO otomatis tercatat di Buku Kas.</p>
+                </form>
+              )}
+            </Card>
+          )}
         </div>
       </div>
     </>

@@ -33,10 +33,10 @@ export async function saveCashEntry(fd: FormData) {
 export async function deleteCashEntry(fd: FormData) {
   await requireAccess("kas");
   const id = numf(fd, "id");
-  const row = await get<{ entry_date: string; description: string; amount_in: number; amount_out: number; payment_id: number | null }>("SELECT entry_date, description, amount_in, amount_out, payment_id FROM cash_entries WHERE id = ?", id);
+  const row = await get<{ entry_date: string; description: string; amount_in: number; amount_out: number; auto: boolean }>("SELECT entry_date, description, amount_in, amount_out, (payment_id IS NOT NULL OR pb_id IS NOT NULL OR po_id IS NOT NULL) auto FROM cash_entries WHERE id = ?", id);
   if (!row) redirect(withMsg("/kas", "Transaksi tidak ditemukan.", "error"));
-  // Baris dari pembayaran pesanan harus tetap sama dengan catatan pembayarannya.
-  if (row.payment_id) redirect(withMsg(backTo(row.entry_date), "Transaksi ini tercatat otomatis dari pembayaran pesanan penjualan, jadi tidak dihapus dari Buku Kas.", "error"));
+  // Baris otomatis (pembayaran pesanan, surat PB, PO) harus tetap sama dengan sumbernya.
+  if (row.auto) redirect(withMsg(backTo(row.entry_date), "Transaksi ini tercatat otomatis dari modul lain, jadi diubah dari sumbernya, bukan dihapus dari Buku Kas.", "error"));
   await run("DELETE FROM cash_entries WHERE id = ?", id);
   revalidatePath("/kas");
   await logActivity("kas", "Menghapus transaksi kas", `${row.entry_date} · ${row.description} · ${rupiah(row.amount_in || row.amount_out)}`);

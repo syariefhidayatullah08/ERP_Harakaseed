@@ -8,6 +8,7 @@ import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { logActivity } from "@/lib/activity";
 import { today } from "@/lib/format";
+import { resolveGrower } from "@/lib/growers";
 
 const BASE = "/pengambilan";
 const kgFmt = (n: number) => new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(n);
@@ -22,19 +23,21 @@ export async function savePickup(fd: FormData) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(str(fd, "pickup_date")) ? str(fd, "pickup_date") : today();
   if (!farmer) redirect(withMsg(back, "Nama petani wajib diisi.", "error"));
   if (kg <= 0) redirect(withMsg(back, "Isi bobot benih yang diambil (kg).", "error"));
-  const vals = [date, farmer, str(fd, "location"), str(fd, "production_code").toUpperCase().replace(/\s+/g, " "), str(fd, "contract_no"), kg, Math.max(0, Math.round(numf(fd, "sacks"))), str(fd, "notes")] as const;
+  // Hubungkan ke Petani Mitra (dibuat baru bila namanya belum ada).
+  const growerId = await resolveGrower(farmer, str(fd, "location"), true);
+  const vals = [date, farmer, str(fd, "location"), str(fd, "production_code").toUpperCase().replace(/\s+/g, " "), str(fd, "contract_no"), kg, Math.max(0, Math.round(numf(fd, "sacks"))), str(fd, "notes"), growerId] as const;
 
   if (id) {
     const old = await get<{ intake_id: number | null }>("SELECT intake_id FROM seed_pickups WHERE id = ?", id);
     if (!old) redirect(withMsg(BASE, "Data tidak ditemukan.", "error"));
     if (old.intake_id && user.role !== "owner") redirect(withMsg(back, "Pengambilan ini sudah masuk buku induk; hanya Founder yang bisa mengubahnya.", "error"));
-    await run("UPDATE seed_pickups SET pickup_date=?, farmer=?, location=?, production_code=?, contract_no=?, kg=?, sacks=?, notes=? WHERE id=?", ...vals, id);
+    await run("UPDATE seed_pickups SET pickup_date=?, farmer=?, location=?, production_code=?, contract_no=?, kg=?, sacks=?, notes=?, grower_id=? WHERE id=?", ...vals, id);
     revalidatePath(BASE);
     await logActivity("pengambilan", "Mengubah pengambilan benih", `${farmer} · ${vals[3]} · ${kgFmt(kg)} kg`);
     redirect(withMsg(back, "Perubahan disimpan."));
   }
   const newId = await insert(
-    "INSERT INTO seed_pickups (pickup_date, farmer, location, production_code, contract_no, kg, sacks, notes, officer_id, officer_name) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO seed_pickups (pickup_date, farmer, location, production_code, contract_no, kg, sacks, notes, grower_id, officer_id, officer_name) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
     ...vals, user.id, user.name,
   );
   revalidatePath(BASE);
