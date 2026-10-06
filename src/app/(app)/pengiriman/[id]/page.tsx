@@ -10,6 +10,7 @@ import { Badge, Card, DL, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { Attachments } from "@/components/attachments";
 import { shipOrder } from "@/actions/sales";
+import { nextInvoiceNumber } from "@/lib/invoice-doc";
 import { requireAccess } from "@/lib/session";
 
 export default async function ShippingDetail({ params, searchParams }: PageProps<"/pengiriman/[id]">) {
@@ -17,15 +18,17 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
   const { id } = await params;
   const sp = await searchParams;
   const o = await get<{
-    id: number; so_no: string; channel: string; status: string; order_date: string; shipped_at: string | null; courier: string; tracking_no: string; notes: string;
+    id: number; so_no: string; channel: string; status: string; order_date: string; shipped_at: string | null; courier: string; tracking_no: string; notes: string; invoice_manual: string;
     customer: string; contact_person: string; phone: string; address: string; city: string;
   }>(
-    `SELECT so.id, so.so_no, so.channel, so.status, so.order_date, so.shipped_at, so.courier, so.tracking_no, so.notes,
+    `SELECT so.id, so.so_no, so.channel, so.status, so.order_date, so.shipped_at, so.courier, so.tracking_no, so.notes, so.invoice_manual,
             c.name customer, c.contact_person, c.phone, c.address, c.city
      FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?`,
     toId(id),
   );
   if (!o || o.status === "draft") notFound();
+  // Perkiraan nomor otomatis untuk petunjuk kolom no. invoice.
+  const autoInvoice = o.status === "dikonfirmasi" ? await nextInvoiceNumber(today(), o.channel) : "";
   const items = await all<{ id: number; product_id: number; name: string; crop: string; pack: string; pack_size: string; qty: number }>(
     `SELECT i.id, i.product_id, i.qty, i.pack_size pack, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
@@ -141,6 +144,9 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
                   </Field>
                   <Field label="No. resi">
                     <input name="tracking_no" className="input" />
+                  </Field>
+                  <Field label="No. invoice">
+                    <input name="invoice_no" defaultValue={o.invoice_manual} autoComplete="off" className="input" placeholder={`Kosongkan = otomatis (${autoInvoice})`} />
                   </Field>
                   <SubmitButton className="btn-primary w-full" pendingText="Memproses…" confirm="Kirim barang sekarang? Stok akan dipotong per lot.">
                     Barang sudah dikirim

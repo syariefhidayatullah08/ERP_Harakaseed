@@ -13,7 +13,7 @@ import { salesCashCategory } from "@/lib/cash";
 import { deductBulkySale, setBulkMoves } from "@/lib/bulk-stock";
 import { del } from "@vercel/blob";
 import { addDays, rupiah, today } from "@/lib/format";
-import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, perKg, toChannel } from "@/lib/sales-channel";
+import { CHANNELS, freeName, GRAM_MAX, GRAM_MIN, gramPack, packGram, perKg, toChannel } from "@/lib/sales-channel";
 import {
   invoiceEmail,
   loadOrderForEmail,
@@ -39,47 +39,72 @@ function totals(lines: Line[], discountPct: number, taxPct: number) {
 /**
  * Pelanggan di form pesanan diketik bebas: nama yang sama dengan pelanggan terdaftar (mis. distributor utama)
  * memakai data itu; nama baru otomatis didaftarkan sebagai pelanggan umum agar invoice & piutangnya tetap tercatat.
+ * Email opsional: bila diisi, disimpan ke data pelanggan (dipakai untuk konfirmasi, invoice, dan pengingat).
  */
-async function findOrCreateCustomer(name: string) {
+async function findOrCreateCustomer(name: string, email: string) {
   const found = await get<{ id: number }>("SELECT id FROM customers WHERE lower(trim(name)) = lower(?) ORDER BY id LIMIT 1", name);
-  if (found) return found.id;
+  if (found) {
+    if (email) await run("UPDATE customers SET email = ? WHERE id = ?", email, found.id);
+    return found.id;
+  }
   const last = (await get<{ n: number }>("SELECT COUNT(*) n FROM customers"))!.n;
   let code = `CUST-${String(last + 1).padStart(3, "0")}`;
   while (await get("SELECT id FROM customers WHERE code = ?", code)) code = await nextNumber("CUST", "customers", "code");
-  return insert("INSERT INTO customers (code, name, kind) VALUES (?,?, 'umum')", code, name);
+  return insert("INSERT INTO customers (code, name, kind, email) VALUES (?,?, 'umum', ?)", code, name, email);
 }
 
-type ParsedOrder = { channel: ReturnType<typeof toChannel>; customerName: string; lines: Line[]; newPacks: Line[]; discountPct: number; taxPct: number; subtotal: number; total: number; orderDate: string; notes: string; deposit: number };
+type ParsedOrder = { channel: ReturnType<typeof toChannel>; customerName: string; customerEmail: string; invoiceManual: string; lines: Line[]; newPacks: Line[]; discountPct: number; taxPct: number; subtotal: number; total: number; orderDate: string; notes: string; deposit: number };
+
+/** No. invoice diketik manual: dirapikan spasinya, maksimal 60 karakter. */
+const cleanInvoiceNo = (v: string) => v.replace(/\s+/g, " ").trim().slice(0, 60);
+
+/** No. invoice sudah dipakai pesanan lain (yang sudah terbit maupun yang baru disiapkan manual)? */
+async function invoiceTaken(no: string, exceptId = 0) {
+  const row = await get<{ so_no: string }>(
+    "SELECT so_no FROM sales_orders WHERE id <> ? AND status <> 'batal' AND (lower(invoice_no) = lower(?) OR lower(invoice_manual) = lower(?)) LIMIT 1",
+    exceptId, no, no,
+  );
+  return row?.so_no ?? null;
+}
 
 /** Baca & periksa isi form pesanan (dipakai saat membuat maupun mengubah). Mengembalikan pesan kesalahan bila tidak valid. */
 async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }> {
   const channel = toChannel(str(fd, "channel"));
   const customerName = str(fd, "customer_name").replace(/\s+/g, " ");
+  const customerEmail = str(fd, "customer_email").toLowerCase();
   let lines: Line[] = [];
   try {
     const kg = perKg(channel);
+    const free = freeName(channel);
     lines = (JSON.parse(str(fd, "lines")) as Partial<Line>[])
       .map((l) => ({
         product_id: Number(l.product_id) || null,
         pack_size: kg ? "" : String(l.pack_size ?? "").trim(),
         qty: Number(l.qty),
         price: Number(l.price),
-        item_name: kg ? String(l.item_name ?? "").replace(/\s+/g, " ").trim().slice(0, 120) : "",
+        item_name: free ? String(l.item_name ?? "").replace(/\s+/g, " ").trim().slice(0, 120) : "",
         item_code: channel === "kerjasama" ? String(l.item_code ?? "").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 40) : "",
       }))
-      .filter((l) => (kg ? l.item_name : l.product_id) && l.qty > 0);
+      .filter((l) => (free ? l.item_name : l.product_id) && l.qty > 0);
   } catch {
     return { error: "Data item tidak valid." };
   }
   if (!customerName) return { error: "Isi nama pelanggan." };
-  if (!lines.length) return { error: perKg(channel) ? "Isi nama pada minimal satu baris." : "Tambahkan minimal satu produk." };
+  if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) return { error: "Format email pelanggan tidak valid." };
+  const invoiceManual = cleanInvoiceNo(str(fd, "invoice_manual"));
+  if (invoiceManual) {
+    const taken = await invoiceTaken(invoiceManual, numf(fd, "order_id"));
+    if (taken) return { error: `No. invoice ${invoiceManual} sudah dipakai pesanan ${taken}.` };
+  }
+  if (!lines.length) return { error: freeName(channel) ? "Isi nama pada minimal satu baris." : "Tambahkan minimal satu produk." };
   if (lines.some((l) => (l.product_id !== null && !Number.isInteger(l.product_id)) || !Number.isFinite(l.qty) || !Number.isFinite(l.price) || l.price < 0)) {
     return { error: "Data item tidak valid." };
   }
   // Kemasan & label dihitung satuan utuh; bulky & kerjasama per kg boleh desimal.
   if (!perKg(channel) && lines.some((l) => !Number.isInteger(l.qty))) return { error: `Qty ${CHANNELS[channel].unit} harus bilangan bulat.` };
-  if (perKg(channel)) {
-    // Nama bebas yang persis sama dengan varietas di menu Produk dipasangkan, supaya stok bahan baku bulky tetap terpotong.
+  if (freeName(channel)) {
+    // Nama bebas yang persis sama dengan varietas di menu Produk dipasangkan, supaya stok bahan baku bulky tetap terpotong
+    // dan gramasi label baru ikut terdaftar di varietasnya.
     const products = await all<{ id: number; name: string }>("SELECT id, name FROM products WHERE active = 1");
     for (const l of lines) {
       const p = products.find((p) => p.name.toLowerCase() === l.item_name.toLowerCase());
@@ -94,8 +119,10 @@ async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }
   let newPacks: Line[] = [];
   if (!perKg(channel)) {
     const packs = await all<{ product_id: number; pack_size: string }>("SELECT product_id, pack_size FROM product_packs WHERE active = 1");
-    newPacks = lines.filter((l) => !packs.some((k) => k.product_id === l.product_id && k.pack_size === l.pack_size));
-    if (newPacks.some((l) => !l.pack_size || gramPack(packGram(l.pack_size)) !== l.pack_size)) {
+    // Label dengan nama di luar menu Produk tidak punya varietas untuk didaftarkan gramasinya, tapi gramasinya tetap diperiksa.
+    const unregistered = lines.filter((l) => !packs.some((k) => k.product_id === l.product_id && k.pack_size === l.pack_size));
+    newPacks = unregistered.filter((l) => l.product_id !== null);
+    if (unregistered.some((l) => !l.pack_size || gramPack(packGram(l.pack_size)) !== l.pack_size)) {
       return { error: `Isi gramasi setiap varietas dengan angka ${GRAM_MIN}–${GRAM_MAX} (gram).` };
     }
   }
@@ -103,7 +130,7 @@ async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }
   const discountPct = numf(fd, "discount_pct");
   const taxPct = numf(fd, "tax_pct");
   const { subtotal, total } = totals(lines, discountPct, taxPct);
-  return { channel, customerName, lines, newPacks, discountPct, taxPct, subtotal, total, orderDate: str(fd, "order_date") || today(), notes: str(fd, "notes"), deposit: channel === "kerjasama" ? Math.max(0, numf(fd, "deposit")) : 0 };
+  return { channel, customerName, customerEmail, invoiceManual, lines, newPacks, discountPct, taxPct, subtotal, total, orderDate: str(fd, "order_date") || today(), notes: str(fd, "notes"), deposit: channel === "kerjasama" ? Math.max(0, numf(fd, "deposit")) : 0 };
 }
 
 /** Daftarkan gramasi baru yang dipakai pesanan (panggil di dalam tx). Harga hanya ikut dari penjualan kemasan. */
@@ -125,11 +152,11 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
   const { channel, customerName, lines, discountPct, taxPct, subtotal, total, orderDate } = o;
 
   const soId = await tx(async () => {
-    const customerId = await findOrCreateCustomer(customerName);
+    const customerId = await findOrCreateCustomer(customerName, o.customerEmail);
     const soNo = await nextNumber("SO", "sales_orders", "so_no");
     const id = await insert(
-      `INSERT INTO sales_orders (so_no, channel, customer_id, order_date, status, discount_pct, tax_pct, subtotal, total, notes, deposit)
-       VALUES (?,?,?,?, 'draft', ?,?,?,?,?,?)`,
+      `INSERT INTO sales_orders (so_no, channel, customer_id, order_date, status, discount_pct, tax_pct, subtotal, total, notes, deposit, invoice_manual)
+       VALUES (?,?,?,?, 'draft', ?,?,?,?,?,?,?)`,
       soNo,
       channel,
       customerId,
@@ -140,6 +167,7 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
       total,
       o.notes,
       o.deposit,
+      o.invoiceManual,
     );
     await registerNewPacks(o);
     for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price, item_name, item_code) VALUES (?,?,?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price, l.item_name, l.item_code);
@@ -165,10 +193,10 @@ export async function updateOrder(_: unknown, fd: FormData): Promise<{ error?: s
   if ("error" in o) return o;
   if (o.channel !== toChannel(so.channel)) return { error: "Jenis penjualan tidak bisa diganti." };
   await tx(async () => {
-    const customerId = await findOrCreateCustomer(o.customerName);
+    const customerId = await findOrCreateCustomer(o.customerName, o.customerEmail);
     await run(
-      "UPDATE sales_orders SET customer_id = ?, order_date = ?, discount_pct = ?, tax_pct = ?, subtotal = ?, total = ?, notes = ?, deposit = ? WHERE id = ?",
-      customerId, o.orderDate, o.discountPct, o.taxPct, o.subtotal, o.total, o.notes, o.deposit, id,
+      "UPDATE sales_orders SET customer_id = ?, order_date = ?, discount_pct = ?, tax_pct = ?, subtotal = ?, total = ?, notes = ?, deposit = ?, invoice_manual = ? WHERE id = ?",
+      customerId, o.orderDate, o.discountPct, o.taxPct, o.subtotal, o.total, o.notes, o.deposit, o.invoiceManual, id,
     );
     await registerNewPacks(o);
     await run("DELETE FROM so_items WHERE so_id = ?", id);
@@ -240,13 +268,17 @@ export async function shipOrder(fd: FormData) {
   const id = numf(fd, "id");
   // Warehouse tidak membuka halaman penjualan; kembalikan ke halaman pengiriman.
   const back = can(user, "penjualan") ? `/penjualan/${id}` : `/pengiriman/${id}`;
-  const so = await get<{ id: number; so_no: string; channel: string; status: string; customer_id: number; payment_terms: number; customer: string }>(
+  const so = await get<{ id: number; so_no: string; channel: string; status: string; customer_id: number; payment_terms: number; customer: string; invoice_manual: string }>(
     "SELECT so.*, c.payment_terms, c.name customer FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
     id,
   );
   if (!so || so.status !== "dikonfirmasi") redirect(withMsg(back, "Hanya pesanan dikonfirmasi yang bisa dikirim.", "error"));
 
   const shipDate = str(fd, "shipped_at") || today();
+  // No. invoice dari form kirim (terisi dari pesanan bila sudah diketik di sana); kosong = nomor otomatis.
+  const manualNo = cleanInvoiceNo(fd.has("invoice_no") ? str(fd, "invoice_no") : so.invoice_manual);
+  const takenBy = manualNo ? await invoiceTaken(manualNo, id) : null;
+  if (takenBy) redirect(withMsg(back, `No. invoice ${manualNo} sudah dipakai pesanan ${takenBy}.`, "error"));
   let stockNotes: string[] = [];
   try {
     await tx(async () => {
@@ -257,7 +289,7 @@ export async function shipOrder(fd: FormData) {
       }
       // Penjualan bulky mengurangi Stok Bahan Baku (siap jual) varietasnya.
       if (toChannel(so.channel) === "bulky") stockNotes = await deductBulkySale(id, so.so_no, so.customer, shipDate);
-      const invoiceNo = await nextInvoiceNumber(shipDate, so.channel);
+      const invoiceNo = manualNo || (await nextInvoiceNumber(shipDate, so.channel));
       await run(
         `UPDATE sales_orders SET status='dikirim', shipped_at=?, courier=?, tracking_no=?, invoice_no=?, due_date=? WHERE id=?`,
         shipDate,
@@ -282,6 +314,22 @@ export async function shipOrder(fd: FormData) {
   revalidatePath("/stok-bahan");
   const stockMsg = toChannel(so.channel) === "kemasan" ? ", stok dipotong per lot (FEFO)" : toChannel(so.channel) === "bulky" ? ", stok bahan baku dikurangi" : "";
   redirect(withMsg(back, `Barang dikirim${stockMsg}. ${[...stockNotes, ...notes].join(" ")}`));
+}
+
+/** Ubah no. invoice yang sudah terbit (mis. menyesuaikan nomor di buku/arsip manual). */
+export async function updateInvoiceNo(fd: FormData) {
+  await requireAccess(["penjualan", "keuangan"]);
+  const id = numf(fd, "id");
+  const no = cleanInvoiceNo(str(fd, "invoice_no"));
+  const so = await get<{ so_no: string; invoice_no: string | null }>("SELECT so_no, invoice_no FROM sales_orders WHERE id = ?", id);
+  if (!so?.invoice_no) redirect(withMsg(`/penjualan/${id}`, "Invoice belum terbit; isi no. invoice lewat Ubah pesanan atau saat kirim barang.", "error"));
+  if (!no) redirect(withMsg(`/penjualan/${id}`, "No. invoice tidak boleh kosong.", "error"));
+  const taken = await invoiceTaken(no, id);
+  if (taken) redirect(withMsg(`/penjualan/${id}`, `No. invoice ${no} sudah dipakai pesanan ${taken}.`, "error"));
+  await run("UPDATE sales_orders SET invoice_no = ?, invoice_manual = ? WHERE id = ?", no, no, id);
+  revalidatePath("/penjualan");
+  await logActivity("penjualan", "Mengubah no. invoice", `${so.so_no}: ${so.invoice_no} → ${no}`);
+  redirect(withMsg(`/penjualan/${id}`, `No. invoice diganti menjadi ${no}.`));
 }
 
 export async function recordPayment(fd: FormData) {

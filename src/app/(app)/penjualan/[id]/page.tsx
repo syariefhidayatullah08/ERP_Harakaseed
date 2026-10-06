@@ -7,7 +7,8 @@ import { daysUntil, num, paymentStatus, rupiah, SO_STATUS, tanggal, today } from
 import { Badge, Card, DL, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { EmailList, type EmailRow } from "@/components/email-list";
-import { cancelOrder, confirmOrder, deleteOrder, emailOrderDocument, recordPayment, shipOrder } from "@/actions/sales";
+import { cancelOrder, confirmOrder, deleteOrder, emailOrderDocument, recordPayment, shipOrder, updateInvoiceNo } from "@/actions/sales";
+import { nextInvoiceNumber } from "@/lib/invoice-doc";
 import { packKey, stockByPack } from "@/lib/inventory";
 import { CHANNELS, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
 import { orderWhatsappMessages, waLink } from "@/lib/whatsapp";
@@ -23,7 +24,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
   const o = await get<{
     id: number; so_no: string; channel: string; customer_id: number; customer: string; contact_person: string; email: string; phone: string; city: string; address: string;
     order_date: string; status: string; discount_pct: number; tax_pct: number; subtotal: number; total: number; paid: number;
-    invoice_no: string | null; due_date: string | null; shipped_at: string | null; courier: string; tracking_no: string; notes: string;
+    invoice_no: string | null; due_date: string | null; shipped_at: string | null; courier: string; tracking_no: string; notes: string; invoice_manual: string;
   }>(
     `SELECT so.*, c.name customer, c.contact_person, c.email, c.phone, c.city, c.address FROM sales_orders so
      JOIN customers c ON c.id = so.customer_id WHERE so.id = ?`,
@@ -33,6 +34,8 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
 
   const channel = toChannel(o.channel);
   const ch = CHANNELS[channel];
+  // Perkiraan nomor otomatis untuk petunjuk di form kirim barang.
+  const autoInvoice = o.status === "dikonfirmasi" ? await nextInvoiceNumber(today(), o.channel) : "";
   const items = await all<{ id: number; product_id: number; name: string; crop: string; pack: string; pack_size: string; qty: number; price: number; item_code: string }>(
     `SELECT i.id, i.product_id, i.qty, i.price, i.pack_size pack, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, i.item_code, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
@@ -273,6 +276,9 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                   <Field label="No. resi">
                     <input name="tracking_no" className="input" />
                   </Field>
+                  <Field label="No. invoice">
+                    <input name="invoice_no" defaultValue={o.invoice_manual} autoComplete="off" className="input" placeholder={`Kosongkan = otomatis (${autoInvoice})`} />
+                  </Field>
                   <SubmitButton className="btn-primary w-full" pendingText="Memproses…">
                     Kirim barang & terbitkan invoice
                   </SubmitButton>
@@ -294,6 +300,18 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                         : []),
                     ]}
                   />
+                  {o.invoice_no && (finance || sales) && (
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-xs text-brand-700">Ubah no. invoice ({o.invoice_no})</summary>
+                      <form action={updateInvoiceNo} className="mt-2 flex items-end gap-2">
+                        <input type="hidden" name="id" value={o.id} />
+                        <Field label="No. invoice" className="flex-1">
+                          <input name="invoice_no" required defaultValue={o.invoice_no} autoComplete="off" className="input" />
+                        </Field>
+                        <SubmitButton className="btn-secondary">Simpan</SubmitButton>
+                      </form>
+                    </details>
+                  )}
                 </div>
               )}
               {o.status === "batal" && <p className="text-sm text-muted">Pesanan dibatalkan.</p>}

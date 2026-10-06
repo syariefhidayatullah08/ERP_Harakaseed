@@ -746,8 +746,10 @@ const SCHEMA_SQL = `
 
     -- Owner berganti sebutan menjadi Founder (kode peran di database tetap 'owner').
     UPDATE users SET name = 'Founder' WHERE role = 'owner' AND name = 'Owner';
-  `;
 
+    -- No. invoice boleh diketik manual di pesanan; kosong = nomor otomatis saat barang dikirim.
+    ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS invoice_manual TEXT NOT NULL DEFAULT '';
+  `;
 
 async function seed(ex: Ex) {
   await ex(

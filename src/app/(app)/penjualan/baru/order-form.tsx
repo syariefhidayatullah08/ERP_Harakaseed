@@ -3,7 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { createOrder, updateOrder } from "@/actions/sales";
-import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, perKg, type Channel } from "@/lib/sales-channel";
+import { CHANNELS, freeName, GRAM_MAX, GRAM_MIN, gramPack, packGram, perKg, type Channel } from "@/lib/sales-channel";
 
 type P = { id: number; name: string; crop: string };
 type K = { product_id: number; pack_size: string; price: number; available: number };
@@ -14,7 +14,7 @@ const rupiah = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n || 0);
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-type Initial = { id: number; customer: string; order_date: string; discount_pct: number; tax_pct: number; notes: string; deposit?: number; lines: Omit<Line, "key">[] };
+type Initial = { id: number; customer: string; order_date: string; invoice_manual: string; discount_pct: number; tax_pct: number; notes: string; deposit?: number; lines: Omit<Line, "key">[] };
 const EMPTY: Omit<Line, "key"> = { product_id: 0, pack_size: "", qty: 1, price: 0, item_name: "", item_code: "" };
 
 /** Form pesanan baru; dengan `initial` menjadi form ubah pesanan yang sudah ada (sebelum dikirim). */
@@ -35,15 +35,22 @@ export function OrderForm({
   defaultCustomer?: string;
   today: string;
   initial?: Initial;
-  /** Saran nama untuk bulky/kerjasama: varietas + nama yang pernah dipakai. */
+  /** Saran nama untuk bulky/label/kerjasama: varietas + nama yang pernah dipakai. */
   names?: string[];
 }) {
   const ch = CHANNELS[channel];
   const kg = perKg(channel);
   const usesPack = !kg;
+  const free = freeName(channel);
   const [state, action, pending] = useActionState(initial ? updateOrder : createOrder, null);
   const [customerName, setCustomerName] = useState(initial?.customer ?? defaultCustomer);
-  const [lines, setLines] = useState<Line[]>(initial?.lines.length ? initial.lines.map((l, i) => ({ ...l, key: i + 1 })) : [{ key: 1, ...EMPTY }]);
+  const [email, setEmail] = useState(customers.find((c) => same(c.name, initial?.customer ?? defaultCustomer))?.email ?? "");
+  const [lines, setLines] = useState<Line[]>(
+    initial?.lines.length
+      ? // Pesanan lama yang dibuat dari pilihan varietas belum punya nama ketikan: isi dari nama produknya.
+        initial.lines.map((l, i) => ({ ...l, item_name: l.item_name || (free ? (products.find((p) => p.id === l.product_id)?.name ?? "") : ""), key: i + 1 }))
+      : [{ key: 1, ...EMPTY }],
+  );
   const [discount, setDiscount] = useState(initial?.discount_pct ?? 0);
   const [tax, setTax] = useState(initial?.tax_pct ?? 0);
   const [deposit, setDeposit] = useState(initial?.deposit ?? 0);
@@ -80,9 +87,15 @@ export function OrderForm({
               autoComplete="off"
               list="daftar-pelanggan"
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
+              onChange={(e) => {
+                // Pelanggan terdaftar: email ikut terisi dari datanya; pindah ke nama baru: email pelanggan sebelumnya dikosongkan.
+                const next = customers.find((c) => same(c.name, e.target.value));
+                if (next) setEmail(next.email);
+                else if (customer) setEmail("");
+                setCustomerName(e.target.value);
+              }}
               className="input"
-              placeholder="Ketik nama, atau pilih distributor…"
+              placeholder="Ketik nama pelanggan, atau pilih dari daftar…"
             />
             <datalist id="daftar-pelanggan">
               {customers.map((c, i) => (
@@ -92,18 +105,32 @@ export function OrderForm({
               ))}
             </datalist>
             {customerName.trim() && (
-              <span className={`mt-1 block text-xs ${customer?.email ? "text-muted" : "text-amber-700"}`}>
-                {customer
-                  ? customer.email
-                    ? `Pelanggan terdaftar${customer.city ? ` · ${customer.city}` : ""} · ${customer.email}`
-                    : "Pelanggan terdaftar, belum punya email — konfirmasi tidak akan terkirim."
-                  : "Nama baru — otomatis disimpan sebagai pelanggan. Tanpa email, konfirmasi tidak terkirim."}
+              <span className="mt-1 block text-xs text-muted">
+                {customer ? `Pelanggan terdaftar${customer.city ? ` · ${customer.city}` : ""}` : "Nama baru — otomatis disimpan sebagai pelanggan."}
+              </span>
+            )}
+          </label>
+          <label className="block">
+            <span className="label">Email pelanggan · opsional</span>
+            <input name="customer_email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="mis. toko@contoh.com" />
+            {customerName.trim() && (
+              <span className={`mt-1 block text-xs ${email.trim() ? "text-muted" : "text-amber-700"}`}>
+                {!email.trim()
+                  ? "Tanpa email, konfirmasi & invoice tidak dikirim lewat email."
+                  : customer && !same(customer.email, email)
+                    ? "Email disimpan ke data pelanggan ini."
+                    : "Konfirmasi & invoice dikirim ke email ini."}
               </span>
             )}
           </label>
           <label className="block">
             <span className="label">Tanggal pesanan</span>
             <input name="order_date" type="date" defaultValue={initial?.order_date ?? today} className="input" />
+          </label>
+          <label className="block">
+            <span className="label">No. invoice · opsional</span>
+            <input name="invoice_manual" autoComplete="off" defaultValue={initial?.invoice_manual} className="input" placeholder="mis. 182/INV/X/2026" />
+            <span className="mt-1 block text-xs text-muted">Diketik manual bila sudah punya nomor sendiri. Kosongkan = nomor otomatis saat barang dikirim.</span>
           </label>
         </section>
 
@@ -129,15 +156,15 @@ export function OrderForm({
                   return (
                     <tr key={l.key}>
                       <td>
-                        {kg ? (
-                          // Nama diketik bebas (nama bulky tidak baku); daftar hanya saran.
+                        {free ? (
+                          // Nama diketik bebas; daftar hanya saran. Nama yang sama dengan varietas di Produk ikut memakai gramasinya.
                           <input
                             value={l.item_name}
                             list={`nama-${l.key}`}
                             autoComplete="off"
-                            onChange={(e) => update(l.key, { item_name: e.target.value })}
+                            onChange={(e) => update(l.key, { item_name: e.target.value, product_id: products.find((p) => same(p.name, e.target.value))?.id ?? 0 })}
                             className="input"
-                            placeholder={channel === "kerjasama" ? "mis. Misdina" : "mis. KE22, Semangka Pencapar"}
+                            placeholder={channel === "kerjasama" ? "mis. Misdina" : channel === "label" ? "Ketik nama varietas…" : "mis. KE22, Semangka Pencapar"}
                           />
                         ) : (
                           <select
@@ -159,7 +186,7 @@ export function OrderForm({
                             ))}
                           </select>
                         )}
-                        {kg && (
+                        {free && (
                           <datalist id={`nama-${l.key}`}>
                             {names.map((n) => (
                               <option key={n} value={n} />
@@ -172,7 +199,7 @@ export function OrderForm({
                             {pack.available < l.qty && " — stok kurang, perlu produksi"}
                           </div>
                         )}
-                        {usesPack && l.product_id > 0 && l.pack_size && !pack && (
+                        {usesPack && l.pack_size && !pack && (l.product_id > 0 || !gramPack(packGram(l.pack_size))) && (
                           <div className={`mt-1 text-xs ${gramPack(packGram(l.pack_size)) ? "text-amber-700" : "text-red-700"}`}>
                             {gramPack(packGram(l.pack_size))
                               ? `Gramasi ${l.pack_size} baru untuk varietas ini — otomatis ditambahkan ke Produk${channel === "kemasan" ? "; isi harganya, stoknya masih kosong" : ""}.`
@@ -189,7 +216,7 @@ export function OrderForm({
                               step={1}
                               list={`gramasi-${l.key}`}
                               value={packGram(l.pack_size) ?? ""}
-                              disabled={!l.product_id}
+                              disabled={!free && !l.product_id}
                               onChange={(e) => update(l.key, gramPatch(options, e.target.value))}
                               className="input"
                               placeholder={`${GRAM_MIN}–${GRAM_MAX}`}
