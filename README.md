@@ -8,7 +8,7 @@ ERP bisa dipasang sebagai aplikasi di HP atau komputer lewat **Pengaturan → Pa
 
 ## Divisi & hak akses
 
-Setiap karyawan login dengan **email pribadinya**. Hak akses mengikuti divisi; divisi tidak bisa melihat modul divisi lain, dan **keuangan hanya untuk Founder**.
+Setiap karyawan login dengan **email pribadinya**. Secara bawaan semua divisi bisa membuka semua modul kecuali yang khusus Founder (**Keuangan, Buku Kas, Akun Pengguna**); Founder bisa mempersempitnya per divisi atau per orang.
 
 | Divisi | Modul bawaan |
 |---|---|

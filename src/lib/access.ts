@@ -65,14 +65,18 @@ export const isDivision = (v: unknown): v is Division => typeof v === "string" &
 /** Modul yang hanya boleh dibuka Founder (kode peran 'owner'), tidak bisa diberikan ke divisi lain. */
 export const OWNER_ONLY: Module[] = ["keuangan", "kas", "pengguna"];
 
-/** Hak akses bawaan. Founder bisa mengubahnya di Pengaturan → Hak akses divisi (kecuali modul OWNER_ONLY). */
+/**
+ * Hak akses bawaan: semua divisi boleh membuka semua modul kecuali yang khusus Founder (keuangan, buku kas, akun pengguna).
+ * Founder bisa mempersempitnya per divisi di Pengaturan → Hak akses divisi, atau per orang di Akun Pengguna.
+ */
+const SHARED: Module[] = ALL_MODULES.filter((m) => !OWNER_ONLY.includes(m));
 export const DEFAULT_ACCESS: Record<Exclude<Division, "owner">, Module[]> = {
-  produksi: ["produksi", "pengambilan", "mitra", "produk", "laporan"],
-  lab_qc: ["qc", "stok_bahan", "produk", "laporan"],
-  warehouse: ["inventori", "stok_bahan", "pengiriman", "produk", "laporan"],
-  admin_sdm: ["sdm", "pembelian", "pembayaran_benih", "pengambilan", "pelanggan", "email", "laporan"],
-  mutu: ["mutu", "produk", "laporan"],
-  marketing: ["penjualan", "pelanggan", "keluhan", "produk", "email", "laporan"],
+  produksi: SHARED,
+  lab_qc: SHARED,
+  warehouse: SHARED,
+  admin_sdm: SHARED,
+  mutu: SHARED,
+  marketing: SHARED,
 };
 
 export type AccessMatrix = Partial<Record<Division, Module[]>>;
