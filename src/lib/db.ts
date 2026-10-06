@@ -737,8 +737,12 @@ const SCHEMA_SQL = `
     ALTER TABLE so_items ADD COLUMN IF NOT EXISTS item_name TEXT NOT NULL DEFAULT '';
     ALTER TABLE so_items ADD COLUMN IF NOT EXISTS item_code TEXT NOT NULL DEFAULT '';
 
-    -- Invoice terakhir sebelum memakai ERP bernomor 180/INV/X/2026; ERP melanjutkan dari 181.
-    INSERT INTO settings (key, value) VALUES ('invoice_start', '2026:181') ON CONFLICT (key) DO NOTHING;
+    -- Dua urutan nomor invoice: bulky & kerjasama produksi (terakhir 181/INV/X/2026) dan kemasan & label (terakhir 193/INV/VIII/2026).
+    INSERT INTO settings (key, value) VALUES ('invoice_start', '2026:182') ON CONFLICT (key) DO NOTHING;
+    UPDATE settings SET value = '2026:182' WHERE key = 'invoice_start' AND value = '2026:181';
+    INSERT INTO settings (key, value) VALUES ('invoice_start_kemasan', '2026:194') ON CONFLICT (key) DO NOTHING;
+    -- Kerjasama produksi: deposito pelanggan yang dipotong tagihan (baris DEPOSITO & SISA DEPOSITO di invoice).
+    ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS deposit DOUBLE PRECISION NOT NULL DEFAULT 0;
 
     -- Owner berganti sebutan menjadi Founder (kode peran di database tetap 'owner').
     UPDATE users SET name = 'Founder' WHERE role = 'owner' AND name = 'Owner';

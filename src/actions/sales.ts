@@ -49,7 +49,7 @@ async function findOrCreateCustomer(name: string) {
   return insert("INSERT INTO customers (code, name, kind) VALUES (?,?, 'umum')", code, name);
 }
 
-type ParsedOrder = { channel: ReturnType<typeof toChannel>; customerName: string; lines: Line[]; newPacks: Line[]; discountPct: number; taxPct: number; subtotal: number; total: number; orderDate: string; notes: string };
+type ParsedOrder = { channel: ReturnType<typeof toChannel>; customerName: string; lines: Line[]; newPacks: Line[]; discountPct: number; taxPct: number; subtotal: number; total: number; orderDate: string; notes: string; deposit: number };
 
 /** Baca & periksa isi form pesanan (dipakai saat membuat maupun mengubah). Mengembalikan pesan kesalahan bila tidak valid. */
 async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }> {
@@ -103,7 +103,7 @@ async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }
   const discountPct = numf(fd, "discount_pct");
   const taxPct = numf(fd, "tax_pct");
   const { subtotal, total } = totals(lines, discountPct, taxPct);
-  return { channel, customerName, lines, newPacks, discountPct, taxPct, subtotal, total, orderDate: str(fd, "order_date") || today(), notes: str(fd, "notes") };
+  return { channel, customerName, lines, newPacks, discountPct, taxPct, subtotal, total, orderDate: str(fd, "order_date") || today(), notes: str(fd, "notes"), deposit: channel === "kerjasama" ? Math.max(0, numf(fd, "deposit")) : 0 };
 }
 
 /** Daftarkan gramasi baru yang dipakai pesanan (panggil di dalam tx). Harga hanya ikut dari penjualan kemasan. */
@@ -128,8 +128,8 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
     const customerId = await findOrCreateCustomer(customerName);
     const soNo = await nextNumber("SO", "sales_orders", "so_no");
     const id = await insert(
-      `INSERT INTO sales_orders (so_no, channel, customer_id, order_date, status, discount_pct, tax_pct, subtotal, total, notes)
-       VALUES (?,?,?,?, 'draft', ?,?,?,?,?)`,
+      `INSERT INTO sales_orders (so_no, channel, customer_id, order_date, status, discount_pct, tax_pct, subtotal, total, notes, deposit)
+       VALUES (?,?,?,?, 'draft', ?,?,?,?,?,?)`,
       soNo,
       channel,
       customerId,
@@ -139,6 +139,7 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
       subtotal,
       total,
       o.notes,
+      o.deposit,
     );
     await registerNewPacks(o);
     for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price, item_name, item_code) VALUES (?,?,?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price, l.item_name, l.item_code);
@@ -166,8 +167,8 @@ export async function updateOrder(_: unknown, fd: FormData): Promise<{ error?: s
   await tx(async () => {
     const customerId = await findOrCreateCustomer(o.customerName);
     await run(
-      "UPDATE sales_orders SET customer_id = ?, order_date = ?, discount_pct = ?, tax_pct = ?, subtotal = ?, total = ?, notes = ? WHERE id = ?",
-      customerId, o.orderDate, o.discountPct, o.taxPct, o.subtotal, o.total, o.notes, id,
+      "UPDATE sales_orders SET customer_id = ?, order_date = ?, discount_pct = ?, tax_pct = ?, subtotal = ?, total = ?, notes = ?, deposit = ? WHERE id = ?",
+      customerId, o.orderDate, o.discountPct, o.taxPct, o.subtotal, o.total, o.notes, o.deposit, id,
     );
     await registerNewPacks(o);
     await run("DELETE FROM so_items WHERE so_id = ?", id);
@@ -256,7 +257,7 @@ export async function shipOrder(fd: FormData) {
       }
       // Penjualan bulky mengurangi Stok Bahan Baku (siap jual) varietasnya.
       if (toChannel(so.channel) === "bulky") stockNotes = await deductBulkySale(id, so.so_no, so.customer, shipDate);
-      const invoiceNo = await nextInvoiceNumber(shipDate);
+      const invoiceNo = await nextInvoiceNumber(shipDate, so.channel);
       await run(
         `UPDATE sales_orders SET status='dikirim', shipped_at=?, courier=?, tracking_no=?, invoice_no=?, due_date=? WHERE id=?`,
         shipDate,

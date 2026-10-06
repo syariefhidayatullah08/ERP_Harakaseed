@@ -14,7 +14,7 @@ const rupiah = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n || 0);
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-type Initial = { id: number; customer: string; order_date: string; discount_pct: number; tax_pct: number; notes: string; lines: Omit<Line, "key">[] };
+type Initial = { id: number; customer: string; order_date: string; discount_pct: number; tax_pct: number; notes: string; deposit?: number; lines: Omit<Line, "key">[] };
 const EMPTY: Omit<Line, "key"> = { product_id: 0, pack_size: "", qty: 1, price: 0, item_name: "", item_code: "" };
 
 /** Form pesanan baru; dengan `initial` menjadi form ubah pesanan yang sudah ada (sebelum dikirim). */
@@ -46,6 +46,7 @@ export function OrderForm({
   const [lines, setLines] = useState<Line[]>(initial?.lines.length ? initial.lines.map((l, i) => ({ ...l, key: i + 1 })) : [{ key: 1, ...EMPTY }]);
   const [discount, setDiscount] = useState(initial?.discount_pct ?? 0);
   const [tax, setTax] = useState(initial?.tax_pct ?? 0);
+  const [deposit, setDeposit] = useState(initial?.deposit ?? 0);
 
   const customer = customers.find((c) => same(c.name, customerName));
   const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
@@ -270,6 +271,13 @@ export function OrderForm({
             <input name="tax_pct" type="number" min={0} max={100} step="0.5" value={tax} onChange={(e) => setTax(Number(e.target.value))} className="input" />
           </label>
         </div>
+        {channel === "kerjasama" && (
+          <label className="block">
+            <span className="label">Deposito pelanggan (Rp) · opsional</span>
+            <input name="deposit" type="number" min={0} value={deposit || ""} onChange={(e) => setDeposit(Number(e.target.value))} className="input" placeholder="Saldo deposito sebelum tagihan ini" />
+            <span className="mt-1 block text-xs text-muted">Bila diisi, invoice menampilkan baris DEPOSITO dan SISA DEPOSITO (deposito − total).</span>
+          </label>
+        )}
         <dl className="space-y-1.5 border-t border-line pt-4 text-sm">
           <div className="flex justify-between">
             <dt className="text-muted">Subtotal</dt>
@@ -291,6 +299,12 @@ export function OrderForm({
             <dt>Total</dt>
             <dd className="tabular-nums">{rupiah(total)}</dd>
           </div>
+          {channel === "kerjasama" && deposit > 0 && (
+            <div className="flex justify-between text-sm">
+              <dt className="text-muted">Sisa deposito</dt>
+              <dd className={`tabular-nums ${deposit - total < 0 ? "text-red-700" : ""}`}>{rupiah(deposit - total)}</dd>
+            </div>
+          )}
         </dl>
         {state?.error && <p className="text-sm text-red-700">{state.error}</p>}
         {initial ? (

@@ -1,7 +1,7 @@
 import "server-only";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import { HARAKA_LOGO, KAN_LOGO } from "./doc-assets";
-import { ddmmyyyy, qtyFmt, rp, signers, sumQty, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
+import { ddmmyyyy, rp, signers, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
 import { embedSignature, fitSignature } from "./signature";
 
 // Warna mengikuti template invoice resmi
@@ -119,29 +119,47 @@ export async function renderInvoicePdf(doc: InvoiceDoc): Promise<Uint8Array> {
     }
   }
 
-  // ---------------- Tabel ----------------
+  // ---------------- Tabel (susunan kolom mengikuti doc.columns) ----------------
   const tx = 80;
-  const cols = [22, 112, 104, 48, 68, 81]; // No, Nama Produk, Varietas, Qty, Harga, Total
+  const tw = 435;
+  const noW = 22;
+  const share = doc.columns.reduce((a, c) => a + c.w, 0);
+  const cols = [noW, ...doc.columns.map((c) => ((tw - noW) * c.w) / share)];
   const colX = cols.reduce<number[]>((a, w, i) => [...a, i === 0 ? tx : a[i - 1] + cols[i - 1]], []);
-  const tw = cols.reduce((a, b) => a + b, 0);
+  const lastI = cols.length - 1;
   const rowH = 13;
-
+  const fit = (t: string, maxW: number, font = times) => {
+    // Teks panjang dikecilkan dulu, baru dipotong bila masih tidak muat.
+    let str = clean(t);
+    let size = 9.5;
+    while (font.widthOfTextAtSize(str, size) > maxW && size > 7) size -= 0.5;
+    while (font.widthOfTextAtSize(str, size) > maxW && str.length > 1) str = str.slice(0, -2) + "…";
+    return { str, size };
+  };
   const header = () => {
-    const heads = ["No", doc.labels.code, doc.labels.name, doc.labels.qty, "Harga (Rp)", "Total (Rp)"];
-    heads.forEach((h, i) => {
+    ["No", ...doc.columns.map((c) => c.label)].forEach((h, i) => {
       rect(colX[i], y - rowH + 3, cols[i], rowH, PEACH);
-      text(h, colX[i] + cols[i] / 2, y - rowH + 6.5, { font: timesB, size: 9.5, align: "center" });
+      const { str, size } = fit(h, cols[i] - 4, timesB);
+      text(str, colX[i] + cols[i] / 2, y - rowH + 6.5, { font: timesB, size, align: "center" });
     });
     y -= rowH;
   };
-  y -= 22;
-  header();
-
   const money = (x: number, w: number, amount: number, bold = false) => {
     const f = bold ? timesB : times;
     text("Rp", x + 3, y - rowH + 6.5, { font: f, size: 9.5 });
     text(rp(amount), x + w - 3, y - rowH + 6.5, { font: f, size: 9.5, align: "right" });
   };
+  /** Baris berlabel: label rata kanan menjangkau semua kolom kecuali kolom terakhir (uang). */
+  const labelRow = (label: string, amount: number, bold = false, fill?: RGB) => {
+    rect(tx, y - rowH + 3, tw - cols[lastI], rowH, fill);
+    text(label, fill ? tx + (tw - cols[lastI]) / 2 : colX[lastI] - 4, y - rowH + 6.5, { font: bold ? timesB : times, size: 9.5, align: fill ? "center" : "right" });
+    rect(colX[lastI], y - rowH + 3, cols[lastI], rowH, fill);
+    money(colX[lastI], cols[lastI], amount, bold);
+    y -= rowH;
+  };
+  y -= 22;
+  header();
+  for (const b of doc.before) labelRow(b.label, b.amount, true, PEACH);
 
   doc.rows.forEach((r, i) => {
     if (y - rowH < 200) {
@@ -149,50 +167,35 @@ export async function renderInvoicePdf(doc: InvoiceDoc): Promise<Uint8Array> {
       y = H - 60;
       header();
     }
-    const cells = [String(i + 1), r.code, r.name, qtyFmt(r.qty, doc.qtyDecimals)];
-    cells.forEach((c, j) => {
+    [String(i + 1), ...r].forEach((c, j) => {
       rect(colX[j], y - rowH + 3, cols[j], rowH);
-      const maxW = cols[j] - 6;
-      let str = clean(c);
-      // Teks panjang (mis. "Label CALLINA MADU (10 g)") dikecilkan dulu, baru dipotong bila masih tidak muat.
-      let size = 9.5;
-      while (times.widthOfTextAtSize(str, size) > maxW && size > 7.5) size -= 0.5;
-      while (times.widthOfTextAtSize(str, size) > maxW && str.length > 1) str = str.slice(0, -2) + "…";
-      text(str, colX[j] + cols[j] / 2, y - rowH + 6.5, { size, align: "center" });
+      if (typeof c === "number") money(colX[j], cols[j], c);
+      else {
+        const { str, size } = fit(c, cols[j] - 6);
+        text(str, colX[j] + cols[j] / 2, y - rowH + 6.5, { size, align: "center" });
+      }
     });
-    rect(colX[4], y - rowH + 3, cols[4], rowH);
-    rect(colX[5], y - rowH + 3, cols[5], rowH);
-    money(colX[4], cols[4], r.price);
-    money(colX[5], cols[5], r.qty * r.price);
     y -= rowH;
   });
 
   // Penyesuaian (subtotal/diskon/PPN) sebelum total
-  for (const a of doc.adjustments) {
-    rect(tx, y - rowH + 3, tw - cols[5], rowH);
-    text(a.label, colX[5] - 4, y - rowH + 6.5, { size: 9.5, align: "right" });
-    rect(colX[5], y - rowH + 3, cols[5], rowH);
-    money(colX[5], cols[5], a.amount);
-    y -= rowH;
-  }
+  for (const a of doc.adjustments) labelRow(a.label, a.amount);
 
-  // JUMLAH TAGIHAN
-  const span1 = cols[0] + cols[1] + cols[2];
-  rect(tx, y - rowH + 3, span1, rowH, PEACH);
-  text("JUMLAH TAGIHAN", tx + span1 / 2, y - rowH + 6.5, { font: timesB, size: 9.5, align: "center" });
-  rect(colX[3], y - rowH + 3, cols[3], rowH, PEACH);
-  text(doc.qtyDecimals ? qtyFmt(sumQty(doc), doc.qtyDecimals) : "", colX[3] + cols[3] / 2, y - rowH + 6.5, { font: timesB, size: 9.5, align: "center" });
-  rect(colX[4], y - rowH + 3, cols[4] + cols[5], rowH, PEACH);
-  text(`Rp${rp(doc.total)}`, colX[5] + cols[5] - 3, y - rowH + 6.5, { font: timesB, size: 9.5, align: "right" });
+  // Baris total: label menjangkau kolom sebelum kolom jumlah; jumlah kuantitas di kolom sumCol; nilai di sisa kolom.
+  const sumI = doc.sumCol !== undefined ? doc.sumCol + 1 : -1;
+  const labelEnd = sumI > 0 ? colX[sumI] : colX[lastI - 1];
+  rect(tx, y - rowH + 3, labelEnd - tx, rowH, PEACH);
+  text(doc.totalLabel, tx + (labelEnd - tx) / 2, y - rowH + 6.5, { font: timesB, size: 9.5, align: "center" });
+  if (sumI > 0) {
+    rect(colX[sumI], y - rowH + 3, cols[sumI], rowH, PEACH);
+    text(doc.sumText, colX[sumI] + cols[sumI] / 2, y - rowH + 6.5, { font: timesB, size: 9.5, align: "center" });
+  }
+  const restX = sumI > 0 ? colX[sumI] + cols[sumI] : labelEnd;
+  rect(restX, y - rowH + 3, tx + tw - restX, rowH, PEACH);
+  text(`Rp${rp(doc.total)}`, tx + tw - 3, y - rowH + 6.5, { font: timesB, size: 9.5, align: "right" });
   y -= rowH;
 
-  for (const a of doc.after) {
-    rect(tx, y - rowH + 3, tw - cols[5], rowH);
-    text(a.label, colX[5] - 4, y - rowH + 6.5, { size: 9.5, align: "right" });
-    rect(colX[5], y - rowH + 3, cols[5], rowH);
-    money(colX[5], cols[5], a.amount, a.label.toLowerCase().includes("sisa"));
-    y -= rowH;
-  }
+  for (const a of doc.after) labelRow(a.label, a.amount, !!a.bold, a.label === "SISA DEPOSITO" ? PEACH : undefined);
 
   // ---------------- Terbilang ----------------
   y -= 14;

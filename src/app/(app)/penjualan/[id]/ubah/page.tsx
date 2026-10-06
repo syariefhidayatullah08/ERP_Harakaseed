@@ -16,8 +16,8 @@ export default async function EditOrderPage({ params, searchParams }: PageProps<
   await requireAccess("penjualan");
   const { id } = await params;
   const sp = await searchParams;
-  const o = await get<{ id: number; so_no: string; channel: string; status: string; customer: string; order_date: string; discount_pct: number; tax_pct: number; notes: string }>(
-    "SELECT so.id, so.so_no, so.channel, so.status, c.name customer, so.order_date, so.discount_pct, so.tax_pct, so.notes FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
+  const o = await get<{ id: number; so_no: string; channel: string; status: string; customer: string; order_date: string; discount_pct: number; tax_pct: number; notes: string; deposit: number }>(
+    "SELECT so.id, so.so_no, so.channel, so.status, c.name customer, so.order_date, so.discount_pct, so.tax_pct, so.notes, so.deposit FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?",
     toId(id),
   );
   if (!o) notFound();
@@ -32,7 +32,7 @@ export default async function EditOrderPage({ params, searchParams }: PageProps<
     <>
       <PageHeader title={`Ubah ${o.so_no}`} subtitle={`${CHANNELS[channel].title} · ${o.status === "draft" ? "draft" : "sudah dikonfirmasi, belum dikirim"}`} back={{ href: `/penjualan/${o.id}`, label: o.so_no }} />
       <Flash error={sp.error as string} />
-      <OrderForm channel={channel} customers={customers} products={products} packs={packs} today={today()} initial={{ id: o.id, customer: o.customer, order_date: o.order_date, discount_pct: o.discount_pct, tax_pct: o.tax_pct, notes: o.notes, lines }} names={names} />
+      <OrderForm channel={channel} customers={customers} products={products} packs={packs} today={today()} initial={{ id: o.id, customer: o.customer, order_date: o.order_date, discount_pct: o.discount_pct, tax_pct: o.tax_pct, notes: o.notes, deposit: o.deposit, lines }} names={names} />
     </>
   );
 }

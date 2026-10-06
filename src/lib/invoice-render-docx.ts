@@ -17,7 +17,7 @@ import {
   type ITableCellBorders,
 } from "docx";
 import { HARAKA_LOGO, KAN_LOGO } from "./doc-assets";
-import { ddmmyyyy, qtyFmt, rp, signers, sumQty, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
+import { ddmmyyyy, rp, signers, tanggalPanjang, words, type InvoiceDoc } from "./invoice-doc";
 import { fitSignature, signatureBytes, type Signature } from "./signature";
 
 const FONT = "Times New Roman";
@@ -46,13 +46,6 @@ function cell(content: Paragraph[] | Paragraph, width: number, o: { fill?: strin
     margins: { left: 60, right: 60, top: 20, bottom: 20 },
   });
 }
-
-/** "Rp" rata kiri + angka rata kanan dalam satu sel, seperti format akuntansi di template. */
-const moneyPara = (n: number, bold = false) =>
-  new Paragraph({
-    tabStops: [{ type: "right", position: 1450 }],
-    children: [run("Rp", { bold, size: 9.5 }), new TextRun({ text: `\t${rp(n)}`, bold, size: 19, font: FONT })],
-  });
 
 export async function renderInvoiceDocx(doc: InvoiceDoc): Promise<Buffer> {
   const s = (k: string) => doc.settings[k] ?? "";
@@ -119,46 +112,50 @@ export async function renderInvoiceDocx(doc: InvoiceDoc): Promise<Buffer> {
     ],
   });
 
-  // ---------------- Tabel item ----------------
-  const W = [450, 2050, 1700, 850, 1600, 1750]; // total 8400
+  // ---------------- Tabel item (susunan kolom mengikuti doc.columns) ----------------
+  const TW = 8400;
+  const noW = 450;
+  const share = doc.columns.reduce((a, c) => a + c.w, 0);
+  const W = [noW, ...doc.columns.map((c) => Math.round(((TW - noW) * c.w) / share))];
+  const lastI = W.length - 1;
+  const sum = (from: number, to: number) => W.slice(from, to).reduce((a, b) => a + b, 0);
   const center = (t: string, bold = false) => para(run(t, { bold, size: 9.5 }), AlignmentType.CENTER);
-  const head = new TableRow({
-    tableHeader: true,
-    children: ["No", doc.labels.code, doc.labels.name, doc.labels.qty, "Harga (Rp)", "Total (Rp)"].map((h, i) => cell(center(h, true), W[i], { fill: PEACH })),
-  });
+  // Kolom uang: posisi tab rata kanan menyesuaikan lebar selnya.
+  const moneyIn = (w: number, n: number, bold = false) =>
+    new Paragraph({ tabStops: [{ type: "right", position: w - 130 }], children: [run("Rp", { bold, size: 9.5 }), new TextRun({ text: `\t${rp(n)}`, bold, size: 19, font: FONT })] });
+  const head = new TableRow({ tableHeader: true, children: ["No", ...doc.columns.map((c) => c.label)].map((h, i) => cell(center(h, true), W[i], { fill: PEACH })) });
   const body = doc.rows.map(
-    (r, i) =>
-      new TableRow({
-        children: [
-          cell(center(String(i + 1)), W[0]),
-          cell(center(r.code), W[1]),
-          cell(center(r.name), W[2]),
-          cell(center(qtyFmt(r.qty, doc.qtyDecimals)), W[3]),
-          cell(moneyPara(r.price), W[4]),
-          cell(moneyPara(r.qty * r.price), W[5]),
-        ],
-      }),
+    (r, i) => new TableRow({ children: [String(i + 1), ...r].map((c, j) => cell(typeof c === "number" ? moneyIn(W[j], c) : center(c), W[j])) }),
   );
-  const labelRow = (label: string, amount: number, bold = false) =>
+  const labelRow = (label: string, amount: number, bold = false, fill?: string) =>
     new TableRow({
       children: [
-        cell(para(run(label, { bold, size: 9.5 }), AlignmentType.RIGHT), W[0] + W[1] + W[2] + W[3] + W[4], { span: 5 }),
-        cell(moneyPara(amount, bold), W[5]),
+        cell(para(run(label, { bold, size: 9.5 }), fill ? AlignmentType.CENTER : AlignmentType.RIGHT), sum(0, lastI), { span: lastI, fill }),
+        cell(moneyIn(W[lastI], amount, bold), W[lastI], { fill }),
       ],
     });
+  const sumI = doc.sumCol !== undefined ? doc.sumCol + 1 : -1;
+  const labelSpan = sumI > 0 ? sumI : lastI - 1;
   const totalRow = new TableRow({
     children: [
-      cell(center("JUMLAH TAGIHAN", true), W[0] + W[1] + W[2], { span: 3, fill: PEACH }),
-      cell(center(doc.qtyDecimals ? qtyFmt(sumQty(doc), doc.qtyDecimals) : "", true), W[3], { fill: PEACH }),
-      cell(para(run(`Rp${rp(doc.total)}`, { bold: true, size: 9.5 }), AlignmentType.RIGHT), W[4] + W[5], { span: 2, fill: PEACH }),
+      cell(center(doc.totalLabel, true), sum(0, labelSpan), { span: labelSpan, fill: PEACH }),
+      ...(sumI > 0 ? [cell(center(doc.sumText, true), W[sumI], { fill: PEACH })] : []),
+      cell(para(run(`Rp${rp(doc.total)}`, { bold: true, size: 9.5 }), AlignmentType.RIGHT), sum(sumI > 0 ? sumI + 1 : labelSpan, W.length), { span: W.length - (sumI > 0 ? sumI + 1 : labelSpan), fill: PEACH }),
     ],
   });
   const items = new Table({
     layout: TableLayoutType.FIXED,
-    width: { size: 8400, type: WidthType.DXA },
+    width: { size: TW, type: WidthType.DXA },
     columnWidths: W,
     indent: { size: 700, type: WidthType.DXA },
-    rows: [head, ...body, ...doc.adjustments.map((a) => labelRow(a.label, a.amount)), totalRow, ...doc.after.map((a) => labelRow(a.label, a.amount, a.label.toLowerCase().includes("sisa")))],
+    rows: [
+      head,
+      ...doc.before.map((b) => labelRow(b.label, b.amount, true, PEACH)),
+      ...body,
+      ...doc.adjustments.map((a) => labelRow(a.label, a.amount)),
+      totalRow,
+      ...doc.after.map((a) => labelRow(a.label, a.amount, !!a.bold, a.label === "SISA DEPOSITO" ? PEACH : undefined)),
+    ],
   });
 
   // ---------------- Terbilang ----------------
