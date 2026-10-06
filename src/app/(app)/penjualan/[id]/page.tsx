@@ -7,7 +7,7 @@ import { daysUntil, num, paymentStatus, rupiah, SO_STATUS, tanggal, today } from
 import { Badge, Card, DL, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { EmailList, type EmailRow } from "@/components/email-list";
-import { cancelOrder, confirmOrder, deleteDraft, emailOrderDocument, recordPayment, shipOrder } from "@/actions/sales";
+import { cancelOrder, confirmOrder, deleteOrder, emailOrderDocument, recordPayment, shipOrder } from "@/actions/sales";
 import { packKey, stockByPack } from "@/lib/inventory";
 import { CHANNELS, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
 import { orderWhatsappMessages, waLink } from "@/lib/whatsapp";
@@ -246,13 +246,12 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                     <SubmitButton className="btn-primary w-full">Konfirmasi pesanan</SubmitButton>
                   </form>
                   <p className="text-xs text-muted">Pelanggan akan menerima email konfirmasi pesanan (bila diaktifkan di Pengaturan).</p>
-                  <form action={deleteDraft}>
-                    <input type="hidden" name="id" value={o.id} />
-                    <SubmitButton className="btn-danger w-full" confirm="Hapus draft ini?">
-                      Hapus draft
-                    </SubmitButton>
-                  </form>
                 </>
+              )}
+              {sales && ["draft", "dikonfirmasi"].includes(o.status) && (
+                <Link href={`/penjualan/${o.id}/ubah`} className="btn-secondary w-full">
+                  Ubah pesanan
+                </Link>
               )}
               {o.status === "dikonfirmasi" && !can(user, "pengiriman") && (
                 <p className="text-sm text-muted">Pesanan sudah dikonfirmasi dan menunggu divisi Warehouse untuk dikirim.</p>
@@ -298,6 +297,18 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                 </div>
               )}
               {o.status === "batal" && <p className="text-sm text-muted">Pesanan dibatalkan.</p>}
+              {/* Hapus: salah input. Pesanan yang sudah dikirim / dibayar hanya oleh Founder (stok & kas ikut dikembalikan). */}
+              {sales && (!(["dikirim", "selesai"].includes(o.status) || o.paid > 0) || user.role === "owner") && (
+                <form action={deleteOrder} className="border-t border-line pt-3">
+                  <input type="hidden" name="id" value={o.id} />
+                  <SubmitButton
+                    className="btn-danger btn-sm w-full"
+                    confirm={`Hapus pesanan ${o.so_no}?${["dikirim", "selesai"].includes(o.status) ? " Stok yang terpotong dikembalikan." : ""}${o.paid > 0 ? " Pembayaran dan baris Buku Kas-nya ikut terhapus." : ""} Tindakan ini tidak bisa dibatalkan.`}
+                  >
+                    Hapus pesanan
+                  </SubmitButton>
+                </form>
+              )}
               {sales && ["dikonfirmasi", "dikirim"].includes(o.status) && o.paid === 0 && (
                 <form action={cancelOrder} className="border-t border-line pt-3">
                   <input type="hidden" name="id" value={o.id} />

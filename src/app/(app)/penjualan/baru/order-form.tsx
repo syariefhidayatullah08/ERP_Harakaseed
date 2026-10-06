@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { createOrder } from "@/actions/sales";
+import { createOrder, updateOrder } from "@/actions/sales";
 import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, type Channel } from "@/lib/sales-channel";
 
 type P = { id: number; name: string; crop: string };
@@ -14,6 +14,9 @@ const rupiah = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n || 0);
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+type Initial = { id: number; customer: string; order_date: string; discount_pct: number; tax_pct: number; notes: string; lines: Omit<Line, "key">[] };
+
+/** Form pesanan baru; dengan `initial` menjadi form ubah pesanan yang sudah ada (sebelum dikirim). */
 export function OrderForm({
   channel,
   customers,
@@ -21,6 +24,7 @@ export function OrderForm({
   packs,
   defaultCustomer = "",
   today,
+  initial,
 }: {
   channel: Channel;
   customers: C[];
@@ -28,14 +32,15 @@ export function OrderForm({
   packs: K[];
   defaultCustomer?: string;
   today: string;
+  initial?: Initial;
 }) {
   const ch = CHANNELS[channel];
   const usesPack = channel !== "bulky";
-  const [state, action, pending] = useActionState(createOrder, null);
-  const [customerName, setCustomerName] = useState(defaultCustomer);
-  const [lines, setLines] = useState<Line[]>([{ key: 1, product_id: 0, pack_size: "", qty: 1, price: 0 }]);
-  const [discount, setDiscount] = useState(0);
-  const [tax, setTax] = useState(0);
+  const [state, action, pending] = useActionState(initial ? updateOrder : createOrder, null);
+  const [customerName, setCustomerName] = useState(initial?.customer ?? defaultCustomer);
+  const [lines, setLines] = useState<Line[]>(initial?.lines.length ? initial.lines.map((l, i) => ({ ...l, key: i + 1 })) : [{ key: 1, product_id: 0, pack_size: "", qty: 1, price: 0 }]);
+  const [discount, setDiscount] = useState(initial?.discount_pct ?? 0);
+  const [tax, setTax] = useState(initial?.tax_pct ?? 0);
 
   const customer = customers.find((c) => same(c.name, customerName));
   const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
@@ -58,6 +63,7 @@ export function OrderForm({
     <form action={action} className="grid gap-5 lg:grid-cols-3">
       <input type="hidden" name="channel" value={channel} />
       <input type="hidden" name="lines" value={payload} />
+      {initial && <input type="hidden" name="order_id" value={initial.id} />}
       <div className="space-y-5 lg:col-span-2">
         <section className="card grid gap-4 p-5 sm:grid-cols-2">
           <label className="block">
@@ -91,7 +97,7 @@ export function OrderForm({
           </label>
           <label className="block">
             <span className="label">Tanggal pesanan</span>
-            <input name="order_date" type="date" defaultValue={today} className="input" />
+            <input name="order_date" type="date" defaultValue={initial?.order_date ?? today} className="input" />
           </label>
         </section>
 
@@ -217,7 +223,7 @@ export function OrderForm({
         <section className="card p-5">
           <label className="block">
             <span className="label">Catatan pesanan</span>
-            <textarea name="notes" rows={2} className="input" placeholder="mis. kirim via ekspedisi, alamat gudang cabang…" />
+            <textarea name="notes" rows={2} defaultValue={initial?.notes} className="input" placeholder="mis. kirim via ekspedisi, alamat gudang cabang…" />
           </label>
         </section>
       </div>
@@ -257,14 +263,20 @@ export function OrderForm({
           </div>
         </dl>
         {state?.error && <p className="text-sm text-red-700">{state.error}</p>}
-        <div className="space-y-2">
-          <button name="intent" value="confirm" className="btn-primary w-full" disabled={pending}>
-            {pending ? "Menyimpan…" : "Simpan & konfirmasi (kirim email)"}
+        {initial ? (
+          <button name="intent" value="save" className="btn-primary w-full" disabled={pending}>
+            {pending ? "Menyimpan…" : "Simpan perubahan"}
           </button>
-          <button name="intent" value="draft" className="btn-secondary w-full" disabled={pending}>
-            Simpan sebagai draft
-          </button>
-        </div>
+        ) : (
+          <div className="space-y-2">
+            <button name="intent" value="confirm" className="btn-primary w-full" disabled={pending}>
+              {pending ? "Menyimpan…" : "Simpan & konfirmasi (kirim email)"}
+            </button>
+            <button name="intent" value="draft" className="btn-secondary w-full" disabled={pending}>
+              Simpan sebagai draft
+            </button>
+          </div>
+        )}
       </aside>
     </form>
   );

@@ -11,6 +11,7 @@ import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
 import { nextInvoiceNumber } from "@/lib/invoice-doc";
 import { salesCashCategory } from "@/lib/cash";
 import { deductBulkySale, setBulkMoves } from "@/lib/bulk-stock";
+import { del } from "@vercel/blob";
 import { addDays, rupiah, today } from "@/lib/format";
 import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, toChannel } from "@/lib/sales-channel";
 import {
@@ -48,11 +49,12 @@ async function findOrCreateCustomer(name: string) {
   return insert("INSERT INTO customers (code, name, kind) VALUES (?,?, 'umum')", code, name);
 }
 
-export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: string }> {
-  await requireAccess("penjualan");
+type ParsedOrder = { channel: ReturnType<typeof toChannel>; customerName: string; lines: Line[]; newPacks: Line[]; discountPct: number; taxPct: number; subtotal: number; total: number; orderDate: string; notes: string };
+
+/** Baca & periksa isi form pesanan (dipakai saat membuat maupun mengubah). Mengembalikan pesan kesalahan bila tidak valid. */
+async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }> {
   const channel = toChannel(str(fd, "channel"));
   const customerName = str(fd, "customer_name").replace(/\s+/g, " ");
-  const intent = str(fd, "intent");
   let lines: Line[] = [];
   try {
     lines = (JSON.parse(str(fd, "lines")) as Line[])
@@ -83,7 +85,26 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
   const discountPct = numf(fd, "discount_pct");
   const taxPct = numf(fd, "tax_pct");
   const { subtotal, total } = totals(lines, discountPct, taxPct);
-  const orderDate = str(fd, "order_date") || today();
+  return { channel, customerName, lines, newPacks, discountPct, taxPct, subtotal, total, orderDate: str(fd, "order_date") || today(), notes: str(fd, "notes") };
+}
+
+/** Daftarkan gramasi baru yang dipakai pesanan (panggil di dalam tx). Harga hanya ikut dari penjualan kemasan. */
+async function registerNewPacks(o: ParsedOrder) {
+  for (const l of o.newPacks) {
+    await run(
+      "INSERT INTO product_packs (product_id, pack_size, price) VALUES (?,?,?) ON CONFLICT (product_id, pack_size) DO UPDATE SET active = 1",
+      l.product_id, l.pack_size, o.channel === "kemasan" ? l.price : 0,
+    );
+    await run(`${PACK_SUMMARY_SQL} WHERE p.id = ?`, l.product_id);
+  }
+}
+
+export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: string }> {
+  await requireAccess("penjualan");
+  const intent = str(fd, "intent");
+  const o = await parseOrder(fd);
+  if ("error" in o) return o;
+  const { channel, customerName, lines, discountPct, taxPct, subtotal, total, orderDate } = o;
 
   const soId = await tx(async () => {
     const customerId = await findOrCreateCustomer(customerName);
@@ -99,16 +120,9 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
       taxPct,
       subtotal,
       total,
-      str(fd, "notes"),
+      o.notes,
     );
-    for (const l of newPacks) {
-      // Harga hanya ikut tersimpan dari penjualan kemasan; harga label bukan harga kemasan.
-      await run(
-        "INSERT INTO product_packs (product_id, pack_size, price) VALUES (?,?,?) ON CONFLICT (product_id, pack_size) DO UPDATE SET active = 1",
-        l.product_id, l.pack_size, channel === "kemasan" ? l.price : 0,
-      );
-      await run(`${PACK_SUMMARY_SQL} WHERE p.id = ?`, l.product_id);
-    }
+    await registerNewPacks(o);
     for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price) VALUES (?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price);
     return id;
   });
@@ -120,6 +134,62 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
   }
   redirect(withMsg(`/penjualan/${soId}`, "Draft pesanan disimpan."));
 }
+
+/** Ubah pesanan yang salah input. Hanya sebelum dikirim; setelah dikirim, batalkan atau hapus lalu buat ulang. */
+export async function updateOrder(_: unknown, fd: FormData): Promise<{ error?: string }> {
+  await requireAccess("penjualan");
+  const id = numf(fd, "order_id");
+  const so = await get<{ so_no: string; status: string; channel: string }>("SELECT so_no, status, channel FROM sales_orders WHERE id = ?", id);
+  if (!so) return { error: "Pesanan tidak ditemukan." };
+  if (!["draft", "dikonfirmasi"].includes(so.status)) return { error: "Pesanan yang sudah dikirim tidak bisa diubah. Batalkan atau hapus pesanan, lalu buat ulang." };
+  const o = await parseOrder(fd);
+  if ("error" in o) return o;
+  if (o.channel !== toChannel(so.channel)) return { error: "Jenis penjualan tidak bisa diganti." };
+  await tx(async () => {
+    const customerId = await findOrCreateCustomer(o.customerName);
+    await run(
+      "UPDATE sales_orders SET customer_id = ?, order_date = ?, discount_pct = ?, tax_pct = ?, subtotal = ?, total = ?, notes = ? WHERE id = ?",
+      customerId, o.orderDate, o.discountPct, o.taxPct, o.subtotal, o.total, o.notes, id,
+    );
+    await registerNewPacks(o);
+    await run("DELETE FROM so_items WHERE so_id = ?", id);
+    for (const l of o.lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price) VALUES (?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price);
+  });
+  revalidatePath("/penjualan");
+  await logActivity("penjualan", "Mengubah pesanan", `${so.so_no} · ${o.customerName} · ${rupiah(o.total)}`);
+  redirect(withMsg(`/penjualan/${id}`, "Pesanan diperbarui."));
+}
+
+/**
+ * Hapus pesanan yang salah input beserta item, pembayaran, baris kas, dan lampirannya. Pesanan yang sudah dikirim
+ * atau sudah ada pembayaran hanya bisa dihapus Founder; stok yang terpotong dikembalikan.
+ */
+export async function deleteOrder(fd: FormData) {
+  const user = await requireAccess("penjualan");
+  const id = numf(fd, "id");
+  const so = await get<{ so_no: string; status: string; channel: string; paid: number; invoice_no: string | null }>("SELECT so_no, status, channel, paid, invoice_no FROM sales_orders WHERE id = ?", id);
+  if (!so) redirect(withMsg("/penjualan", "Pesanan tidak ditemukan.", "error"));
+  const sensitive = ["dikirim", "selesai"].includes(so.status) || so.paid > 0;
+  if (sensitive && user.role !== "owner") redirect(withMsg(`/penjualan/${id}`, "Pesanan yang sudah dikirim atau sudah dibayar hanya bisa dihapus Founder.", "error"));
+  const files = await all<{ pathname: string }>("SELECT pathname FROM attachments WHERE ref_type = 'sales_order' AND ref_id = ?", id);
+  await tx(async () => {
+    if (["dikirim", "selesai"].includes(so.status)) {
+      await releaseAllocations(id, so.so_no);
+      await setBulkMoves("so", id, []);
+    }
+    await run("DELETE FROM attachments WHERE ref_type = 'sales_order' AND ref_id = ?", id);
+    await run("DELETE FROM sales_orders WHERE id = ?", id); // item, alokasi, pembayaran, dan baris kasnya ikut terhapus
+  });
+  if (files.length) await del(files.map((f) => f.pathname)).catch(() => {});
+  revalidatePath("/penjualan");
+  revalidatePath("/pengiriman");
+  revalidatePath("/inventori");
+  revalidatePath("/stok-bahan");
+  revalidatePath("/kas");
+  await logActivity("penjualan", "Menghapus pesanan", `${so.so_no}${so.invoice_no ? ` · ${so.invoice_no}` : ""} · ${SO_LABEL[so.status] ?? so.status}${so.paid ? ` · pembayaran ${rupiah(so.paid)} ikut dihapus` : ""}`);
+  redirect(withMsg(`/penjualan/${toChannel(so.channel)}`, `Pesanan ${so.so_no} dihapus${so.paid ? " beserta pembayaran dan baris Buku Kas-nya" : ""}.`));
+}
+const SO_LABEL: Record<string, string> = { draft: "draft", dikonfirmasi: "dikonfirmasi", dikirim: "sudah dikirim", selesai: "selesai", batal: "batal" };
 
 async function autoEmail(settingKey: string, soId: number, build: typeof orderConfirmationEmail, refType = "sales_order", pdf?: PdfDoc) {
   if (await getSetting(settingKey) !== "1") return "";
