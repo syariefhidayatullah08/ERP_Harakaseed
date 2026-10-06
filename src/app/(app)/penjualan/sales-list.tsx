@@ -4,6 +4,8 @@ import { paymentStatus, rupiah, SO_STATUS, tanggal } from "@/lib/format";
 import { Badge, Card, Empty, Flash, PageHeader } from "@/components/ui";
 import { can, requireAccess } from "@/lib/session";
 import { ExportMenu } from "@/components/export-menu";
+import { SubmitButton } from "@/components/buttons";
+import { deleteOrder } from "@/actions/sales";
 import { CHANNELS, CHANNEL_KEYS, toChannel, type Channel } from "@/lib/sales-channel";
 
 type Row = { id: number; so_no: string; channel: string; customer: string; city: string; order_date: string; status: string; total: number; paid: number; invoice_no: string | null };
@@ -14,6 +16,7 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 export async function SalesList({ channel, searchParams }: { channel?: Channel; searchParams: Search }) {
   const user = await requireAccess(["penjualan", "keuangan"]);
   const finance = can(user, "keuangan");
+  const sales = can(user, "penjualan");
   const sp = await searchParams;
   const status = String(sp.status ?? "");
   const q = String(sp.q ?? "").trim();
@@ -93,6 +96,7 @@ export async function SalesList({ channel, searchParams }: { channel?: Channel; 
                   <th>Status</th>
                   {finance && <th>Pembayaran</th>}
                   <th className="num">Total</th>
+                  {sales && <th />}
                 </tr>
               </thead>
               <tbody>
@@ -118,6 +122,29 @@ export async function SalesList({ channel, searchParams }: { channel?: Channel; 
                         <td>{o.invoice_no && o.status !== "batal" ? <Badge tone={ps.tone}>{ps.label}</Badge> : <span className="text-xs text-muted">—</span>}</td>
                       )}
                       <td className="num font-medium">{rupiah(o.total)}</td>
+                      {sales && (
+                        <td>
+                          {/* Ubah hanya sebelum dikirim; hapus pesanan terkirim/dibayar hanya Founder (lihat actions/sales.ts). */}
+                          <div className="flex justify-end gap-1.5">
+                            {["draft", "dikonfirmasi"].includes(o.status) && (
+                              <Link href={`/penjualan/${o.id}/ubah`} className="btn-secondary btn-sm">
+                                Ubah
+                              </Link>
+                            )}
+                            {(!(["dikirim", "selesai"].includes(o.status) || o.paid > 0) || user.role === "owner") && (
+                              <form action={deleteOrder}>
+                                <input type="hidden" name="id" value={o.id} />
+                                <SubmitButton
+                                  className="btn-danger btn-sm"
+                                  confirm={`Hapus pesanan ${o.so_no} (${o.customer})?${["dikirim", "selesai"].includes(o.status) ? " Stok yang terpotong dikembalikan." : ""}${o.paid > 0 ? " Pembayaran dan baris Buku Kas-nya ikut terhapus." : ""} Tindakan ini tidak bisa dibatalkan.`}
+                                >
+                                  Hapus
+                                </SubmitButton>
+                              </form>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
