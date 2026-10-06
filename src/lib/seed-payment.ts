@@ -81,3 +81,43 @@ export async function pbDoc(id: number): Promise<PbDoc | null> {
   const rows = await all<Intake>("SELECT * FROM seed_intakes WHERE pb_id = ? ORDER BY due_date, id", id);
   return { pb, rows, total: rows.reduce((s, r) => s + r.amount, 0), settings: await getDocSettings() };
 }
+
+/* ------------------------- Buku induk lengkap (tampilan seperti sheet referensi) ------------------------- */
+
+export type LedgerRow = Intake & { no: number; pb_no: string | null; sold_id: number | null; sold_no: string | null };
+export type LedgerFilter = { kind: "internal" | "eksternal"; status: string; year: string; q: string };
+
+/** Tahun benih masuk yang punya data untuk satu jenis, terbaru dulu. */
+export async function ledgerYears(kind: string) {
+  return (await all<{ y: string }>("SELECT DISTINCT left(received_date, 4) y FROM seed_intakes WHERE kind = ? AND received_date IS NOT NULL ORDER BY 1 DESC", kind)).map((r) => r.y);
+}
+
+/**
+ * Baris buku induk satu jenis, urut tanggal benih masuk seperti sheet INTERNAL/EKSTERNAL. Kolom "No" dihitung dari
+ * seluruh baris jenis itu, jadi nomornya tetap sama walau disaring. `status` "belum" = proses uji + diajukan PB.
+ */
+export async function intakeLedger(f: LedgerFilter, page: number, pageSize: number) {
+  const like = `%${f.q}%`;
+  const where = `(? = '' OR status = ? OR (? = 'belum' AND status IN ('proses_uji','diajukan')))
+    AND (? = '' OR left(received_date, 4) = ?)
+    AND (? = '' OR farmer ILIKE ? OR production_code ILIKE ? OR contract_no ILIKE ? OR location ILIKE ? OR company ILIKE ? OR batch_no ILIKE ?)`;
+  const params = [f.status, f.status, f.status, f.year, f.year, f.q, like, like, like, like, like, like];
+  // Saringan dijalankan di CTE agar nama kolom (status, dll.) tidak bentrok dengan tabel yang di-join.
+  const base = `WITH base AS (SELECT i.*, row_number() OVER (ORDER BY received_date NULLS LAST, id) no FROM seed_intakes i WHERE kind = ?),
+    f AS (SELECT * FROM base WHERE ${where})`;
+  const total = (await get<{ n: number }>(`${base} SELECT COUNT(*)::int n FROM f`, f.kind, ...params))!.n;
+  const rows = await all<LedgerRow>(
+    // sold_*: pesanan kerjasama produksi (tidak batal) yang menjual benih masuk ini.
+    `${base}
+     SELECT b.*, b.no::int no, pb.number pb_no, sold.sold_id, sold.sold_no
+     FROM f b
+     LEFT JOIN seed_pb pb ON pb.id = b.pb_id
+     LEFT JOIN LATERAL (SELECT so.id sold_id, so.so_no sold_no FROM so_items si JOIN sales_orders so ON so.id = si.so_id WHERE si.intake_id = b.id AND so.status <> 'batal' LIMIT 1) sold ON true
+     ORDER BY b.no LIMIT ? OFFSET ?`,
+    f.kind,
+    ...params,
+    pageSize,
+    (page - 1) * pageSize,
+  );
+  return { rows, total };
+}

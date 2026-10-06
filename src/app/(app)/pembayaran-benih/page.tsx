@@ -7,24 +7,17 @@ import { requireAccess } from "@/lib/session";
 import { SubmitButton } from "@/components/buttons";
 import { deleteIntake } from "@/actions/seed-payment";
 import { ExportMenu } from "@/components/export-menu";
-import { INTAKE_KIND, INTAKE_STATUS, PB_STATUS, type Intake } from "@/lib/seed-payment";
+import { IntakeLedgerPanel } from "@/components/intake-ledger";
+import { INTAKE_KIND, PB_STATUS } from "@/lib/seed-payment";
 
 export const metadata: Metadata = { title: "Pembayaran Benih Petani" };
 
-const PAGE_SIZE = 100;
 const kg = (n: number) => new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(n);
 
 export default async function SeedPaymentPage({ searchParams }: PageProps<"/pembayaran-benih">) {
   await requireAccess("pembayaran_benih");
   const sp = await searchParams;
   const tab = sp.tab === "pb" ? "pb" : "buku";
-  const f = {
-    kind: sp.kind === "eksternal" ? "eksternal" : sp.kind === "internal" ? "internal" : "",
-    status: String(sp.status ?? "") in INTAKE_STATUS || sp.status === "belum" ? String(sp.status) : "",
-    year: /^\d{4}$/.test(String(sp.year)) ? String(sp.year) : "",
-    q: String(sp.q ?? "").trim(),
-  };
-  const page = Math.max(1, Math.floor(Number(sp.page)) || 1);
   const t = today();
 
   const pbWaiting = (await get<{ n: number }>("SELECT COUNT(*) n FROM seed_pb WHERE status = 'diajukan'"))!.n;
@@ -37,28 +30,6 @@ export default async function SeedPaymentPage({ searchParams }: PageProps<"/pemb
     addDays(t, 7),
   ))!;
 
-  // "belum" = belum dibayar (proses uji + sudah diajukan PB).
-  const where = `(? = '' OR kind = ?) AND (? = '' OR status = ? OR (? = 'belum' AND status IN ('proses_uji','diajukan')))
-    AND (? = '' OR left(received_date, 4) = ?) AND (? = '' OR farmer ILIKE ? OR production_code ILIKE ? OR contract_no ILIKE ? OR location ILIKE ? OR company ILIKE ?)`;
-  const like = `%${f.q}%`;
-  const params = [f.kind, f.kind, f.status, f.status, f.status, f.year, f.year, f.q, like, like, like, like, like];
-  const total = tab === "buku" ? (await get<{ n: number }>(`SELECT COUNT(*) n FROM seed_intakes WHERE ${where}`, ...params))!.n : 0;
-  const rows =
-    tab === "buku"
-      ? await all<Intake & { pb_no: string | null; sold_id: number | null; sold_no: string | null }>(
-          // sold_*: pesanan kerjasama produksi (tidak batal) yang menjual benih masuk ini.
-          `SELECT i.*, (SELECT number FROM seed_pb WHERE id = i.pb_id) pb_no,
-                  sold.sold_id, sold.sold_no
-           FROM seed_intakes i
-           LEFT JOIN LATERAL (SELECT so.id sold_id, so.so_no sold_no FROM so_items si JOIN sales_orders so ON so.id = si.so_id WHERE si.intake_id = i.id AND so.status <> 'batal' LIMIT 1) sold ON true
-           WHERE ${where}
-           ORDER BY received_date DESC NULLS LAST, id DESC LIMIT ? OFFSET ?`,
-          ...params,
-          PAGE_SIZE,
-          (page - 1) * PAGE_SIZE,
-        )
-      : [];
-  const years = await all<{ y: string }>("SELECT DISTINCT left(received_date, 4) y FROM seed_intakes WHERE received_date IS NOT NULL ORDER BY 1 DESC");
   const pbs =
     tab === "pb"
       ? await all<{ id: number; number: string; kind: string; pb_date: string; status: string; paid_at: string | null; rows: number; total: number }>(
@@ -67,12 +38,6 @@ export default async function SeedPaymentPage({ searchParams }: PageProps<"/pemb
         )
       : [];
 
-  const qs = (p: number) => {
-    const u = new URLSearchParams(Object.entries(f).filter(([, v]) => v));
-    if (p > 1) u.set("page", String(p));
-    return `/pembayaran-benih${u.size ? `?${u}` : ""}`;
-  };
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <>
@@ -154,140 +119,26 @@ export default async function SeedPaymentPage({ searchParams }: PageProps<"/pemb
           )}
         </Card>
       ) : (
-        <>
-          <form className="mb-4 flex flex-wrap items-end gap-2">
-            <input name="q" defaultValue={f.q} placeholder="Cari petani, kode produksi, no kontrak, lokasi…" className="input max-w-xs" />
-            <select name="kind" defaultValue={f.kind} className="input w-auto" aria-label="Jenis">
-              <option value="">Internal & eksternal</option>
-              <option value="internal">Internal</option>
-              <option value="eksternal">Eksternal</option>
-            </select>
-            <select name="status" defaultValue={f.status} className="input w-auto" aria-label="Status">
-              <option value="">Semua status</option>
-              <option value="belum">Belum dibayar</option>
-              {Object.entries(INTAKE_STATUS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-            <select name="year" defaultValue={f.year} className="input w-auto" aria-label="Tahun">
-              <option value="">Semua tahun</option>
-              {years.map((y) => (
-                <option key={y.y} value={y.y}>
-                  {y.y}
-                </option>
-              ))}
-            </select>
-            <button className="btn-secondary">Saring</button>
-            {Object.values(f).some(Boolean) && (
-              <Link href="/pembayaran-benih" className="text-sm text-brand-700 hover:underline">
-                Hapus saringan
-              </Link>
-            )}
-          </form>
-          <Card className="overflow-hidden">
-            {rows.length ? (
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Petani</th>
-                      <th>Kode produksi</th>
-                      <th>Benih masuk</th>
-                      <th>Jatuh tempo</th>
-                      <th className="num">Bobot bersih</th>
-                      <th className="num">Harga</th>
-                      <th className="num">Pinjaman</th>
-                      <th className="num">Nilai pembayaran</th>
-                      <th>Status</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => {
-                      const unpaid = r.status === "proses_uji" || r.status === "diajukan";
-                      return (
-                        <tr key={r.id}>
-                          <td>
-                            <Link href={`/pembayaran-benih/${r.id}`} className="font-medium text-brand-700 hover:underline">
-                              {r.farmer}
-                            </Link>
-                            <div className="text-xs text-muted">{[INTAKE_KIND[r.kind], r.company, r.location, r.officer].filter(Boolean).join(" · ")}</div>
-                          </td>
-                          <td>
-                            {r.production_code || "—"}
-                            <div className="text-xs text-muted">{r.contract_no && `Kontrak ${r.contract_no}`}</div>
-                          </td>
-                          <td className="whitespace-nowrap text-muted">{tanggal(r.received_date)}</td>
-                          <td className={`whitespace-nowrap ${unpaid && r.due_date && r.due_date < t ? "font-medium text-red-700" : "text-muted"}`}>{tanggal(r.due_date)}</td>
-                          <td className="num">{kg(r.net_kg)} kg</td>
-                          <td className="num">{rupiah(r.price)}</td>
-                          <td className="num">{r.loan ? rupiah(r.loan) : "—"}</td>
-                          <td className="num font-medium">
-                            {rupiah(r.amount)}
-                            {r.bad_debt > 0 && <div className="text-xs font-normal text-red-700">macet {rupiah(r.bad_debt)}</div>}
-                          </td>
-                          <td>
-                            <Badge tone={INTAKE_STATUS[r.status]?.tone}>{INTAKE_STATUS[r.status]?.label ?? r.status}</Badge>
-                            {r.pb_no && (
-                              <div className="text-xs">
-                                <Link href={`/pembayaran-benih/pb/${r.pb_id}`} className="text-brand-700 hover:underline">
-                                  {r.pb_no}
-                                </Link>
-                              </div>
-                            )}
-                            {r.sold_no && (
-                              <div className="text-xs">
-                                Terjual{" "}
-                                <Link href={`/penjualan/${r.sold_id}`} className="text-brand-700 hover:underline">
-                                  {r.sold_no}
-                                </Link>
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            {/* Baris yang sudah lunas dihapus dari halaman rinciannya, supaya tidak terhapus tak sengaja. */}
-                            {r.status !== "lunas" && (
-                              <form action={deleteIntake}>
-                                <input type="hidden" name="id" value={r.id} />
-                                <SubmitButton
-                                  className="btn-danger btn-sm"
-                                  confirm={`Hapus data benih ${r.farmer} (${r.production_code || "tanpa kode"}, ${kg(r.net_kg)} kg)${r.pb_no ? ` dan keluarkan dari surat ${r.pb_no}` : ""}?`}
-                                >
-                                  Hapus
-                                </SubmitButton>
-                              </form>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty>Belum ada data benih masuk yang cocok.</Empty>
-            )}
-          </Card>
-          <div className="mt-3 flex items-center justify-between text-sm text-muted">
-            <span>
-              {num(total)} baris · halaman {page} dari {pages}
-            </span>
-            <span className="flex gap-2">
-              {page > 1 && (
-                <Link href={qs(page - 1)} className="btn-secondary btn-sm">
-                  ← Sebelumnya
-                </Link>
-              )}
-              {page < pages && (
-                <Link href={qs(page + 1)} className="btn-secondary btn-sm">
-                  Berikutnya →
-                </Link>
-              )}
-            </span>
-          </div>
-        </>
+        <Card className="overflow-hidden">
+          <IntakeLedgerPanel
+            path="/pembayaran-benih"
+            sp={sp}
+            action={(r) =>
+              // Baris yang sudah lunas dihapus dari halaman rinciannya, supaya tidak terhapus tak sengaja.
+              r.status !== "lunas" && (
+                <form action={deleteIntake}>
+                  <input type="hidden" name="id" value={r.id} />
+                  <SubmitButton
+                    className="btn-danger btn-sm"
+                    confirm={`Hapus data benih ${r.farmer} (${r.production_code || "tanpa kode"}, ${kg(r.net_kg)} kg)${r.pb_no ? ` dan keluarkan dari surat ${r.pb_no}` : ""}?`}
+                  >
+                    Hapus
+                  </SubmitButton>
+                </form>
+              )
+            }
+          />
+        </Card>
       )}
     </>
   );

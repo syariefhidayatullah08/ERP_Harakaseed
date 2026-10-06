@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/buttons";
 import { createLotAction, sendLowStockAlert } from "@/actions/inventory";
 import { can, requireAccess } from "@/lib/session";
 import { ExportMenu } from "@/components/export-menu";
+import { IntakeLedgerPanel } from "@/components/intake-ledger";
 
 export const metadata: Metadata = { title: "Inventori" };
 
@@ -176,6 +177,19 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <Card
+        title="Buku induk benih masuk gudang"
+        className="mb-5 overflow-hidden"
+        actions={
+          <Link href="/pembayaran-benih/baru" className="btn-secondary btn-sm">
+            + Benih masuk
+          </Link>
+        }
+      >
+        {/* Rekap benih panen yang masuk gudang, kolomnya sama dengan sheet INTERNAL / EKSTERNAL buku induk. */}
+        <IntakeLedgerPanel path="/inventori" sp={sp} keep={{ ...(productFilter ? { product: String(productFilter) } : {}), ...(showEmpty ? { all: "1" } : {}) }} />
       </Card>
 
       <Card title="Terima lot baru" className="scroll-mt-6">
