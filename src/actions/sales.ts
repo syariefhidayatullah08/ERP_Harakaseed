@@ -13,7 +13,7 @@ import { salesCashCategory } from "@/lib/cash";
 import { deductBulkySale, setBulkMoves } from "@/lib/bulk-stock";
 import { del } from "@vercel/blob";
 import { addDays, rupiah, today } from "@/lib/format";
-import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, toChannel } from "@/lib/sales-channel";
+import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, perKg, toChannel } from "@/lib/sales-channel";
 import {
   invoiceEmail,
   loadOrderForEmail,
@@ -25,7 +25,7 @@ import {
   shippingEmail,
 } from "@/lib/email";
 
-type Line = { product_id: number; pack_size: string; qty: number; price: number };
+type Line = { product_id: number | null; pack_size: string; qty: number; price: number; item_name: string; item_code: string };
 
 /** Nomor pesanan untuk log aktivitas. */
 const soNo = async (id: number) => (await get<{ so_no: string }>("SELECT so_no FROM sales_orders WHERE id = ?", id))?.so_no ?? `#${id}`;
@@ -57,24 +57,42 @@ async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }
   const customerName = str(fd, "customer_name").replace(/\s+/g, " ");
   let lines: Line[] = [];
   try {
-    lines = (JSON.parse(str(fd, "lines")) as Line[])
-      .filter((l) => l.product_id && l.qty > 0)
-      .map((l) => ({ product_id: l.product_id, pack_size: channel === "bulky" ? "" : String(l.pack_size ?? "").trim(), qty: Number(l.qty), price: Number(l.price) }));
+    const kg = perKg(channel);
+    lines = (JSON.parse(str(fd, "lines")) as Partial<Line>[])
+      .map((l) => ({
+        product_id: Number(l.product_id) || null,
+        pack_size: kg ? "" : String(l.pack_size ?? "").trim(),
+        qty: Number(l.qty),
+        price: Number(l.price),
+        item_name: kg ? String(l.item_name ?? "").replace(/\s+/g, " ").trim().slice(0, 120) : "",
+        item_code: channel === "kerjasama" ? String(l.item_code ?? "").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 40) : "",
+      }))
+      .filter((l) => (kg ? l.item_name : l.product_id) && l.qty > 0);
   } catch {
     return { error: "Data item tidak valid." };
   }
   if (!customerName) return { error: "Isi nama pelanggan." };
-  if (!lines.length) return { error: "Tambahkan minimal satu produk." };
-  if (lines.some((l) => !Number.isInteger(l.product_id) || !Number.isFinite(l.qty) || !Number.isFinite(l.price) || l.price < 0)) {
+  if (!lines.length) return { error: perKg(channel) ? "Isi nama pada minimal satu baris." : "Tambahkan minimal satu produk." };
+  if (lines.some((l) => (l.product_id !== null && !Number.isInteger(l.product_id)) || !Number.isFinite(l.qty) || !Number.isFinite(l.price) || l.price < 0)) {
     return { error: "Data item tidak valid." };
   }
-  // Kemasan & label dihitung satuan utuh; bulky per kg boleh desimal.
-  if (channel !== "bulky" && lines.some((l) => !Number.isInteger(l.qty))) return { error: `Qty ${CHANNELS[channel].unit} harus bilangan bulat.` };
-  const known = await all<{ id: number }>("SELECT id FROM products WHERE active = 1 AND id = ANY(?::int[])", `{${lines.map((l) => l.product_id).join(",")}}`);
-  if (known.length !== new Set(lines.map((l) => l.product_id)).size) return { error: "Ada produk yang tidak ditemukan atau sudah nonaktif. Muat ulang halaman." };
+  // Kemasan & label dihitung satuan utuh; bulky & kerjasama per kg boleh desimal.
+  if (!perKg(channel) && lines.some((l) => !Number.isInteger(l.qty))) return { error: `Qty ${CHANNELS[channel].unit} harus bilangan bulat.` };
+  if (perKg(channel)) {
+    // Nama bebas yang persis sama dengan varietas di menu Produk dipasangkan, supaya stok bahan baku bulky tetap terpotong.
+    const products = await all<{ id: number; name: string }>("SELECT id, name FROM products WHERE active = 1");
+    for (const l of lines) {
+      const p = products.find((p) => p.name.toLowerCase() === l.item_name.toLowerCase());
+      l.product_id = p?.id ?? null;
+      if (p) l.item_name = p.name; // ejaan mengikuti menu Produk
+    }
+  }
+  const ids = [...new Set(lines.map((l) => l.product_id).filter((v): v is number => v !== null))];
+  const known = ids.length ? await all<{ id: number }>("SELECT id FROM products WHERE active = 1 AND id = ANY(?::int[])", `{${ids.join(",")}}`) : [];
+  if (known.length !== ids.length) return { error: "Ada produk yang tidak ditemukan atau sudah nonaktif. Muat ulang halaman." };
   // Gramasi diketik sebagai angka gram. Yang belum terdaftar untuk varietasnya ikut didaftarkan saat pesanan disimpan.
   let newPacks: Line[] = [];
-  if (channel !== "bulky") {
+  if (!perKg(channel)) {
     const packs = await all<{ product_id: number; pack_size: string }>("SELECT product_id, pack_size FROM product_packs WHERE active = 1");
     newPacks = lines.filter((l) => !packs.some((k) => k.product_id === l.product_id && k.pack_size === l.pack_size));
     if (newPacks.some((l) => !l.pack_size || gramPack(packGram(l.pack_size)) !== l.pack_size)) {
@@ -123,7 +141,7 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
       o.notes,
     );
     await registerNewPacks(o);
-    for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price) VALUES (?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price);
+    for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price, item_name, item_code) VALUES (?,?,?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price, l.item_name, l.item_code);
     return id;
   });
 
@@ -153,7 +171,7 @@ export async function updateOrder(_: unknown, fd: FormData): Promise<{ error?: s
     );
     await registerNewPacks(o);
     await run("DELETE FROM so_items WHERE so_id = ?", id);
-    for (const l of o.lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price) VALUES (?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price);
+    for (const l of o.lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price, item_name, item_code) VALUES (?,?,?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price, l.item_name, l.item_code);
   });
   revalidatePath("/penjualan");
   await logActivity("penjualan", "Mengubah pesanan", `${so.so_no} · ${o.customerName} · ${rupiah(o.total)}`);
@@ -288,7 +306,7 @@ export async function recordPayment(fd: FormData) {
     await run(
       "INSERT INTO cash_entries (entry_date, description, category, amount_in, payment_id) VALUES (?,?,?,?,?)",
       payDate,
-      `Pembayaran ${toChannel(so.channel) === "label" ? "Label" : `Benih ${CHANNELS[toChannel(so.channel)].label}`} ${so.customer} (${so.invoice_no ?? so.so_no})`,
+      `Pembayaran ${toChannel(so.channel) === "label" ? "Label" : toChannel(so.channel) === "kerjasama" ? "Benih Kerjasama Produksi" : `Benih ${CHANNELS[toChannel(so.channel)].label}`} ${so.customer} (${so.invoice_no ?? so.so_no})`,
       salesCashCategory(toChannel(so.channel), so.customer),
       amount,
       paymentId,

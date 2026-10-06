@@ -6,6 +6,7 @@ import { today } from "@/lib/format";
 import { CHANNELS, CHANNEL_KEYS, toChannel } from "@/lib/sales-channel";
 import { OrderForm } from "./order-form";
 import { requireAccess } from "@/lib/session";
+import { itemNameSuggestions } from "@/lib/order-names";
 
 export default async function NewOrderPage({ searchParams }: PageProps<"/penjualan/baru">) {
   await requireAccess("penjualan");
@@ -17,6 +18,7 @@ export default async function NewOrderPage({ searchParams }: PageProps<"/penjual
   const preset = customerId ? await get<{ name: string }>("SELECT name FROM customers WHERE id = ?", customerId) : undefined;
   const products = await all<{ id: number; name: string; crop: string }>("SELECT id, name, crop FROM products WHERE active = 1 ORDER BY name");
   const packs = (await packStock()).map((k) => ({ product_id: k.product_id, pack_size: k.pack_size, price: k.price, available: k.stock - k.reserved }));
+  const names = await itemNameSuggestions(channel);
   const query = customerId ? `&customer=${customerId}` : "";
   return (
     <>
@@ -33,7 +35,7 @@ export default async function NewOrderPage({ searchParams }: PageProps<"/penjual
         ))}
       </div>
       {/* key: ganti jenis = form baru, agar baris & harga jenis lain tidak terbawa */}
-      <OrderForm key={channel} channel={channel} customers={customers} products={products} packs={packs} defaultCustomer={preset?.name} today={today()} />
+      <OrderForm key={channel} channel={channel} customers={customers} products={products} packs={packs} defaultCustomer={preset?.name} today={today()} names={names} />
     </>
   );
 }

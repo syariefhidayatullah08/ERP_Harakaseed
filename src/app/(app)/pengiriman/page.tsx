@@ -26,7 +26,7 @@ export default async function ShippingPage({ searchParams }: PageProps<"/pengiri
   );
   const items = orders.length
     ? await all<Item>(
-        `SELECT i.id, i.so_id, i.product_id, p.name, i.pack_size, i.qty FROM so_items i JOIN products p ON p.id = i.product_id
+        `SELECT i.id, i.so_id, i.product_id, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, i.pack_size, i.qty FROM so_items i LEFT JOIN products p ON p.id = i.product_id
          WHERE i.so_id = ANY(?::int[]) ORDER BY i.id`,
         `{${orders.map((o) => o.id).join(",")}}`,
       )

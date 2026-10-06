@@ -65,13 +65,13 @@ export async function syncIntakeStock(intakeId: number, created: boolean) {
  * untuk ditampilkan: varietas yang belum dipasangkan ke kode produksi, atau stok yang jadi minus.
  */
 export async function deductBulkySale(soId: number, soNo: string, customer: string, date: string) {
-  const items = await all<{ product_id: number; name: string; qty: number }>("SELECT i.product_id, p.name, SUM(i.qty) qty FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? GROUP BY 1, 2", soId);
+  const items = await all<{ product_id: number | null; name: string; qty: number }>("SELECT i.product_id, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, SUM(i.qty) qty FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? GROUP BY 1, 2", soId);
   const moves: Move[] = [];
   const warnings: string[] = [];
   for (const it of items) {
-    const rows = await all<{ id: number; ready_kg: number }>("SELECT id, ready_kg FROM bulk_stock WHERE product_id = ? ORDER BY ready_kg DESC, id", it.product_id);
+    const rows = it.product_id ? await all<{ id: number; ready_kg: number }>("SELECT id, ready_kg FROM bulk_stock WHERE product_id = ? ORDER BY ready_kg DESC, id", it.product_id) : [];
     if (!rows.length) {
-      warnings.push(`${it.name} belum dipasangkan ke kode produksi di Stok Bahan Baku, jadi stoknya tidak dikurangi.`);
+      warnings.push(it.product_id ? `${it.name} belum dipasangkan ke kode produksi di Stok Bahan Baku, jadi stoknya tidak dikurangi.` : `"${it.name}" bukan nama varietas di menu Produk, jadi stok bahan bakunya tidak dikurangi.`);
       continue;
     }
     let left = round(it.qty);

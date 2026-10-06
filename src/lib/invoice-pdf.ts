@@ -71,7 +71,7 @@ export async function loadOrderPdfData(soId: number) {
   );
   if (!order) return null;
   const items = await all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    `SELECT i.id, i.qty, i.price, p.name, p.crop, ${ITEM_PACK_SQL} FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+    `SELECT i.id, i.qty, i.price, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     soId,
   );
   const lots = await all<{ so_item_id: number; lot_no: string; qty: number; expiry_date: string }>(

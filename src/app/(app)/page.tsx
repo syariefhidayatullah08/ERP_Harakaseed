@@ -76,10 +76,10 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   });
 
   const top = await all<{ name: string; crop: string; v: number }>(
-    `SELECT p.name, p.crop, SUM(i.qty * i.price) v FROM so_items i
-     JOIN sales_orders so ON so.id = i.so_id JOIN products p ON p.id = i.product_id
+    `SELECT COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, SUM(i.qty * i.price) v FROM so_items i
+     JOIN sales_orders so ON so.id = i.so_id LEFT JOIN products p ON p.id = i.product_id
      WHERE so.status NOT IN ('draft','batal') AND so.order_date >= ?
-     GROUP BY p.id ORDER BY v DESC LIMIT 6`,
+     GROUP BY 1, 2 ORDER BY v DESC LIMIT 6`,
     addDays(t, -90),
   );
 

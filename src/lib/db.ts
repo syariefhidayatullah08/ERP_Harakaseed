@@ -732,6 +732,11 @@ const SCHEMA_SQL = `
     ALTER TABLE seed_pickups ADD COLUMN IF NOT EXISTS grower_id INTEGER REFERENCES growers(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS seed_intakes_grower_idx ON seed_intakes (grower_id);
 
+    -- Bulky & kerjasama produksi: nama (dan kode produksi) baris pesanan diketik bebas; varietas boleh tidak dikenal.
+    ALTER TABLE so_items ALTER COLUMN product_id DROP NOT NULL;
+    ALTER TABLE so_items ADD COLUMN IF NOT EXISTS item_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE so_items ADD COLUMN IF NOT EXISTS item_code TEXT NOT NULL DEFAULT '';
+
     -- Invoice terakhir sebelum memakai ERP bernomor 180/INV/X/2026; ERP melanjutkan dari 181.
     INSERT INTO settings (key, value) VALUES ('invoice_start', '2026:181') ON CONFLICT (key) DO NOTHING;
 

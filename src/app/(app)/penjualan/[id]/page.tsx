@@ -33,8 +33,8 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
 
   const channel = toChannel(o.channel);
   const ch = CHANNELS[channel];
-  const items = await all<{ id: number; product_id: number; name: string; crop: string; pack: string; pack_size: string; qty: number; price: number }>(
-    `SELECT i.id, i.product_id, i.qty, i.price, i.pack_size pack, p.name, p.crop, ${ITEM_PACK_SQL} FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+  const items = await all<{ id: number; product_id: number; name: string; crop: string; pack: string; pack_size: string; qty: number; price: number; item_code: string }>(
+    `SELECT i.id, i.product_id, i.qty, i.price, i.pack_size pack, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, i.item_code, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
   );
   const allocs = await all<{ so_item_id: number; lot_id: number; lot_no: string; qty: number }>(
@@ -122,7 +122,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                       <td>
                         <div className="font-semibold">{i.name}</div>
                         <div className="text-xs text-muted">
-                          {i.crop} · {i.pack_size}
+                          {[i.item_code, i.crop, i.pack_size].filter(Boolean).join(" · ")}
                         </div>
                         {allocs
                           .filter((a) => a.so_item_id === i.id)

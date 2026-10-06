@@ -26,6 +26,7 @@ export const cashCategoryLabel = (v: string) => CASH_CATEGORIES[v]?.label ?? v;
 export function salesCashCategory(channel: string, customer: string) {
   if (/nusa\s*heulang/i.test(customer)) return "in_nh";
   if (/muara\s*tirta\s*mas/i.test(customer)) return "in_mtm";
+  // Kerjasama produksi di luar NH/MTM ikut "bulky & label" karena sama-sama penjualan benih per kg.
   return channel === "kemasan" ? "in_kemasan" : "in_bulky";
 }
 

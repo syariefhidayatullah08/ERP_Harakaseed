@@ -6,9 +6,9 @@ const VALID = "so.status NOT IN ('draft','batal') AND so.order_date BETWEEN ? AN
 /** qty = jumlah kemasan (penjualan kemasan saja, karena bulky per kg & label per lembar); omzet mencakup semua jenis. */
 export async function salesByProduct(from: string, to: string) {
   return await all<{ sku: string; name: string; crop: string; category: string; qty: number; revenue: number; orders: number }>(
-    `SELECT p.sku, p.name, p.crop, p.category, COALESCE(SUM(i.qty) FILTER (WHERE so.channel = 'kemasan'), 0) qty, SUM(i.qty * i.price) revenue, COUNT(DISTINCT so.id) orders
-     FROM so_items i JOIN sales_orders so ON so.id = i.so_id JOIN products p ON p.id = i.product_id
-     WHERE ${VALID} GROUP BY p.id ORDER BY revenue DESC`,
+    `SELECT COALESCE(NULLIF(i.item_code, ''), p.sku, '') sku, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, COALESCE(p.category, '') category, COALESCE(SUM(i.qty) FILTER (WHERE so.channel = 'kemasan'), 0) qty, SUM(i.qty * i.price) revenue, COUNT(DISTINCT so.id) orders
+     FROM so_items i JOIN sales_orders so ON so.id = i.so_id LEFT JOIN products p ON p.id = i.product_id
+     WHERE ${VALID} GROUP BY 1, 2, 3, 4 ORDER BY revenue DESC`,
     from,
     to,
   );
@@ -45,8 +45,8 @@ export async function salesByCity(from: string, to: string) {
 
 export async function salesLines(from: string, to: string) {
   return await all<Record<string, string | number | null>>(
-    `SELECT so.so_no, so.channel, so.order_date, so.status, so.invoice_no, c.name customer, c.city, p.sku, p.name product, i.pack_size, i.qty, i.price, i.qty * i.price amount
-     FROM so_items i JOIN sales_orders so ON so.id = i.so_id JOIN customers c ON c.id = so.customer_id JOIN products p ON p.id = i.product_id
+    `SELECT so.so_no, so.channel, so.order_date, so.status, so.invoice_no, c.name customer, c.city, COALESCE(NULLIF(i.item_code, ''), p.sku, '') sku, COALESCE(NULLIF(i.item_name, ''), p.name, '') product, i.pack_size, i.qty, i.price, i.qty * i.price amount
+     FROM so_items i JOIN sales_orders so ON so.id = i.so_id JOIN customers c ON c.id = so.customer_id LEFT JOIN products p ON p.id = i.product_id
      WHERE ${VALID} ORDER BY so.order_date, so.so_no`,
     from,
     to,
@@ -67,8 +67,8 @@ type Rows = Record<string, string | number | null>[];
 /** Detail penjualan tanpa nilai rupiah (untuk Marketing). */
 export async function salesQtyLines(from: string, to: string) {
   return await all<Record<string, string | number | null>>(
-    `SELECT so.so_no, so.channel, so.order_date, so.status, c.name customer, c.city, p.sku, p.name product, i.pack_size, i.qty
-     FROM so_items i JOIN sales_orders so ON so.id = i.so_id JOIN customers c ON c.id = so.customer_id JOIN products p ON p.id = i.product_id
+    `SELECT so.so_no, so.channel, so.order_date, so.status, c.name customer, c.city, COALESCE(NULLIF(i.item_code, ''), p.sku, '') sku, COALESCE(NULLIF(i.item_name, ''), p.name, '') product, i.pack_size, i.qty
+     FROM so_items i JOIN sales_orders so ON so.id = i.so_id JOIN customers c ON c.id = so.customer_id LEFT JOIN products p ON p.id = i.product_id
      WHERE ${VALID} ORDER BY so.order_date, so.so_no`,
     from,
     to,

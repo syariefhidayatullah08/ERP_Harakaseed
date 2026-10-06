@@ -37,6 +37,7 @@ import {
   Warehouse,
   ChevronDown,
   Camera,
+  Handshake,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean; ownerOnly?: boolean; sub?: boolean };
@@ -54,6 +55,7 @@ const GROUPS: NavGroup[] = [
       { href: "/penjualan/kemasan", label: "Kemasan", icon: Package, sub: true },
       { href: "/penjualan/bulky", label: "Bulky", icon: Weight, sub: true },
       { href: "/penjualan/label", label: "Label", icon: Tag, sub: true },
+      { href: "/penjualan/kerjasama", label: "Kerjasama Produksi", icon: Handshake, sub: true },
       { href: "/pengiriman", label: "Pengiriman", icon: PackageCheck },
       { href: "/pelanggan", label: "Pelanggan", icon: Users },
       { href: "/keluhan", label: "Keluhan Pelanggan", icon: MessageSquareWarning },

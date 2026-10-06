@@ -2,7 +2,7 @@ import "server-only";
 import { all, get, getDocSettings, getSetting } from "./db";
 import { parseSignature } from "./signature";
 import { terbilang } from "./terbilang";
-import { CHANNELS, toChannel } from "./sales-channel";
+import { CHANNELS, perKg, toChannel } from "./sales-channel";
 
 /** Isi invoice yang dirender ke PDF maupun Word dengan tata letak template resmi Haraka. */
 export type InvoiceDoc = {
@@ -63,7 +63,7 @@ export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> 
   );
   if (!o) return null;
   const items = await all<{ sku: string; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    "SELECT p.sku, p.name, p.crop, i.pack_size, i.qty, i.price FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id",
+    `SELECT COALESCE(NULLIF(i.item_code, ''), p.sku, '') sku, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, i.pack_size, i.qty, i.price FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     soId,
   );
   const disc = o.subtotal * (o.discount_pct / 100);
@@ -79,9 +79,10 @@ export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> 
     number: o.invoice_no ?? o.so_no,
     date: o.shipped_at ?? o.order_date,
     customer: { name: o.customer, address: o.address, city: o.city, phone: o.phone },
-    labels: { code: "Nama Produk", name: "Varietas", qty: channel === "bulky" ? "Bobot (Kg)" : `Qty (${CHANNELS[channel].short})` },
-    qtyDecimals: channel === "bulky" ? 2 : 0,
-    rows: items.map((i) => ({ code: i.crop, name: itemName(i), qty: i.qty, price: i.price })),
+    // Kerjasama produksi mengikuti invoice kontrak (Kode Produksi | Nama Petani | Bobot); lainnya Nama Produk | Varietas.
+    labels: channel === "kerjasama" ? { code: "Kode Produksi", name: "Nama Petani", qty: "Bobot (Kg)" } : { code: "Nama Produk", name: "Varietas", qty: perKg(channel) ? "Bobot (Kg)" : `Qty (${CHANNELS[channel].short})` },
+    qtyDecimals: perKg(channel) ? 2 : 0,
+    rows: items.map((i) => ({ code: channel === "kerjasama" ? i.sku : i.crop || i.sku, name: itemName(i), qty: i.qty, price: i.price })),
     adjustments: adjustments.length ? [{ label: "Subtotal", amount: o.subtotal }, ...adjustments] : [],
     total: o.total,
     after: o.paid > 0 ? [{ label: "Sudah dibayar", amount: o.paid }, { label: "Sisa tagihan", amount: o.total - o.paid }] : [],

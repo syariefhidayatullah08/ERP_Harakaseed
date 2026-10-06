@@ -249,7 +249,7 @@ export async function loadOrderForEmail(soId: number) {
     soId,
   );
   const items = await all<ItemForEmail>(
-    `SELECT p.name, p.crop, ${ITEM_PACK_SQL}, i.qty, i.price FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+    `SELECT COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL}, i.qty, i.price FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     soId,
   );
   return order ? { order, items } : null;

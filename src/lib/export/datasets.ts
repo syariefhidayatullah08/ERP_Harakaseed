@@ -615,8 +615,8 @@ export const DATASETS: Record<string, Dataset> = {
       mapRows(
         await all<Row & { status: string }>(
           `SELECT so.so_no, so.order_date, c.name customer, c.city, c.address, so.status, so.shipped_at, so.courier, so.tracking_no,
-                  (SELECT string_agg(trim(p.name || ' ' || i.pack_size) || ' × ' || i.qty || CASE so.channel WHEN 'bulky' THEN ' kg' WHEN 'label' THEN ' lembar' ELSE '' END, '; ' ORDER BY i.id)
-                   FROM so_items i JOIN products p ON p.id = i.product_id WHERE i.so_id = so.id) items
+                  (SELECT string_agg(trim(COALESCE(NULLIF(i.item_name, ''), p.name, '') || ' ' || i.pack_size) || ' × ' || i.qty || CASE so.channel WHEN 'bulky' THEN ' kg' WHEN 'kerjasama' THEN ' kg' WHEN 'label' THEN ' lembar' ELSE '' END, '; ' ORDER BY i.id)
+                   FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = so.id) items
            FROM sales_orders so JOIN customers c ON c.id = so.customer_id
            WHERE so.status IN ('dikonfirmasi','dikirim','selesai') AND COALESCE(so.shipped_at, so.order_date) BETWEEN ? AND ?
            ORDER BY COALESCE(so.shipped_at, so.order_date), so.so_no`,

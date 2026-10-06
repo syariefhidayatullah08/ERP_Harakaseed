@@ -3,18 +3,19 @@
 import { useActionState, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { createOrder, updateOrder } from "@/actions/sales";
-import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, type Channel } from "@/lib/sales-channel";
+import { CHANNELS, GRAM_MAX, GRAM_MIN, gramPack, packGram, perKg, type Channel } from "@/lib/sales-channel";
 
 type P = { id: number; name: string; crop: string };
 type K = { product_id: number; pack_size: string; price: number; available: number };
 type C = { name: string; city: string; email: string };
-type Line = { key: number; product_id: number; pack_size: string; qty: number; price: number };
+type Line = { key: number; product_id: number; pack_size: string; qty: number; price: number; item_name: string; item_code: string };
 
 const rupiah = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n || 0);
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 type Initial = { id: number; customer: string; order_date: string; discount_pct: number; tax_pct: number; notes: string; lines: Omit<Line, "key">[] };
+const EMPTY: Omit<Line, "key"> = { product_id: 0, pack_size: "", qty: 1, price: 0, item_name: "", item_code: "" };
 
 /** Form pesanan baru; dengan `initial` menjadi form ubah pesanan yang sudah ada (sebelum dikirim). */
 export function OrderForm({
@@ -25,6 +26,7 @@ export function OrderForm({
   defaultCustomer = "",
   today,
   initial,
+  names = [],
 }: {
   channel: Channel;
   customers: C[];
@@ -33,12 +35,15 @@ export function OrderForm({
   defaultCustomer?: string;
   today: string;
   initial?: Initial;
+  /** Saran nama untuk bulky/kerjasama: varietas + nama yang pernah dipakai. */
+  names?: string[];
 }) {
   const ch = CHANNELS[channel];
-  const usesPack = channel !== "bulky";
+  const kg = perKg(channel);
+  const usesPack = !kg;
   const [state, action, pending] = useActionState(initial ? updateOrder : createOrder, null);
   const [customerName, setCustomerName] = useState(initial?.customer ?? defaultCustomer);
-  const [lines, setLines] = useState<Line[]>(initial?.lines.length ? initial.lines.map((l, i) => ({ ...l, key: i + 1 })) : [{ key: 1, product_id: 0, pack_size: "", qty: 1, price: 0 }]);
+  const [lines, setLines] = useState<Line[]>(initial?.lines.length ? initial.lines.map((l, i) => ({ ...l, key: i + 1 })) : [{ key: 1, ...EMPTY }]);
   const [discount, setDiscount] = useState(initial?.discount_pct ?? 0);
   const [tax, setTax] = useState(initial?.tax_pct ?? 0);
 
@@ -46,7 +51,7 @@ export function OrderForm({
   const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
   const afterDisc = subtotal * (1 - discount / 100);
   const total = Math.round(afterDisc * (1 + tax / 100));
-  const payload = useMemo(() => JSON.stringify(lines.map(({ product_id, pack_size, qty, price }) => ({ product_id, pack_size, qty, price }))), [lines]);
+  const payload = useMemo(() => JSON.stringify(lines.map(({ product_id, pack_size, qty, price, item_name, item_code }) => ({ product_id, pack_size, qty, price, item_name, item_code }))), [lines]);
 
   const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const packsOf = (productId: number) => packs.filter((k) => k.product_id === productId);
@@ -107,8 +112,9 @@ export function OrderForm({
             <table className="table">
               <thead>
                 <tr>
-                  <th className="min-w-52">Varietas</th>
+                  <th className="min-w-52">{channel === "kerjasama" ? "Nama petani / varietas" : "Varietas"}</th>
                   {usesPack && <th className="min-w-28">Gramasi (gram)</th>}
+                  {channel === "kerjasama" && <th className="min-w-32">Kode produksi</th>}
                   <th className="w-28">Qty ({ch.unit})</th>
                   <th className="w-36">Harga / {ch.unit}</th>
                   <th className="num">Jumlah</th>
@@ -122,24 +128,43 @@ export function OrderForm({
                   return (
                     <tr key={l.key}>
                       <td>
-                        <select
-                          value={l.product_id || ""}
-                          onChange={(e) => {
-                            const id = Number(e.target.value);
-                            const ks = packsOf(id);
-                            update(l.key, { product_id: id, ...(usesPack ? packPatch(ks.length === 1 ? ks[0] : undefined) : {}) });
-                          }}
-                          className="input"
-                        >
-                          <option value="" disabled>
-                            Pilih varietas…
-                          </option>
-                          {products.map((x) => (
-                            <option key={x.id} value={x.id}>
-                              {x.name} — {x.crop}
+                        {kg ? (
+                          // Nama diketik bebas (nama bulky tidak baku); daftar hanya saran.
+                          <input
+                            value={l.item_name}
+                            list={`nama-${l.key}`}
+                            autoComplete="off"
+                            onChange={(e) => update(l.key, { item_name: e.target.value })}
+                            className="input"
+                            placeholder={channel === "kerjasama" ? "mis. Misdina" : "mis. KE22, Semangka Pencapar"}
+                          />
+                        ) : (
+                          <select
+                            value={l.product_id || ""}
+                            onChange={(e) => {
+                              const id = Number(e.target.value);
+                              const ks = packsOf(id);
+                              update(l.key, { product_id: id, ...packPatch(ks.length === 1 ? ks[0] : undefined) });
+                            }}
+                            className="input"
+                          >
+                            <option value="" disabled>
+                              Pilih varietas…
                             </option>
-                          ))}
-                        </select>
+                            {products.map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.name} — {x.crop}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {kg && (
+                          <datalist id={`nama-${l.key}`}>
+                            {names.map((n) => (
+                              <option key={n} value={n} />
+                            ))}
+                          </datalist>
+                        )}
                         {channel === "kemasan" && pack && (
                           <div className={`mt-1 text-xs ${pack.available < l.qty ? "text-red-700" : "text-muted"}`}>
                             Tersedia {pack.available} kemasan {pack.pack_size}
@@ -178,11 +203,16 @@ export function OrderForm({
                           </div>
                         </td>
                       )}
+                      {channel === "kerjasama" && (
+                        <td>
+                          <input value={l.item_code} onChange={(e) => update(l.key, { item_code: e.target.value })} className="input uppercase" placeholder="mis. KE1085" />
+                        </td>
+                      )}
                       <td>
                         <input
                           type="number"
-                          min={channel === "bulky" ? 0.01 : 1}
-                          step={channel === "bulky" ? 0.01 : 1}
+                          min={kg ? 0.01 : 1}
+                          step={kg ? 0.01 : 1}
                           value={l.qty}
                           onChange={(e) => update(l.key, { qty: Number(e.target.value) })}
                           className="input"
@@ -213,9 +243,9 @@ export function OrderForm({
             <button
               type="button"
               className="btn-secondary btn-sm"
-              onClick={() => setLines((ls) => [...ls, { key: Math.max(...ls.map((x) => x.key)) + 1, product_id: 0, pack_size: "", qty: 1, price: 0 }])}
+              onClick={() => setLines((ls) => [...ls, { key: Math.max(...ls.map((x) => x.key)) + 1, ...EMPTY }])}
             >
-              + Tambah varietas
+              + Tambah baris
             </button>
           </div>
         </section>
