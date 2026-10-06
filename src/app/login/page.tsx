@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { cookies } from "next/headers";
 import { LoginForm } from "./login-form";
+import { OtpForm } from "./otp-form";
+import { TWO_FACTOR_COOKIE } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Masuk" };
 
 const DIVISIONS = ["Founder", "Marketing", "Warehouse", "Produksi", "Lab/QC", "Mutu", "Admin/SDM"];
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: PageProps<"/login">) {
+  // Langkah kode OTP hanya tampil bila kata sandi baru saja benar (cookie verifikasi sementara masih ada).
+  const otp = (await searchParams).langkah === "otp" && (await cookies()).has(TWO_FACTOR_COOKIE);
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       <div className="relative hidden flex-col justify-between overflow-hidden bg-linear-to-br from-navy via-brand-900 to-[#0b5276] p-12 text-white lg:flex">
@@ -50,9 +55,11 @@ export default function LoginPage() {
             <Image src="/logo-wordmark.png" alt="HARAKA SEED" width={194} height={48} priority />
           </div>
           <div aria-hidden className="mb-3 h-1 w-12 rounded-full bg-linear-to-r from-brand-500 to-accent" />
-          <h2 className="text-2xl font-bold">Masuk ke ERP</h2>
-          <p className="mb-6 mt-1 text-sm text-muted">Masuk dengan email pribadi yang didaftarkan untuk divisi Anda.</p>
-          <LoginForm />
+          <h2 className="text-2xl font-bold">{otp ? "Verifikasi dua langkah" : "Masuk ke ERP"}</h2>
+          <p className="mb-6 mt-1 text-sm text-muted">
+            {otp ? "Kata sandi benar. Satu langkah lagi untuk memastikan ini memang Anda." : "Masuk dengan email pribadi yang didaftarkan untuk divisi Anda."}
+          </p>
+          {otp ? <OtpForm /> : <LoginForm />}
         </div>
       </div>
     </main>

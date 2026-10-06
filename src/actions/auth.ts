@@ -4,57 +4,100 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { get, run } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import { createPasswordToken, createToken, SESSION_COOKIE, verifyPasswordToken } from "@/lib/session";
+import {
+  cookieOptions,
+  createPasswordToken,
+  createTwoFactorToken,
+  SESSION_COOKIE,
+  setSessionCookie,
+  TWO_FACTOR_COOKIE,
+  TWO_FACTOR_MINUTES,
+  verifyPasswordToken,
+  verifyTwoFactorToken,
+} from "@/lib/session";
+import { consumeRecoveryCode, verifyTotp } from "@/lib/totp";
 import { passwordLinkEmail, sendEmail } from "@/lib/email";
 import { logActivity, SYSTEM_ACTOR } from "@/lib/activity";
 
-// Salah kata sandi berturut-turut sebanyak ini → akun dikunci sementara.
+// Salah kata sandi / kode OTP berturut-turut sebanyak ini → akun dikunci sementara.
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MINUTES = 15;
-
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production" && process.env.INSECURE_COOKIE !== "1",
-  path: "/",
-  maxAge: 60 * 60 * 24 * 7,
-};
 
 const lockedMessage = (ms: number) =>
   `Terlalu banyak percobaan salah. Akun dikunci sementara, coba lagi dalam ${Math.max(1, Math.ceil(ms / 60_000))} menit atau pakai "Lupa kata sandi?".`;
 
-export async function login(_: unknown, formData: FormData) {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const user = await get<{ id: number; name: string; email: string; role: string; password_hash: string; active: number; locked_until: string | null }>(
-    "SELECT id, name, email, role, password_hash, active, locked_until FROM users WHERE lower(email) = ?",
-    email,
-  );
-  const lockedMs = user?.locked_until ? Date.parse(user.locked_until) - Date.now() : 0;
-  if (lockedMs > 0) return { error: lockedMessage(lockedMs) };
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    if (!user) {
-      await logActivity("login", "Login gagal: email tidak terdaftar", email.slice(0, 120), SYSTEM_ACTOR);
-      return { error: "Email atau kata sandi salah." };
-    }
-    // Penambahan dihitung di database agar percobaan yang bersamaan tidak lolos hitungan.
-    const fails = (await get<{ failed_logins: number }>("UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ? RETURNING failed_logins", user.id))!.failed_logins;
-    if (fails >= MAX_FAILED_LOGINS) {
-      await run("UPDATE users SET failed_logins = 0, locked_until = ? WHERE id = ?", new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString(), user.id);
-      await logActivity("login", "Akun dikunci sementara", `${MAX_FAILED_LOGINS}× salah kata sandi, dikunci ${LOCK_MINUTES} menit`, user);
-      return { error: lockedMessage(LOCK_MINUTES * 60_000) };
-    }
-    await logActivity("login", "Login gagal: kata sandi salah", `percobaan ke-${fails} dari ${MAX_FAILED_LOGINS}`, user);
-    return { error: "Email atau kata sandi salah." };
+type Actor = { id: number; name: string; email: string; role: string };
+
+/** Catat satu percobaan gagal; kunci akun bila sudah mencapai batas. Mengembalikan pesan untuk form. */
+async function countFailure(user: Actor, what: string, wrongMessage: string) {
+  // Penambahan dihitung di database agar percobaan yang bersamaan tidak lolos hitungan.
+  const fails = (await get<{ failed_logins: number }>("UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ? RETURNING failed_logins", user.id))!.failed_logins;
+  if (fails >= MAX_FAILED_LOGINS) {
+    await run("UPDATE users SET failed_logins = 0, locked_until = ? WHERE id = ?", new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString(), user.id);
+    await logActivity("login", "Akun dikunci sementara", `${MAX_FAILED_LOGINS}× salah ${what}, dikunci ${LOCK_MINUTES} menit`, user);
+    return lockedMessage(LOCK_MINUTES * 60_000);
   }
-  if (!user.active) return { error: "Akun ini dinonaktifkan. Hubungi Founder." };
+  await logActivity("login", `Login gagal: ${what} salah`, `percobaan ke-${fails} dari ${MAX_FAILED_LOGINS}`, user);
+  return wrongMessage;
+}
+
+/** Login selesai: catat, pasang cookie sesi, masuk ke dashboard. */
+async function finishLogin(user: Actor, note = "") {
   await run(
     "UPDATE users SET failed_logins = 0, locked_until = NULL, last_login = to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS') WHERE id = ?",
     user.id,
   );
-  await logActivity("login", "Login berhasil", "", user);
-  (await cookies()).set(SESSION_COOKIE, createToken(user.id, user.password_hash), cookieOptions);
+  await logActivity("login", "Login berhasil", note, user);
+  (await cookies()).delete(TWO_FACTOR_COOKIE);
+  await setSessionCookie(user.id);
   redirect("/");
+}
+
+/** Kata sandi benar tapi akun memakai verifikasi dua langkah: lanjut ke langkah kode OTP. */
+async function askOtp(userId: number, passwordHash: string): Promise<never> {
+  (await cookies()).set(TWO_FACTOR_COOKIE, createTwoFactorToken(userId, passwordHash), cookieOptions(TWO_FACTOR_MINUTES * 60));
+  redirect("/login?langkah=otp");
+}
+
+export async function login(_: unknown, formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const user = await get<{ id: number; name: string; email: string; role: string; password_hash: string; active: number; locked_until: string | null; totp_secret: string | null }>(
+    "SELECT id, name, email, role, password_hash, active, locked_until, totp_secret FROM users WHERE lower(email) = ?",
+    email,
+  );
+  const lockedMs = user?.locked_until ? Date.parse(user.locked_until) - Date.now() : 0;
+  if (lockedMs > 0) return { error: lockedMessage(lockedMs) };
+  if (!user) {
+    await logActivity("login", "Login gagal: email tidak terdaftar", email.slice(0, 120), SYSTEM_ACTOR);
+    return { error: "Email atau kata sandi salah." };
+  }
+  if (!verifyPassword(password, user.password_hash)) return { error: await countFailure(user, "kata sandi", "Email atau kata sandi salah.") };
+  if (!user.active) return { error: "Akun ini dinonaktifkan. Hubungi Founder." };
+  if (user.totp_secret) await askOtp(user.id, user.password_hash);
+  await finishLogin(user);
+}
+
+/** Langkah kedua login: kode 6 digit dari aplikasi authenticator, atau salah satu kode cadangan. */
+export async function verifyLoginOtp(_: unknown, formData: FormData) {
+  const code = String(formData.get("code") ?? "").trim();
+  const user = await verifyTwoFactorToken((await cookies()).get(TWO_FACTOR_COOKIE)?.value ?? "");
+  if (!user || !user.totp_secret) return { error: "Sesi verifikasi sudah habis. Kembali dan masukkan kata sandi lagi.", expired: true };
+  const lockedMs = user.locked_until ? Date.parse(user.locked_until) - Date.now() : 0;
+  if (lockedMs > 0) return { error: lockedMessage(lockedMs) };
+
+  const step = verifyTotp(user.totp_secret, code, user.totp_last_step);
+  if (step !== null) {
+    // Simpan langkah waktu yang dipakai: kode yang sama tidak bisa dipakai ulang oleh orang yang sempat melihatnya.
+    await run("UPDATE users SET totp_last_step = ? WHERE id = ?", step, user.id);
+    await finishLogin(user);
+  }
+  const left = consumeRecoveryCode(user.totp_recovery, code);
+  if (left) {
+    await run("UPDATE users SET totp_recovery = ? WHERE id = ?", JSON.stringify(left), user.id);
+    await finishLogin(user, `memakai kode cadangan, sisa ${left.length}`);
+  }
+  return { error: await countFailure(user, "kode verifikasi", "Kode salah atau sudah dipakai. Lihat kode terbaru di aplikasi authenticator.") };
 }
 
 export async function logout() {
@@ -102,6 +145,9 @@ export async function resetPassword(_: unknown, formData: FormData) {
   // Tautan reset dari email juga membuka akun yang terkunci.
   await run("UPDATE users SET password_hash = ?, reset_requested_at = NULL, failed_logins = 0, locked_until = NULL WHERE id = ?", hash, user.id);
   await logActivity("login", "Membuat kata sandi baru lewat tautan email", "", { ...user, role: "" });
-  (await cookies()).set(SESSION_COOKIE, createToken(user.id, hash), cookieOptions);
+  // Tautan email tidak boleh melewati verifikasi dua langkah: akun ber-OTP tetap diminta kodenya.
+  const otp = await get<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = ?", user.id);
+  if (otp?.totp_secret) await askOtp(user.id, hash);
+  await setSessionCookie(user.id);
   redirect("/?msg=" + encodeURIComponent(`Kata sandi tersimpan. Selamat datang, ${user.name}.`));
 }

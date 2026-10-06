@@ -13,6 +13,10 @@ import { tanggal } from "@/lib/format";
 import { formatBytes } from "@/lib/attachments";
 import { testEmail } from "@/actions/email";
 import { InstallApp } from "@/components/install-app";
+import QRCode from "qrcode";
+import { newTotpSecret, totpUri } from "@/lib/totp";
+import { logoutOtherDevices } from "@/actions/security";
+import { TwoFactorCard } from "./two-factor-setup";
 import { ALL_MODULES, DEFAULT_ACCESS, DIVISIONS, MODULE_HINT, MODULES, OWNER_ONLY, divisionLabel, resolveModules, type Division } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Pengaturan" };
@@ -52,6 +56,44 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
     </Card>
   );
 
+  const sec = (await get<{ totp_secret: string | null; totp_recovery: string | null }>("SELECT totp_secret, totp_recovery FROM users WHERE id = ?", me.id))!;
+  const twoFactorOn = !!sec.totp_secret;
+  let recoveryLeft = 0;
+  try {
+    recoveryLeft = sec.totp_recovery ? (JSON.parse(sec.totp_recovery) as string[]).length : 0;
+  } catch {}
+  // Kunci baru hanya dibuat untuk ditawarkan; baru tersimpan setelah kode pertama dari aplikasi cocok.
+  const newSecret = twoFactorOn ? "" : newTotpSecret();
+  const qr = twoFactorOn ? "" : await QRCode.toDataURL(totpUri(newSecret, me.email), { margin: 1, width: 320 });
+
+  const securityCard = (
+    <Card
+      title={<span id="keamanan">Keamanan akun</span>}
+      className="scroll-mt-6"
+      actions={twoFactorOn ? <Badge tone="green">OTP aktif</Badge> : <Badge tone={isOwner ? "red" : "amber"}>OTP belum aktif</Badge>}
+    >
+      <div className="space-y-5 p-5">
+        <div>
+          <div className="mb-1 text-sm font-semibold">Verifikasi dua langkah (OTP)</div>
+          {!twoFactorOn && (
+            <p className="mb-3 text-xs text-muted">
+              Selain kata sandi, login juga meminta kode 6 digit dari aplikasi di HP Anda. Orang yang tahu kata sandi Anda tetap tidak bisa masuk.
+              {isOwner && <b className="text-red-700"> Sangat disarankan untuk akun Founder.</b>}
+            </p>
+          )}
+          <TwoFactorCard enabled={twoFactorOn} recoveryLeft={recoveryLeft} secret={newSecret} qr={qr} />
+        </div>
+        <form action={logoutOtherDevices} className="border-t border-line pt-4">
+          <div className="text-sm font-semibold">Keluar dari semua perangkat lain</div>
+          <p className="mb-2 mt-0.5 text-xs text-muted">Pakai bila HP hilang, ganti HP, atau lupa keluar di komputer lain. Perangkat yang sedang Anda pakai tetap masuk.</p>
+          <SubmitButton className="btn-secondary" confirm="Keluarkan akun Anda dari semua perangkat lain?">
+            Keluarkan perangkat lain
+          </SubmitButton>
+        </form>
+      </div>
+    </Card>
+  );
+
   const installCard = (
     <Card title="Pasang sebagai aplikasi">
       <div className="p-5">
@@ -67,6 +109,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
         <Flash msg={sp.msg as string} error={sp.error as string} />
         <div className="max-w-2xl space-y-5">
           {myAccount}
+          {securityCard}
           {installCard}
         </div>
       </>
@@ -165,6 +208,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/pengatu
 
       <div className="grid gap-5 lg:grid-cols-2">
         {myAccount}
+        {securityCard}
         {installCard}
 
         <Card title="Koneksi email perusahaan" actions={info.configured ? <Badge tone="green">Terkonfigurasi</Badge> : <Badge tone="amber">Belum terhubung</Badge>}>

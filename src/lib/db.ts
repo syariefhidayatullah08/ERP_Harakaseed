@@ -747,9 +747,17 @@ const SCHEMA_SQL = `
     -- Owner berganti sebutan menjadi Founder (kode peran di database tetap 'owner').
     UPDATE users SET name = 'Founder' WHERE role = 'owner' AND name = 'Owner';
 
+    -- Keamanan akun: "keluar dari semua perangkat" menaikkan session_version; verifikasi dua langkah memakai kode
+    -- aplikasi authenticator (TOTP) + kode cadangan sekali pakai (disimpan sebagai hash).
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_last_step INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_recovery TEXT;
+
     -- No. invoice boleh diketik manual di pesanan; kosong = nomor otomatis saat barang dikirim.
     ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS invoice_manual TEXT NOT NULL DEFAULT '';
   `;
+
 
 async function seed(ex: Ex) {
   await ex(

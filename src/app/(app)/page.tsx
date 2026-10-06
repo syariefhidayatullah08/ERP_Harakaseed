@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, Mail, PackageCheck } from "lucide-react";
+import { AlertTriangle, CalendarClock, Mail, PackageCheck, ShieldAlert } from "lucide-react";
 import { all, get } from "@/lib/db";
 import { lowStockProducts } from "@/lib/inventory";
 import { rupiah, num, tanggal, today, addDays, daysUntil, SO_STATUS, PRD_STATUS, paymentStatus } from "@/lib/format";
@@ -93,6 +93,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   );
 
   const growth = salesLast.v > 0 ? ((salesThis.v - salesLast.v) / salesLast.v) * 100 : null;
+  const otpOff = !(await get<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = ?", user.id))?.totp_secret;
 
   return (
     <>
@@ -108,6 +109,19 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
         }
       />
       <Flash error={sp.error as string} />
+
+      {otpOff && (
+        <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <ShieldAlert size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <b>Akun Founder belum memakai verifikasi dua langkah.</b> Akun ini bisa membuka semua data; bila kata sandinya bocor, orang lain bisa masuk.{" "}
+            <Link href="/pengaturan#keamanan" className="font-medium underline">
+              Aktifkan OTP sekarang
+            </Link>{" "}
+            (± 2 menit, perlu aplikasi Google Authenticator di HP).
+          </div>
+        </div>
+      )}
 
       {!emailConfigured() && (
         <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

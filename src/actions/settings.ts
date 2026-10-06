@@ -1,12 +1,11 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { del } from "@vercel/blob";
 import { all, exec, get, run, setSetting, tx } from "@/lib/db";
 import { readSignature, SIGNATURE_KEYS, SIGNATURE_MAX_BYTES, type SignatureKey } from "@/lib/signature";
-import { createToken, requireUser, SESSION_COOKIE } from "@/lib/session";
+import { requireUser, setSessionCookie } from "@/lib/session";
 import { str, withMsg } from "@/lib/form";
 import { logActivity } from "@/lib/activity";
 import { runBackup } from "@/lib/backup";
@@ -100,13 +99,7 @@ export async function changePassword(fd: FormData) {
   const hash = hashPassword(next);
   await run("UPDATE users SET password_hash = ? WHERE id = ?", hash, user.id);
   // Sesi lain (perangkat lain) otomatis keluar; sesi ini diperbarui agar tetap masuk.
-  (await cookies()).set(SESSION_COOKIE, createToken(user.id, hash), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production" && process.env.INSECURE_COOKIE !== "1",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
+  await setSessionCookie(user.id);
   await logActivity("akun", "Mengganti kata sandi");
   redirect(withMsg(BACK, "Kata sandi diganti. Perangkat lain yang memakai akun ini otomatis keluar."));
 }

@@ -5,6 +5,7 @@ import { ALL_MODULES, DIVISIONS, MODULES, OWNER_ONLY, parseModules, resolveModul
 import { Badge, Card, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { deleteUser, inviteUser, saveUserAccess, sendUserLink, updateUser } from "@/actions/users";
+import { logoutUserEverywhere, resetUserTotp } from "@/actions/security";
 import { getAccessMatrix, requireAccess } from "@/lib/session";
 import { ExportMenu } from "@/components/export-menu";
 
@@ -15,9 +16,9 @@ const TONE: Record<string, string> = { owner: "purple", marketing: "brand", ware
 export default async function UsersPage({ searchParams }: PageProps<"/pengguna">) {
   const me = await requireAccess("pengguna");
   const sp = await searchParams;
-  const users = await all<{ id: number; name: string; email: string; role: string; active: number; last_login: string | null; created_at: string; locked: boolean; modules: string | null }>(
+  const users = await all<{ id: number; name: string; email: string; role: string; active: number; last_login: string | null; created_at: string; locked: boolean; modules: string | null; otp: boolean }>(
     // locked_until disimpan sebagai waktu ISO (UTC), jadi bisa dibandingkan sebagai teks.
-    `SELECT id, name, email, role, active, last_login, created_at, modules,
+    `SELECT id, name, email, role, active, last_login, created_at, modules, totp_secret IS NOT NULL otp,
             COALESCE(locked_until > to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), false) locked
      FROM users ORDER BY active DESC, role, name`,
   );
@@ -80,6 +81,22 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
                                   </SubmitButton>
                                 </form>
                               )}
+                              {u.active === 1 && (
+                                <form action={logoutUserEverywhere}>
+                                  <input type="hidden" name="id" value={u.id} />
+                                  <SubmitButton className="btn-secondary btn-sm" confirm={`Keluarkan ${u.email} dari semua perangkat? Dia perlu login ulang.`}>
+                                    Keluarkan dari semua perangkat
+                                  </SubmitButton>
+                                </form>
+                              )}
+                              {u.otp && u.id !== me.id && me.role === "owner" && (
+                                <form action={resetUserTotp}>
+                                  <input type="hidden" name="id" value={u.id} />
+                                  <SubmitButton className="btn-secondary btn-sm" confirm={`Matikan OTP ${u.email}? Pakai hanya bila HP dan kode cadangannya hilang.`}>
+                                    Matikan OTP
+                                  </SubmitButton>
+                                </form>
+                              )}
                               {u.id !== me.id && (
                                 <form action={deleteUser}>
                                   <input type="hidden" name="id" value={u.id} />
@@ -121,6 +138,11 @@ export default async function UsersPage({ searchParams }: PageProps<"/pengguna">
                         {custom && (
                           <div className="mt-1" title={effective.map((m) => MODULES[m]).join(", ") || "Tanpa modul"}>
                             <Badge tone="orange">Akses khusus</Badge>
+                          </div>
+                        )}
+                        {u.otp && (
+                          <div className="mt-1" title="Login memakai verifikasi dua langkah (kode OTP)">
+                            <Badge tone="green">OTP aktif</Badge>
                           </div>
                         )}
                         {u.locked && (
