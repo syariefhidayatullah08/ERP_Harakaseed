@@ -756,6 +756,11 @@ const SCHEMA_SQL = `
 
     -- No. invoice boleh diketik manual di pesanan; kosong = nomor otomatis saat barang dikirim.
     ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS invoice_manual TEXT NOT NULL DEFAULT '';
+    -- Kerjasama produksi: nama petani per baris punya kolom sendiri (terpisah dari varietas & kode produksi).
+    ALTER TABLE so_items ADD COLUMN IF NOT EXISTS farmer_name TEXT NOT NULL DEFAULT '';
+    -- Baris kerjasama yang diambil dari buku induk benih masuk; satu benih masuk hanya bisa dijual sekali.
+    ALTER TABLE so_items ADD COLUMN IF NOT EXISTS intake_id INTEGER REFERENCES seed_intakes(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS so_items_intake_idx ON so_items (intake_id);
   `;
 
 

@@ -80,8 +80,8 @@ export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> 
     soId,
   );
   if (!o) return null;
-  const items = await all<{ sku: string; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    `SELECT COALESCE(NULLIF(i.item_code, ''), p.sku, '') sku, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, i.pack_size, i.qty, i.price FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+  const items = await all<{ sku: string; code: string; name: string; farmer: string; crop: string; pack_size: string; qty: number; price: number }>(
+    `SELECT COALESCE(NULLIF(i.item_code, ''), p.sku, '') sku, i.item_code code, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, i.farmer_name farmer, COALESCE(p.crop, '') crop, i.pack_size, i.qty, i.price FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     soId,
   );
   const disc = o.subtotal * (o.discount_pct / 100);
@@ -99,7 +99,9 @@ export async function orderInvoiceDoc(soId: number): Promise<InvoiceDoc | null> 
     channel === "kerjasama"
       ? {
           columns: [{ label: "Varietas", w: 1.0 }, { label: "Nama Petani", w: 1.45 }, { label: "Bobot Akhir (Kg)", w: 1.3 }, money("Harga (Rp)", 1.15), { label: "Keterangan", w: 1.1 }, money("Total (Rp)", 1.5)],
-          rows: items.map((i) => [i.sku, i.name, qtyFmt(i.qty, 2), i.price, "", i.qty * i.price]),
+          // Baris dengan kolom petani: Varietas | Nama Petani, kode produksi di Keterangan. Baris lama (sebelum ada kolom petani)
+          // menyimpan nama petani di kolom nama dan kode produksi sebagai varietas.
+          rows: items.map((i) => (i.farmer ? [i.name, i.farmer, qtyFmt(i.qty, 2), i.price, i.code, i.qty * i.price] : [i.sku, i.name, qtyFmt(i.qty, 2), i.price, "", i.qty * i.price])),
           totalLabel: "TOTAL",
           sumCol: undefined,
           sumText: "",

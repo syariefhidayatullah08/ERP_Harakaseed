@@ -1,13 +1,13 @@
 // Jenis penjualan. Kemasan = benih per kemasan (varietas + gramasi, memotong stok lot); bulky = benih curah per kg
 // (nama varietas diketik bebas, memotong stok bahan baku bila varietasnya dikenal); label = label kemasan per lembar
 // (nama varietas diketik bebas + gramasi);
-// kerjasama = benih hasil kerja sama produksi per kg (nama petani + kode produksi diketik bebas). Label & kerjasama tidak memotong stok.
+// kerjasama = benih hasil kerja sama produksi per kg (varietas, nama petani, dan kode produksi diketik bebas). Label & kerjasama tidak memotong stok.
 
 export const CHANNELS = {
   kemasan: { label: "Kemasan", title: "Penjualan Kemasan", unit: "kemasan", short: "kms", hint: "Benih per kemasan: pilih varietas lalu gramasinya. Stok dipotong per lot saat dikirim." },
   bulky: { label: "Bulky", title: "Penjualan Bulky", unit: "kg", short: "kg", hint: "Benih curah per kilogram, tanpa gramasi kemasan." },
   label: { label: "Label", title: "Penjualan Label", unit: "lembar", short: "lbr", hint: "Label kemasan per lembar: ketik nama varietas dan gramasinya." },
-  kerjasama: { label: "Kerjasama Produksi", title: "Penjualan Kerjasama Produksi", unit: "kg", short: "kg", hint: "Benih hasil kerja sama produksi per kilogram: ketik nama petani/varietas dan kode produksinya per baris." },
+  kerjasama: { label: "Kerjasama Produksi", title: "Penjualan Kerjasama Produksi", unit: "kg", short: "kg", hint: "Benih hasil kerja sama produksi per kilogram: ketik varietas, nama petani, dan kode produksinya per baris." },
 } as const;
 
 /** Dijual per kg (boleh desimal) dan namanya diketik bebas, tanpa gramasi. */
@@ -19,6 +19,8 @@ export const usesPack = (c: Channel) => c === "kemasan" || c === "label";
 
 /** Nama, kode, dan komoditas baris pesanan: nama yang diketik bebas (bulky/kerjasama) menang atas data produk. Alias tabel: i & p. */
 export const ITEM_NAME_SQL = "COALESCE(NULLIF(i.item_name, ''), p.name, '')";
+/** Nama baris untuk dokumen & daftar: kerjasama produksi ikut menyebut nama petaninya, mis. "YLB01 · Lukman". */
+export const ITEM_LABEL_SQL = "COALESCE(NULLIF(i.item_name, ''), p.name, '') || CASE WHEN i.farmer_name <> '' THEN ' · ' || i.farmer_name ELSE '' END";
 export const ITEM_CODE_SQL = "COALESCE(NULLIF(i.item_code, ''), p.sku, '')";
 export const ITEM_CROP_SQL = "COALESCE(p.crop, '')";
 

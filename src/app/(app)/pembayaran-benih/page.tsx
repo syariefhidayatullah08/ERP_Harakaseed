@@ -45,8 +45,13 @@ export default async function SeedPaymentPage({ searchParams }: PageProps<"/pemb
   const total = tab === "buku" ? (await get<{ n: number }>(`SELECT COUNT(*) n FROM seed_intakes WHERE ${where}`, ...params))!.n : 0;
   const rows =
     tab === "buku"
-      ? await all<Intake & { pb_no: string | null }>(
-          `SELECT i.*, (SELECT number FROM seed_pb WHERE id = i.pb_id) pb_no FROM seed_intakes i WHERE ${where}
+      ? await all<Intake & { pb_no: string | null; sold_id: number | null; sold_no: string | null }>(
+          // sold_*: pesanan kerjasama produksi (tidak batal) yang menjual benih masuk ini.
+          `SELECT i.*, (SELECT number FROM seed_pb WHERE id = i.pb_id) pb_no,
+                  sold.sold_id, sold.sold_no
+           FROM seed_intakes i
+           LEFT JOIN LATERAL (SELECT so.id sold_id, so.so_no sold_no FROM so_items si JOIN sales_orders so ON so.id = si.so_id WHERE si.intake_id = i.id AND so.status <> 'batal' LIMIT 1) sold ON true
+           WHERE ${where}
            ORDER BY received_date DESC NULLS LAST, id DESC LIMIT ? OFFSET ?`,
           ...params,
           PAGE_SIZE,
@@ -229,6 +234,14 @@ export default async function SeedPaymentPage({ searchParams }: PageProps<"/pemb
                               <div className="text-xs">
                                 <Link href={`/pembayaran-benih/pb/${r.pb_id}`} className="text-brand-700 hover:underline">
                                   {r.pb_no}
+                                </Link>
+                              </div>
+                            )}
+                            {r.sold_no && (
+                              <div className="text-xs">
+                                Terjual{" "}
+                                <Link href={`/penjualan/${r.sold_id}`} className="text-brand-700 hover:underline">
+                                  {r.sold_no}
                                 </Link>
                               </div>
                             )}

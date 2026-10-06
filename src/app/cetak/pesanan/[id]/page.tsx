@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { all, get, getSettings } from "@/lib/db";
 import { can, requireAccess } from "@/lib/session";
 import { num, rupiah, tanggal } from "@/lib/format";
-import { CHANNELS, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
+import { CHANNELS, ITEM_LABEL_SQL, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
 import { PrintButton } from "@/components/buttons";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export default async function PrintOrder({ params, searchParams }: PageProps<"/c
   if (!o) notFound();
   if (!deliveryNote && o.invoice_no && !can(user, "keuangan")) notFound();
   const items = await all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    `SELECT i.*, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+    `SELECT i.*, ${ITEM_LABEL_SQL} name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
   );
   const lots = await all<{ so_item_id: number; lot_no: string; qty: number; expiry_date: string }>(

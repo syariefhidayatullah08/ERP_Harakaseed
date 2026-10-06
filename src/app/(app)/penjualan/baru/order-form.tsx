@@ -3,19 +3,20 @@
 import { useActionState, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { createOrder, updateOrder } from "@/actions/sales";
+import { IntakePicker, type IntakeOption } from "./intake-picker";
 import { CHANNELS, freeName, GRAM_MAX, GRAM_MIN, gramPack, packGram, perKg, type Channel } from "@/lib/sales-channel";
 
 type P = { id: number; name: string; crop: string };
 type K = { product_id: number; pack_size: string; price: number; available: number };
 type C = { name: string; city: string; email: string };
-type Line = { key: number; product_id: number; pack_size: string; qty: number; price: number; item_name: string; item_code: string };
+type Line = { key: number; product_id: number; pack_size: string; qty: number; price: number; item_name: string; item_code: string; farmer_name: string; intake_id: number };
 
 const rupiah = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n || 0);
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 type Initial = { id: number; customer: string; order_date: string; invoice_manual: string; discount_pct: number; tax_pct: number; notes: string; deposit?: number; lines: Omit<Line, "key">[] };
-const EMPTY: Omit<Line, "key"> = { product_id: 0, pack_size: "", qty: 1, price: 0, item_name: "", item_code: "" };
+const EMPTY: Omit<Line, "key"> = { product_id: 0, pack_size: "", qty: 1, price: 0, item_name: "", item_code: "", farmer_name: "", intake_id: 0 };
 
 /** Form pesanan baru; dengan `initial` menjadi form ubah pesanan yang sudah ada (sebelum dikirim). */
 export function OrderForm({
@@ -27,6 +28,8 @@ export function OrderForm({
   today,
   initial,
   names = [],
+  farmers = [],
+  intakes = [],
 }: {
   channel: Channel;
   customers: C[];
@@ -37,6 +40,10 @@ export function OrderForm({
   initial?: Initial;
   /** Saran nama untuk bulky/label/kerjasama: varietas + nama yang pernah dipakai. */
   names?: string[];
+  /** Saran nama petani untuk kerjasama produksi. */
+  farmers?: string[];
+  /** Kerjasama produksi: benih masuk di buku induk yang bisa diambil sebagai baris. */
+  intakes?: IntakeOption[];
 }) {
   const ch = CHANNELS[channel];
   const kg = perKg(channel);
@@ -59,7 +66,7 @@ export function OrderForm({
   const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
   const afterDisc = subtotal * (1 - discount / 100);
   const total = Math.round(afterDisc * (1 + tax / 100));
-  const payload = useMemo(() => JSON.stringify(lines.map(({ product_id, pack_size, qty, price, item_name, item_code }) => ({ product_id, pack_size, qty, price, item_name, item_code }))), [lines]);
+  const payload = useMemo(() => JSON.stringify(lines.map(({ product_id, pack_size, qty, price, item_name, item_code, farmer_name, intake_id }) => ({ product_id, pack_size, qty, price, item_name, item_code, farmer_name, intake_id }))), [lines]);
 
   const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const packsOf = (productId: number) => packs.filter((k) => k.product_id === productId);
@@ -140,7 +147,8 @@ export function OrderForm({
             <table className="table">
               <thead>
                 <tr>
-                  <th className="min-w-52">{channel === "kerjasama" ? "Nama petani / varietas" : "Varietas"}</th>
+                  <th className="min-w-52">Varietas</th>
+                  {channel === "kerjasama" && <th className="min-w-44">Nama petani</th>}
                   {usesPack && <th className="min-w-28">Gramasi (gram)</th>}
                   {channel === "kerjasama" && <th className="min-w-32">Kode produksi</th>}
                   <th className="w-28">Qty ({ch.unit})</th>
@@ -164,7 +172,7 @@ export function OrderForm({
                             autoComplete="off"
                             onChange={(e) => update(l.key, { item_name: e.target.value, product_id: products.find((p) => same(p.name, e.target.value))?.id ?? 0 })}
                             className="input"
-                            placeholder={channel === "kerjasama" ? "mis. Misdina" : channel === "label" ? "Ketik nama varietas…" : "mis. KE22, Semangka Pencapar"}
+                            placeholder={channel === "kerjasama" ? "mis. YLB01" : channel === "label" ? "Ketik nama varietas…" : "mis. KE22, Semangka Pencapar"}
                           />
                         ) : (
                           <select
@@ -186,6 +194,7 @@ export function OrderForm({
                             ))}
                           </select>
                         )}
+                        {l.intake_id > 0 && <div className="mt-1 text-xs text-muted">Dari buku induk benih masuk</div>}
                         {free && (
                           <datalist id={`nama-${l.key}`}>
                             {names.map((n) => (
@@ -233,6 +242,24 @@ export function OrderForm({
                       )}
                       {channel === "kerjasama" && (
                         <td>
+                          <input
+                            value={l.farmer_name}
+                            list={`petani-${l.key}`}
+                            autoComplete="off"
+                            onChange={(e) => update(l.key, { farmer_name: e.target.value })}
+                            className="input"
+                            placeholder="mis. Lukman"
+                            aria-label="Nama petani"
+                          />
+                          <datalist id={`petani-${l.key}`}>
+                            {farmers.map((n) => (
+                              <option key={n} value={n} />
+                            ))}
+                          </datalist>
+                        </td>
+                      )}
+                      {channel === "kerjasama" && (
+                        <td>
                           <input value={l.item_code} onChange={(e) => update(l.key, { item_code: e.target.value })} className="input uppercase" placeholder="mis. KE1085" />
                         </td>
                       )}
@@ -275,6 +302,26 @@ export function OrderForm({
             >
               + Tambah baris
             </button>
+            {channel === "kerjasama" && (
+              <div className="mt-2">
+                <IntakePicker
+                  intakes={intakes}
+                  customer={customerName}
+                  used={lines.map((l) => l.intake_id).filter(Boolean)}
+                  onPick={(rows) =>
+                    setLines((ls) => {
+                      // Baris kosong bawaan diganti oleh baris dari buku induk.
+                      const kept = ls.filter((l) => l.item_name.trim() || l.farmer_name.trim() || l.price > 0);
+                      let key = Math.max(0, ...ls.map((x) => x.key));
+                      return [
+                        ...kept,
+                        ...rows.map((r) => ({ ...EMPTY, key: ++key, item_name: r.production_code, farmer_name: r.farmer, item_code: r.batch_no, qty: r.kg, intake_id: r.id })),
+                      ];
+                    })
+                  }
+                />
+              </div>
+            )}
           </div>
         </section>
 

@@ -10,7 +10,7 @@ import { EmailList, type EmailRow } from "@/components/email-list";
 import { cancelOrder, confirmOrder, deleteOrder, emailOrderDocument, recordPayment, shipOrder, updateInvoiceNo } from "@/actions/sales";
 import { nextInvoiceNumber } from "@/lib/invoice-doc";
 import { packKey, stockByPack } from "@/lib/inventory";
-import { CHANNELS, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
+import { CHANNELS, ITEM_LABEL_SQL, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
 import { orderWhatsappMessages, waLink } from "@/lib/whatsapp";
 import { can, requireAccess } from "@/lib/session";
 import { Attachments } from "@/components/attachments";
@@ -37,7 +37,7 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
   // Perkiraan nomor otomatis untuk petunjuk di form kirim barang.
   const autoInvoice = o.status === "dikonfirmasi" ? await nextInvoiceNumber(today(), o.channel) : "";
   const items = await all<{ id: number; product_id: number; name: string; crop: string; pack: string; pack_size: string; qty: number; price: number; item_code: string }>(
-    `SELECT i.id, i.product_id, i.qty, i.price, i.pack_size pack, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, i.item_code, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+    `SELECT i.id, i.product_id, i.qty, i.price, i.pack_size pack, ${ITEM_LABEL_SQL} name, COALESCE(p.crop, '') crop, i.item_code, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
   );
   const allocs = await all<{ so_item_id: number; lot_id: number; lot_no: string; qty: number }>(

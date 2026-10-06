@@ -5,7 +5,7 @@ import { all, get } from "@/lib/db";
 import { toId } from "@/lib/form";
 import { num, SO_STATUS, tanggal, today } from "@/lib/format";
 import { packKey, stockByPack } from "@/lib/inventory";
-import { CHANNELS, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
+import { CHANNELS, ITEM_LABEL_SQL, ITEM_PACK_SQL, toChannel } from "@/lib/sales-channel";
 import { Badge, Card, DL, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
 import { Attachments } from "@/components/attachments";
@@ -30,7 +30,7 @@ export default async function ShippingDetail({ params, searchParams }: PageProps
   // Perkiraan nomor otomatis untuk petunjuk kolom no. invoice.
   const autoInvoice = o.status === "dikonfirmasi" ? await nextInvoiceNumber(today(), o.channel) : "";
   const items = await all<{ id: number; product_id: number; name: string; crop: string; pack: string; pack_size: string; qty: number }>(
-    `SELECT i.id, i.product_id, i.qty, i.pack_size pack, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+    `SELECT i.id, i.product_id, i.qty, i.pack_size pack, ${ITEM_LABEL_SQL} name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     o.id,
   );
   const lots = await all<{ so_item_id: number; lot_id: number; lot_no: string; qty: number; expiry_date: string }>(

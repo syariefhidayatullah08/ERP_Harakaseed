@@ -4,7 +4,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { all, get, getSetting, getSettings, run } from "./db";
 import { nowWib, num, rupiah, tanggal } from "./format";
-import { CHANNELS, ITEM_PACK_SQL, toChannel } from "./sales-channel";
+import { CHANNELS, ITEM_LABEL_SQL, ITEM_PACK_SQL, toChannel } from "./sales-channel";
 
 /*
  * Koneksi email memakai SMTP (kirim) dan IMAP (kotak masuk).
@@ -249,7 +249,7 @@ export async function loadOrderForEmail(soId: number) {
     soId,
   );
   const items = await all<ItemForEmail>(
-    `SELECT COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL}, i.qty, i.price FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+    `SELECT ${ITEM_LABEL_SQL} name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL}, i.qty, i.price FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     soId,
   );
   return order ? { order, items } : null;

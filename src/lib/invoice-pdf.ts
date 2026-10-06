@@ -2,7 +2,7 @@ import "server-only";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { all, get, getSettings } from "./db";
 import { num, rupiah, tanggal } from "./format";
-import { CHANNELS, ITEM_PACK_SQL, toChannel } from "./sales-channel";
+import { CHANNELS, ITEM_LABEL_SQL, ITEM_PACK_SQL, toChannel } from "./sales-channel";
 import { LOGO_PNG_BASE64 } from "./logo-data";
 import { invoiceFileBase, orderInvoiceDoc } from "./invoice-doc";
 import { renderInvoicePdf } from "./invoice-render-pdf";
@@ -71,7 +71,7 @@ export async function loadOrderPdfData(soId: number) {
   );
   if (!order) return null;
   const items = await all<{ id: number; name: string; crop: string; pack_size: string; qty: number; price: number }>(
-    `SELECT i.id, i.qty, i.price, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
+    `SELECT i.id, i.qty, i.price, ${ITEM_LABEL_SQL} name, COALESCE(p.crop, '') crop, ${ITEM_PACK_SQL} FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ? ORDER BY i.id`,
     soId,
   );
   const lots = await all<{ so_item_id: number; lot_no: string; qty: number; expiry_date: string }>(

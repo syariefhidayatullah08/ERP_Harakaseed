@@ -25,7 +25,7 @@ import {
   shippingEmail,
 } from "@/lib/email";
 
-type Line = { product_id: number | null; pack_size: string; qty: number; price: number; item_name: string; item_code: string };
+type Line = { product_id: number | null; pack_size: string; qty: number; price: number; item_name: string; item_code: string; farmer_name: string; intake_id: number | null };
 
 /** Nomor pesanan untuk log aktivitas. */
 const soNo = async (id: number) => (await get<{ so_no: string }>("SELECT so_no FROM sales_orders WHERE id = ?", id))?.so_no ?? `#${id}`;
@@ -84,6 +84,8 @@ async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }
         price: Number(l.price),
         item_name: free ? String(l.item_name ?? "").replace(/\s+/g, " ").trim().slice(0, 120) : "",
         item_code: channel === "kerjasama" ? String(l.item_code ?? "").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 40) : "",
+        farmer_name: channel === "kerjasama" ? String(l.farmer_name ?? "").replace(/\s+/g, " ").trim().slice(0, 120) : "",
+        intake_id: channel === "kerjasama" ? Number(l.intake_id) || null : null,
       }))
       .filter((l) => (free ? l.item_name : l.product_id) && l.qty > 0);
   } catch {
@@ -97,6 +99,19 @@ async function parseOrder(fd: FormData): Promise<ParsedOrder | { error: string }
     if (taken) return { error: `No. invoice ${invoiceManual} sudah dipakai pesanan ${taken}.` };
   }
   if (!lines.length) return { error: freeName(channel) ? "Isi nama pada minimal satu baris." : "Tambahkan minimal satu produk." };
+  // Baris dari buku induk: benih masuknya harus ada, tidak dobel, dan belum terjual di pesanan lain.
+  const intakeIds = lines.map((l) => l.intake_id).filter((v): v is number => v !== null);
+  if (intakeIds.length) {
+    if (new Set(intakeIds).size !== intakeIds.length || intakeIds.some((v) => !Number.isInteger(v))) return { error: "Ada benih masuk yang dipilih dua kali." };
+    const found = await all<{ id: number }>("SELECT id FROM seed_intakes WHERE id = ANY(?::int[])", `{${intakeIds.join(",")}}`);
+    if (found.length !== intakeIds.length) return { error: "Ada benih masuk yang sudah dihapus dari buku induk. Muat ulang halaman." };
+    const taken = await get<{ so_no: string; farmer: string }>(
+      `SELECT so.so_no, s.farmer FROM so_items i JOIN sales_orders so ON so.id = i.so_id JOIN seed_intakes s ON s.id = i.intake_id
+       WHERE i.intake_id = ANY(?::int[]) AND so.status <> 'batal' AND so.id <> ? LIMIT 1`,
+      `{${intakeIds.join(",")}}`, numf(fd, "order_id"),
+    );
+    if (taken) return { error: `Benih masuk ${taken.farmer} sudah dijual di pesanan ${taken.so_no}.` };
+  }
   if (lines.some((l) => (l.product_id !== null && !Number.isInteger(l.product_id)) || !Number.isFinite(l.qty) || !Number.isFinite(l.price) || l.price < 0)) {
     return { error: "Data item tidak valid." };
   }
@@ -170,7 +185,7 @@ export async function createOrder(_: unknown, fd: FormData): Promise<{ error?: s
       o.invoiceManual,
     );
     await registerNewPacks(o);
-    for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price, item_name, item_code) VALUES (?,?,?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price, l.item_name, l.item_code);
+    for (const l of lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price, item_name, item_code, farmer_name, intake_id) VALUES (?,?,?,?,?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price, l.item_name, l.item_code, l.farmer_name, l.intake_id);
     return id;
   });
 
@@ -200,7 +215,7 @@ export async function updateOrder(_: unknown, fd: FormData): Promise<{ error?: s
     );
     await registerNewPacks(o);
     await run("DELETE FROM so_items WHERE so_id = ?", id);
-    for (const l of o.lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price, item_name, item_code) VALUES (?,?,?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price, l.item_name, l.item_code);
+    for (const l of o.lines) await run("INSERT INTO so_items (so_id, product_id, pack_size, qty, price, item_name, item_code, farmer_name, intake_id) VALUES (?,?,?,?,?,?,?,?,?)", id, l.product_id, l.pack_size, l.qty, l.price, l.item_name, l.item_code, l.farmer_name, l.intake_id);
   });
   revalidatePath("/penjualan");
   await logActivity("penjualan", "Mengubah pesanan", `${so.so_no} · ${o.customerName} · ${rupiah(o.total)}`);

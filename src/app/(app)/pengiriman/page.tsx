@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { all } from "@/lib/db";
 import { addDays, num, tanggal, today } from "@/lib/format";
 import { packKey, stockByPack } from "@/lib/inventory";
-import { CHANNELS, toChannel } from "@/lib/sales-channel";
+import { CHANNELS, ITEM_LABEL_SQL, toChannel } from "@/lib/sales-channel";
 import { Badge, Card, Empty, Flash, PageHeader, StatCard } from "@/components/ui";
 import { requireAccess } from "@/lib/session";
 import { ExportMenu } from "@/components/export-menu";
@@ -26,7 +26,7 @@ export default async function ShippingPage({ searchParams }: PageProps<"/pengiri
   );
   const items = orders.length
     ? await all<Item>(
-        `SELECT i.id, i.so_id, i.product_id, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, i.pack_size, i.qty FROM so_items i LEFT JOIN products p ON p.id = i.product_id
+        `SELECT i.id, i.so_id, i.product_id, ${ITEM_LABEL_SQL} name, i.pack_size, i.qty FROM so_items i LEFT JOIN products p ON p.id = i.product_id
          WHERE i.so_id = ANY(?::int[]) ORDER BY i.id`,
         `{${orders.map((o) => o.id).join(",")}}`,
       )
