@@ -20,7 +20,8 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
   await requireAccess("kas");
   const sp = await searchParams;
   const months = (await all<{ m: string }>("SELECT DISTINCT substr(entry_date, 1, 7) m FROM cash_entries ORDER BY 1 DESC")).map((r) => r.m);
-  const month = typeof sp.bulan === "string" && /^\d{4}-\d{2}$/.test(sp.bulan) ? sp.bulan : (months[0] ?? today().slice(0, 7));
+  // Tanpa pilihan bulan: bulan berjalan (bukan bulan terakhir yang ada transaksinya).
+  const month = typeof sp.bulan === "string" && /^\d{4}-\d{2}$/.test(sp.bulan) ? sp.bulan : today().slice(0, 7);
   const from = `${month}-01`;
   const to = `${month}-31`;
   // Akun yang ditampilkan: semua, satu rekening bank, atau kas tunai. Saldo berjalan mengikuti pilihan ini.
@@ -178,7 +179,7 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
           <Card title="Catat transaksi">
             <form action={saveCashEntry} className="space-y-3 p-5">
               <Field label="Tanggal *">
-                <input name="entry_date" type="date" required defaultValue={today().startsWith(month) ? today() : from} className="input" />
+                <input name="entry_date" type="date" required defaultValue={today()} className="input" />
               </Field>
               <Field label="Keterangan *">
                 <input name="description" required className="input" placeholder="mis. Pembayaran benih bulky Botani Seed" />
@@ -238,7 +239,7 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
                 </select>
               </Field>
               <Field label="Per tanggal *">
-                <input name="entry_date" type="date" required defaultValue={today().startsWith(month) ? today() : to.replace(/-31$/, "-28")} className="input" />
+                <input name="entry_date" type="date" required defaultValue={today()} className="input" />
               </Field>
               <Field label="Saldo sebenarnya (Rp) *">
                 <input name="balance" type="number" step="any" required className="input" />
@@ -255,7 +256,7 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
           <Card title="Pindah saldo antar akun">
             <form action={transferCash} className="space-y-3 p-5">
               <Field label="Tanggal *">
-                <input name="entry_date" type="date" required defaultValue={today().startsWith(month) ? today() : from} className="input" />
+                <input name="entry_date" type="date" required defaultValue={today()} className="input" />
               </Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Dari *">
