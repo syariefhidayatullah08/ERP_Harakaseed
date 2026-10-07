@@ -5,12 +5,16 @@ import { CloudOff, CloudUpload, CheckCircle2, LogIn, Trash2 } from "lucide-react
 import type { SheetColumn } from "@/lib/sheets";
 import { isDirty, loadRows, newRowId, saveRows, syncSheet, type LocalRow } from "@/lib/sheet-store";
 
-type Status = { kind: "loading" | "saved" | "syncing" | "offline" | "auth" | "error"; message?: string; at?: string };
+type Status = { kind: "loading" | "saved" | "syncing" | "offline" | "auth" | "error"; message?: string; at?: string; next?: string };
 type Cell = { r: number; c: number };
 
-const SYNC_EVERY_MS = 20_000;
-const SYNC_DEBOUNCE_MS = 1_500;
-const clock = () => new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+// Jadwal sinkron: online = real-time (ketikan langsung terkirim, perubahan orang lain diambil tiap 5 detik selama
+// lembar terlihat); offline / gagal = dicoba lagi otomatis tiap 30 menit, atau langsung begitu internet kembali.
+const SYNC_LIVE_MS = 5_000;
+const SYNC_HIDDEN_MS = 60_000;
+const SYNC_RETRY_MS = 30 * 60_000;
+const SYNC_DEBOUNCE_MS = 400;
+const clock = (d = new Date()) => d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 /**
  * Tabel seperti Excel untuk satu lembar kerja offline. Ketikan langsung tersimpan di laptop (IndexedDB) dan dikirim
@@ -38,6 +42,10 @@ export function SheetGrid({ sheet, columns }: { sheet: string; columns: SheetCol
   const gridRef = useRef<HTMLDivElement>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncing = useRef(false);
+  /** Ada ketikan baru selama pengiriman berjalan: kirim lagi segera setelahnya. */
+  const again = useRef(false);
+  /** Sinkron berikutnya yang dijadwalkan memanggil versi runSync terbaru lewat ref ini. */
+  const nextRun = useRef<() => void>(() => {});
 
   const commitRows = useCallback(
     async (next: LocalRow[], changed: LocalRow[]) => {
@@ -48,9 +56,19 @@ export function SheetGrid({ sheet, columns }: { sheet: string; columns: SheetCol
     [sheet],
   );
 
-  const runSync = useCallback(async () => {
-    if (syncing.current) return;
+  /** Satu pengatur waktu untuk semua sinkron berikutnya; memanggil ulang membatalkan jadwal sebelumnya. */
+  const planSync = useCallback((ms: number, run: () => void) => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(run, ms);
+  }, []);
+
+  const runSync = useCallback(async (): Promise<void> => {
+    if (syncing.current) {
+      again.current = true;
+      return;
+    }
     syncing.current = true;
+    again.current = false;
     setStatus((s) => ({ ...s, kind: "syncing" }));
     const res = await syncSheet(sheet, async () => rowsRef.current);
     syncing.current = false;
@@ -58,17 +76,25 @@ export function SheetGrid({ sheet, columns }: { sheet: string; columns: SheetCol
       rowsRef.current = res.rows;
       setRows(res.rows);
       setStatus({ kind: "saved", at: clock() });
+      planSync(again.current ? SYNC_DEBOUNCE_MS : document.hidden ? SYNC_HIDDEN_MS : SYNC_LIVE_MS, () => nextRun.current());
     } else {
-      setStatus({ kind: res.reason, message: res.message });
+      setStatus({ kind: res.reason, message: res.message, next: clock(new Date(Date.now() + SYNC_RETRY_MS)) });
+      planSync(SYNC_RETRY_MS, () => nextRun.current());
     }
-  }, [sheet]);
+  }, [sheet, planSync]);
 
-  const scheduleSync = useCallback(() => {
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => void runSync(), SYNC_DEBOUNCE_MS);
+  useEffect(() => {
+    nextRun.current = () => void runSync();
   }, [runSync]);
 
-  // Muat dari laptop dulu (langsung tampil walau offline), lalu sinkron; ulangi berkala & saat internet kembali.
+  /** Setelah mengetik: kirim hampir seketika (dikumpulkan sebentar agar ketikan beruntun terkirim sekali jalan). */
+  const scheduleSync = useCallback(() => {
+    if (syncing.current) again.current = true;
+    else planSync(SYNC_DEBOUNCE_MS, () => void runSync());
+  }, [planSync, runSync]);
+
+  // Muat dari laptop dulu (langsung tampil walau offline), lalu sinkron. Internet kembali / lembar dilihat lagi =
+  // langsung sinkron tanpa menunggu jadwal.
   useEffect(() => {
     let alive = true;
     loadRows(sheet).then((local) => {
@@ -77,16 +103,20 @@ export function SheetGrid({ sheet, columns }: { sheet: string; columns: SheetCol
       setRows(local);
       void runSync();
     });
-    const tick = setInterval(() => void runSync(), SYNC_EVERY_MS);
-    const online = () => void runSync();
-    const offline = () => setStatus((s) => ({ ...s, kind: "offline", message: "Sedang offline" }));
-    window.addEventListener("online", online);
+    const now = () => void runSync();
+    const offline = () => setStatus((s) => ({ ...s, kind: "offline", message: "Sedang offline", next: clock(new Date(Date.now() + SYNC_RETRY_MS)) }));
+    const visible = () => {
+      if (!document.hidden) void runSync();
+    };
+    window.addEventListener("online", now);
     window.addEventListener("offline", offline);
+    document.addEventListener("visibilitychange", visible);
     return () => {
       alive = false;
-      clearInterval(tick);
-      window.removeEventListener("online", online);
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+      window.removeEventListener("online", now);
       window.removeEventListener("offline", offline);
+      document.removeEventListener("visibilitychange", visible);
     };
   }, [sheet, runSync]);
 
@@ -217,10 +247,14 @@ export function SheetGrid({ sheet, columns }: { sheet: string; columns: SheetCol
     if (status.kind === "syncing") return { icon: CloudUpload, tone: "text-brand-700", text: "Mengirim ke ERP…" };
     if (status.kind === "auth") return { icon: LogIn, tone: "text-amber-700", text: status.message ?? "Login lagi" };
     if (status.kind === "offline" || status.kind === "error")
-      return { icon: CloudOff, tone: "text-amber-700", text: `${status.kind === "offline" ? "Offline" : status.message} · ${pending} baris tersimpan di laptop, menunggu terkirim` };
+      return {
+        icon: CloudOff,
+        tone: "text-amber-700",
+        text: `${status.kind === "offline" ? "Offline" : status.message} · ${pending} baris tersimpan di laptop · dicoba kirim lagi otomatis tiap 30 menit${status.next ? ` (berikutnya ${status.next})` : ""}, atau langsung saat internet kembali`,
+      };
     return pending
       ? { icon: CloudUpload, tone: "text-brand-700", text: `${pending} baris tersimpan di laptop, segera terkirim` }
-      : { icon: CheckCircle2, tone: "text-emerald-700", text: `Semua tersimpan & terkirim ke ERP${status.at ? ` · ${status.at}` : ""}` };
+      : { icon: CheckCircle2, tone: "text-emerald-700", text: `Real-time · semua tersimpan & terkirim ke ERP${status.at ? ` · sinkron ${status.at}` : ""}` };
   })();
 
   return (
