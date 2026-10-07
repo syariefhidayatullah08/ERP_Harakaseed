@@ -10,6 +10,7 @@ import {
   Sprout,
   Boxes,
   BookOpen,
+  CloudOff,
   Tractor,
   Users,
   ShoppingCart,
@@ -41,7 +42,8 @@ import {
   Handshake,
 } from "lucide-react";
 
-type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean; ownerOnly?: boolean; sub?: boolean };
+/** `module`: modul penentu akses bila berbeda dari segmen pertama alamatnya (mis. lembar kerja offline). */
+type NavItem = { href: string; label: string; icon: typeof Mail; badge?: boolean; ownerOnly?: boolean; sub?: boolean; module?: Module[] };
 type NavGroup = { key: string; title: string; items: NavItem[] };
 
 const HOME: NavItem = { href: "/", label: "Dashboard", icon: LayoutDashboard };
@@ -81,6 +83,7 @@ const GROUPS: NavGroup[] = [
       { href: "/stok-bahan", label: "Stok Bahan Baku", icon: Warehouse },
       { href: "/produksi", label: "Produksi Benih", icon: Tractor },
       { href: "/pengambilan", label: "Pengambilan Benih", icon: Camera },
+      { href: "/lembar", label: "Lembar Kerja Offline", icon: CloudOff, module: ["produksi", "stok_bahan", "mutu"] },
       { href: "/mitra", label: "Petani Mitra", icon: Wheat },
       { href: "/produk", label: "Produk / Varietas", icon: Sprout },
       { href: "/pembelian", label: "Pembelian", icon: Truck },
@@ -117,7 +120,7 @@ const GROUPS: NavGroup[] = [
 
 /** Kelompok & menu sesuai hak akses; kelompok tanpa isi disembunyikan. */
 function visibleGroups(modules: Module[], role: string) {
-  return GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => (!item.ownerOnly || role === "owner") && hasAny(modules, moduleForPath(item.href))) })).filter((g) => g.items.length);
+  return GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => (!item.ownerOnly || role === "owner") && hasAny(modules, item.module ?? moduleForPath(item.href))) })).filter((g) => g.items.length);
 }
 
 // Kelompok yang dilipat diingat per perangkat (localStorage), dibaca lewat useSyncExternalStore agar aman saat render server.

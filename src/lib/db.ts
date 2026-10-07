@@ -778,6 +778,21 @@ const SCHEMA_SQL = `
     ALTER TABLE seed_pb ALTER COLUMN pay_account SET DEFAULT 'mandiri';
     UPDATE cash_entries SET account = 'mandiri' WHERE account = 'bank';
     UPDATE seed_pb SET pay_account = 'mandiri' WHERE pay_account = 'bank';
+
+    -- Lembar kerja offline (src/lib/sheets.ts): satu baris = satu baris tabel, isinya JSON per kolom. id dibuat di
+    -- laptop (bisa dibuat saat offline); rev naik setiap perubahan sehingga laptop cukup mengambil perubahan sejak rev terakhir.
+    CREATE SEQUENCE IF NOT EXISTS sheet_rev_seq;
+    CREATE TABLE IF NOT EXISTS sheet_rows (
+      id TEXT PRIMARY KEY,
+      sheet TEXT NOT NULL,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      position DOUBLE PRECISION NOT NULL DEFAULT 0,
+      deleted BOOLEAN NOT NULL DEFAULT false,
+      rev BIGINT NOT NULL DEFAULT nextval('sheet_rev_seq'),
+      updated_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS sheet_rows_sheet_rev_idx ON sheet_rows (sheet, rev);
   `;
 
 
