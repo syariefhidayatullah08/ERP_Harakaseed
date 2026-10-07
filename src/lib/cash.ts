@@ -13,17 +13,20 @@ export const CASH_CATEGORIES: Record<string, { label: string; code: string }> = 
   pinjaman: { label: "Pinjaman petani", code: "8" },
   gaji_gudang: { label: "Gaji gudang", code: "9" },
   pe: { label: "Pembelian benih eksternal", code: "10" },
-  pindah: { label: "Pindah saldo bank ↔ kas tunai", code: "" },
+  pindah: { label: "Pindah saldo antar akun", code: "" },
+  penyesuaian: { label: "Penyesuaian saldo", code: "" },
   lain: { label: "Biaya tetap & lainnya (gaji, BPJS, angsuran, pajak)", code: "" },
 };
 
 export const isCashCategory = (v: string) => v in CASH_CATEGORIES;
 
-/** Akun kas: rekening bank perusahaan dan uang tunai di kantor. */
-export const CASH_ACCOUNTS: Record<string, string> = { bank: "Bank", tunai: "Kas tunai" };
-export const toCashAccount = (v: unknown) => (v === "tunai" ? "tunai" : "bank");
-/** Pembayaran pesanan: tunai masuk kas tunai, selain itu (transfer, giro, QRIS) masuk rekening bank. */
-export const accountForMethod = (method: string) => (/tunai|cash/i.test(method) ? "tunai" : "bank");
+/** Akun kas: rekening bank perusahaan dan uang tunai di kantor. Rekening utama (bawaan) = Mandiri. */
+export const CASH_ACCOUNTS: Record<string, string> = { mandiri: "Bank Mandiri", bsi: "Bank BSI", bca: "Bank BCA", tunai: "Kas tunai" };
+export const CASH_ACCOUNT_KEYS = Object.keys(CASH_ACCOUNTS);
+export const DEFAULT_ACCOUNT = "mandiri";
+export const toCashAccount = (v: unknown) => (typeof v === "string" && v in CASH_ACCOUNTS ? v : DEFAULT_ACCOUNT);
+/** Pembayaran pesanan tanpa pilihan akun: tunai masuk kas tunai, selain itu (transfer, giro, QRIS) rekening utama. */
+export const accountForMethod = (method: string) => (/tunai|cash/i.test(method) ? "tunai" : DEFAULT_ACCOUNT);
 export const cashCategoryLabel = (v: string) => CASH_CATEGORIES[v]?.label ?? v;
 
 /**

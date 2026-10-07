@@ -773,6 +773,11 @@ const SCHEMA_SQL = `
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS account TEXT NOT NULL DEFAULT 'bank';
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS transfer_ref TEXT;
     ALTER TABLE seed_pb ADD COLUMN IF NOT EXISTS pay_account TEXT NOT NULL DEFAULT 'bank';
+    -- Akun bank dipecah per rekening: Mandiri (rekening utama, semua transaksi "bank" sebelumnya), BSI, BCA.
+    ALTER TABLE cash_entries ALTER COLUMN account SET DEFAULT 'mandiri';
+    ALTER TABLE seed_pb ALTER COLUMN pay_account SET DEFAULT 'mandiri';
+    UPDATE cash_entries SET account = 'mandiri' WHERE account = 'bank';
+    UPDATE seed_pb SET pay_account = 'mandiri' WHERE pay_account = 'bank';
   `;
 
 

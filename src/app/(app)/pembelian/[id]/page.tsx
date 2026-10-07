@@ -7,6 +7,7 @@ import { SubmitButton } from "@/components/buttons";
 import { EmailList, type EmailRow } from "@/components/email-list";
 import { sendPO, setPOPaid, setPOStatus } from "@/actions/purchasing";
 import { requireAccess } from "@/lib/session";
+import { CASH_ACCOUNTS, DEFAULT_ACCOUNT } from "@/lib/cash";
 import { Attachments } from "@/components/attachments";
 
 export default async function PODetail({ params, searchParams }: PageProps<"/pembelian/[id]">) {
@@ -120,9 +121,12 @@ export default async function PODetail({ params, searchParams }: PageProps<"/pem
                   </Field>
                   <label className="block">
                     <span className="label">Dibayar dari</span>
-                    <select name="account" defaultValue="bank" className="input">
-                      <option value="bank">Bank</option>
-                      <option value="tunai">Kas tunai</option>
+                    <select name="account" defaultValue={DEFAULT_ACCOUNT} className="input">
+                      {Object.entries(CASH_ACCOUNTS).map(([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <SubmitButton className="btn-primary w-full" confirm={`Tandai ${po.po_no} dibayar ${rupiah(po.total)}? Otomatis masuk Buku Kas.`}>

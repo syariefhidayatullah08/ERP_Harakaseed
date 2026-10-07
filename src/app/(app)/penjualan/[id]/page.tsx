@@ -14,6 +14,7 @@ import { CHANNELS, ITEM_LABEL_SQL, ITEM_PACK_SQL, toChannel } from "@/lib/sales-
 import { orderWhatsappMessages, waLink } from "@/lib/whatsapp";
 import { can, requireAccess } from "@/lib/session";
 import { Attachments } from "@/components/attachments";
+import { CASH_ACCOUNTS, DEFAULT_ACCOUNT } from "@/lib/cash";
 
 export default async function OrderDetail({ params, searchParams }: PageProps<"/penjualan/[id]">) {
   const user = await requireAccess(["penjualan", "keuangan"]);
@@ -217,6 +218,15 @@ export default async function OrderDetail({ params, searchParams }: PageProps<"/
                       <option>Tunai</option>
                       <option>Giro</option>
                       <option>QRIS</option>
+                    </select>
+                  </Field>
+                  <Field label="Masuk ke">
+                    <select name="account" defaultValue={DEFAULT_ACCOUNT} className="input">
+                      {Object.entries(CASH_ACCOUNTS).map(([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ))}
                     </select>
                   </Field>
                   <Field label="Catatan">

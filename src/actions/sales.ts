@@ -9,7 +9,7 @@ import { logActivity } from "@/lib/activity";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
 import { nextInvoiceNumber } from "@/lib/invoice-doc";
-import { accountForMethod, salesCashCategory } from "@/lib/cash";
+import { accountForMethod, salesCashCategory, toCashAccount } from "@/lib/cash";
 import { deductBulkySale, setBulkMoves } from "@/lib/bulk-stock";
 import { del } from "@vercel/blob";
 import { addDays, rupiah, today } from "@/lib/format";
@@ -367,7 +367,7 @@ export async function recordPayment(fd: FormData) {
       method,
       str(fd, "note"),
     );
-    // Uang masuk dari penjualan langsung tercatat di Buku Kas: tunai ke kas tunai, selain itu ke rekening bank.
+    // Uang masuk dari penjualan langsung tercatat di Buku Kas, di akun yang dipilih (tanpa pilihan: tunai → kas tunai, lainnya → Mandiri).
     await run(
       "INSERT INTO cash_entries (entry_date, description, category, amount_in, payment_id, account) VALUES (?,?,?,?,?,?)",
       payDate,
@@ -375,7 +375,7 @@ export async function recordPayment(fd: FormData) {
       salesCashCategory(toChannel(so.channel), so.customer),
       amount,
       paymentId,
-      accountForMethod(method),
+      fd.get("account") ? toCashAccount(str(fd, "account")) : accountForMethod(method),
     );
     await run("UPDATE sales_orders SET paid = paid + ? WHERE id = ?", amount, id);
     await run("UPDATE sales_orders SET status = 'selesai' WHERE id = ? AND status = 'dikirim' AND paid >= total", id);

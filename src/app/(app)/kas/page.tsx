@@ -4,10 +4,12 @@ import { all, get } from "@/lib/db";
 import { rupiah, tanggal, today } from "@/lib/format";
 import { Badge, Card, Empty, Field, Flash, PageHeader, StatCard } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
-import { deleteCashEntry, saveCashEntry, setCashEntryAccount, transferCash } from "@/actions/cash";
+import { adjustBalance, deleteCashEntry, saveCashEntry, setCashEntryAccount, transferCash } from "@/actions/cash";
 import { requireAccess } from "@/lib/session";
 import { ExportMenu } from "@/components/export-menu";
-import { CASH_ACCOUNTS, CASH_CATEGORIES, cashCategoryLabel, type CashEntry } from "@/lib/cash";
+import { CASH_ACCOUNT_KEYS, CASH_ACCOUNTS, CASH_CATEGORIES, DEFAULT_ACCOUNT, cashCategoryLabel, type CashEntry } from "@/lib/cash";
+
+const TONE: Record<string, string> = { mandiri: "blue", bsi: "green", bca: "purple", tunai: "amber" };
 
 export const metadata: Metadata = { title: "Buku Kas" };
 
@@ -21,8 +23,8 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
   const month = typeof sp.bulan === "string" && /^\d{4}-\d{2}$/.test(sp.bulan) ? sp.bulan : (months[0] ?? today().slice(0, 7));
   const from = `${month}-01`;
   const to = `${month}-31`;
-  // Akun yang ditampilkan: semua, rekening bank, atau kas tunai. Saldo berjalan mengikuti pilihan ini.
-  const akun = sp.akun === "bank" || sp.akun === "tunai" ? sp.akun : "";
+  // Akun yang ditampilkan: semua, satu rekening bank, atau kas tunai. Saldo berjalan mengikuti pilihan ini.
+  const akun = typeof sp.akun === "string" && sp.akun in CASH_ACCOUNTS ? sp.akun : "";
   const href = (patch: Record<string, string>) => {
     const p = new URLSearchParams({ bulan: month, akun, ...patch });
     for (const [k, v] of [...p]) if (!v) p.delete(k);
@@ -58,7 +60,7 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
     <>
       <PageHeader
         title="Buku Kas"
-        subtitle={`Pemasukan dan pengeluaran harian perusahaan per akun (bank & kas tunai) · ${monthLabel(month)}. Hanya bisa dilihat Founder.`}
+        subtitle={`Pemasukan dan pengeluaran harian perusahaan per akun (Mandiri, BSI, BCA, kas tunai) · ${monthLabel(month)}. Hanya bisa dilihat Founder.`}
         actions={<ExportMenu type="kas" from={from} to={to} />}
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />
@@ -73,14 +75,16 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label={`Saldo bank · akhir ${monthLabel(month)}`} value={rupiah(saldoOf("bank"))} tone={saldoOf("bank") < 0 ? "danger" : "default"} href={href({ akun: "bank" })} hint="Klik untuk lihat mutasi bank" />
-        <StatCard label={`Saldo kas tunai · akhir ${monthLabel(month)}`} value={rupiah(saldoOf("tunai"))} tone={saldoOf("tunai") < 0 ? "danger" : "default"} href={href({ akun: "tunai" })} hint="Klik untuk lihat mutasi kas tunai" />
-        <StatCard label="Total saldo (bank + tunai)" value={rupiah(saldoOf("bank") + saldoOf("tunai"))} href={href({ akun: "" })} hint="Klik untuk lihat semua" />
+      <p className="mb-2 text-xs text-muted">Saldo per akun di akhir {monthLabel(month)} · klik kartu untuk melihat mutasinya</p>
+      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-5">
+        {CASH_ACCOUNT_KEYS.map((k) => (
+          <StatCard key={k} label={CASH_ACCOUNTS[k]} value={rupiah(saldoOf(k))} tone={saldoOf(k) < 0 ? "danger" : "default"} href={href({ akun: k })} />
+        ))}
+        <StatCard label="Total saldo" value={rupiah(CASH_ACCOUNT_KEYS.reduce((s, k) => s + saldoOf(k), 0))} href={href({ akun: "" })} hint="Semua rekening + tunai" />
       </div>
 
       <div className="mb-3 flex flex-wrap gap-1">
-        {[["", "Semua akun"], ["bank", "Bank"], ["tunai", "Kas tunai"]].map(([k, label]) => (
+        {[["", "Semua akun"], ...Object.entries(CASH_ACCOUNTS)].map(([k, label]) => (
           <Link key={k} href={href({ akun: k })} className={`rounded-full px-3 py-1 text-xs font-semibold ${akun === k ? "bg-brand-700 text-white" : "bg-canvas text-muted hover:text-ink"}`}>
             {label}
           </Link>
@@ -129,13 +133,22 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
                         </div>
                       </td>
                       <td>
-                        <Badge tone={e.account === "tunai" ? "amber" : "blue"}>{CASH_ACCOUNTS[e.account] ?? e.account}</Badge>
+                        <Badge tone={TONE[e.account]}>{CASH_ACCOUNTS[e.account] ?? e.account}</Badge>
                         {!e.transfer_ref && (
-                          <form action={setCashEntryAccount} className="mt-1">
-                            <input type="hidden" name="id" value={e.id} />
-                            <input type="hidden" name="account" value={e.account === "tunai" ? "bank" : "tunai"} />
-                            <button className="text-[11px] text-brand-700 hover:underline">→ {e.account === "tunai" ? "Bank" : "Kas tunai"}</button>
-                          </form>
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-[11px] text-brand-700">Ganti akun</summary>
+                            <form action={setCashEntryAccount} className="mt-1 flex gap-1">
+                              <input type="hidden" name="id" value={e.id} />
+                              <select name="account" defaultValue={e.account} className="input py-0.5 text-xs" aria-label="Akun">
+                                {Object.entries(CASH_ACCOUNTS).map(([k, label]) => (
+                                  <option key={k} value={k}>
+                                    {label}
+                                  </option>
+                                ))}
+                              </select>
+                              <button className="btn-secondary btn-sm">OK</button>
+                            </form>
+                          </details>
                         )}
                       </td>
                       <td className="num text-emerald-700">{e.amount_in ? rupiah(e.amount_in) : ""}</td>
@@ -145,7 +158,7 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
                         {!e.so_id && !e.pb_id && !e.po_id && (
                           <form action={deleteCashEntry}>
                             <input type="hidden" name="id" value={e.id} />
-                            <SubmitButton className="btn-danger btn-sm" confirm={e.transfer_ref ? `Hapus pindah saldo "${e.description}"? Kedua barisnya (bank & tunai) ikut terhapus.` : `Hapus transaksi "${e.description}"?`}>
+                            <SubmitButton className="btn-danger btn-sm" confirm={e.transfer_ref ? `Hapus pindah saldo "${e.description}"? Kedua barisnya (akun asal & tujuan) ikut terhapus.` : `Hapus transaksi "${e.description}"?`}>
                               Hapus
                             </SubmitButton>
                           </form>
@@ -171,9 +184,12 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
                 <input name="description" required className="input" placeholder="mis. Pembayaran benih bulky Botani Seed" />
               </Field>
               <Field label="Akun *">
-                <select name="account" defaultValue={akun || "bank"} className="input">
-                  <option value="bank">Bank</option>
-                  <option value="tunai">Kas tunai</option>
+                <select name="account" defaultValue={akun || DEFAULT_ACCOUNT} className="input">
+                  {Object.entries(CASH_ACCOUNTS).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
               </Field>
               <Field label="Kategori *">
@@ -204,22 +220,63 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
               </Field>
               <SubmitButton className="btn-primary w-full">Simpan transaksi</SubmitButton>
               <p className="text-xs text-muted">
-                Pembayaran pesanan penjualan (tunai → kas tunai, transfer/giro/QRIS → bank), surat PB, dan PO pembelian yang ditandai dibayar otomatis masuk ke sini, jadi tidak perlu diketik ulang. Saldo awal tiap akun dicatat dengan kategori &ldquo;Saldo awal&rdquo;.
+                Pembayaran pesanan penjualan, surat PB, dan PO pembelian yang ditandai dibayar otomatis masuk ke sini, jadi tidak perlu diketik ulang. Saldo awal tiap akun dicatat dengan kategori &ldquo;Saldo awal&rdquo;.
               </p>
             </form>
           </Card>
 
-          <Card title="Pindah saldo (tarik / setor tunai)">
+          <Card title={<span id="sesuaikan">Sesuaikan saldo</span>} className="scroll-mt-6">
+            <form action={adjustBalance} className="space-y-3 p-5">
+              <p className="text-xs text-muted">Isi saldo sebenarnya (sesuai rekening koran / hitungan uang tunai). Selisihnya dicatat sebagai &ldquo;Penyesuaian saldo&rdquo;.</p>
+              <Field label="Akun *">
+                <select name="account" defaultValue={akun || DEFAULT_ACCOUNT} className="input">
+                  {Object.entries(CASH_ACCOUNTS).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Per tanggal *">
+                <input name="entry_date" type="date" required defaultValue={today().startsWith(month) ? today() : to.replace(/-31$/, "-28")} className="input" />
+              </Field>
+              <Field label="Saldo sebenarnya (Rp) *">
+                <input name="balance" type="number" step="any" required className="input" />
+              </Field>
+              <Field label="Catatan">
+                <input name="note" className="input" placeholder="mis. cocokkan dengan rekening koran" />
+              </Field>
+              <SubmitButton className="btn-secondary w-full" confirm="Sesuaikan saldo akun ini?">
+                Sesuaikan saldo
+              </SubmitButton>
+            </form>
+          </Card>
+
+          <Card title="Pindah saldo antar akun">
             <form action={transferCash} className="space-y-3 p-5">
               <Field label="Tanggal *">
                 <input name="entry_date" type="date" required defaultValue={today().startsWith(month) ? today() : from} className="input" />
               </Field>
-              <Field label="Arah *">
-                <select name="from" defaultValue="bank" className="input">
-                  <option value="bank">Tarik tunai: Bank → Kas tunai</option>
-                  <option value="tunai">Setor tunai: Kas tunai → Bank</option>
-                </select>
-              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Dari *">
+                  <select name="from" defaultValue={DEFAULT_ACCOUNT} className="input">
+                    {Object.entries(CASH_ACCOUNTS).map(([k, label]) => (
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Ke *">
+                  <select name="to" defaultValue="tunai" className="input">
+                    {Object.entries(CASH_ACCOUNTS).map(([k, label]) => (
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
               <Field label="Jumlah (Rp) *">
                 <input name="amount" type="number" min={1} step="any" required className="input" />
               </Field>
@@ -227,7 +284,7 @@ export default async function CashBookPage({ searchParams }: PageProps<"/kas">) 
                 <input name="note" className="input" placeholder="mis. untuk gaji harian gudang" />
               </Field>
               <SubmitButton className="btn-secondary w-full">Pindahkan saldo</SubmitButton>
-              <p className="text-xs text-muted">Saldo satu akun berkurang dan akun lain bertambah; total saldo perusahaan tetap.</p>
+              <p className="text-xs text-muted">Tarik tunai, setor tunai, atau pindah antar rekening: saldo akun asal berkurang dan akun tujuan bertambah; total saldo tetap.</p>
             </form>
           </Card>
 

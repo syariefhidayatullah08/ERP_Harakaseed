@@ -32,17 +32,19 @@ export async function saveCashEntry(fd: FormData) {
   redirect(withMsg(backTo(date), `${isIn ? "Pemasukan" : "Pengeluaran"} ${rupiah(amount)} dicatat di ${CASH_ACCOUNTS[account]}.`));
 }
 
-/** Pindah saldo antar akun (tarik tunai dari bank / setor tunai ke bank): dua baris berpasangan, total saldo tidak berubah. */
+/** Pindah saldo antar akun (antar rekening, tarik/setor tunai): dua baris berpasangan, total saldo tidak berubah. */
 export async function transferCash(fd: FormData) {
   const user = await requireAccess("kas");
   const date = str(fd, "entry_date");
   const from = toCashAccount(str(fd, "from"));
-  const to = from === "bank" ? "tunai" : "bank";
+  const to = toCashAccount(str(fd, "to"));
   const amount = Math.round(numf(fd, "amount") * 100) / 100;
   const note = str(fd, "note");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) redirect(withMsg("/kas", "Isi tanggal pindah saldo.", "error"));
   if (amount <= 0) redirect(withMsg(backTo(date), "Isi jumlah lebih dari 0.", "error"));
-  const desc = `${from === "bank" ? "Tarik tunai" : "Setor tunai"}: ${CASH_ACCOUNTS[from]} → ${CASH_ACCOUNTS[to]}${note ? ` · ${note}` : ""}`;
+  if (from === to) redirect(withMsg(backTo(date), "Akun asal dan tujuan harus berbeda.", "error"));
+  const kind = to === "tunai" ? "Tarik tunai" : from === "tunai" ? "Setor tunai" : "Pindah antar rekening";
+  const desc = `${kind}: ${CASH_ACCOUNTS[from]} → ${CASH_ACCOUNTS[to]}${note ? ` · ${note}` : ""}`;
   const ref = randomUUID();
   await tx(async () => {
     await run("INSERT INTO cash_entries (entry_date, description, category, amount_out, created_by, account, transfer_ref) VALUES (?,?, 'pindah', ?,?,?,?)", date, desc, amount, user.id, from, ref);
@@ -51,6 +53,30 @@ export async function transferCash(fd: FormData) {
   revalidatePath("/kas");
   await logActivity("kas", "Pindah saldo", `${date} · ${desc} · ${rupiah(amount)}`);
   redirect(withMsg(backTo(date), `${rupiah(amount)} dipindah dari ${CASH_ACCOUNTS[from]} ke ${CASH_ACCOUNTS[to]}.`));
+}
+
+/**
+ * Sesuaikan saldo satu akun dengan saldo sebenarnya (mis. sesuai rekening koran / hitung uang tunai) per tanggal:
+ * selisihnya dicatat sebagai transaksi "Penyesuaian saldo", jadi riwayatnya tetap terlihat dan bisa dihapus.
+ */
+export async function adjustBalance(fd: FormData) {
+  const user = await requireAccess("kas");
+  const date = str(fd, "entry_date");
+  const account = toCashAccount(str(fd, "account"));
+  const target = Math.round(numf(fd, "balance") * 100) / 100;
+  const note = str(fd, "note");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) redirect(withMsg("/kas", "Isi tanggal saldo.", "error"));
+  if (!str(fd, "balance")) redirect(withMsg(backTo(date), "Isi saldo sebenarnya.", "error"));
+  const current = (await get<{ v: number }>("SELECT COALESCE(SUM(amount_in - amount_out), 0) v FROM cash_entries WHERE account = ? AND entry_date <= ?", account, date))!.v;
+  const diff = Math.round((target - current) * 100) / 100;
+  if (!diff) redirect(withMsg(backTo(date), `Saldo ${CASH_ACCOUNTS[account]} per tanggal itu sudah ${rupiah(target)}; tidak ada yang diubah.`));
+  await run(
+    "INSERT INTO cash_entries (entry_date, description, category, amount_in, amount_out, created_by, account) VALUES (?,?, 'penyesuaian', ?,?,?,?)",
+    date, `Penyesuaian saldo ${CASH_ACCOUNTS[account]} menjadi ${rupiah(target)}${note ? ` · ${note}` : ""}`, diff > 0 ? diff : 0, diff < 0 ? -diff : 0, user.id, account,
+  );
+  revalidatePath("/kas");
+  await logActivity("kas", "Menyesuaikan saldo", `${CASH_ACCOUNTS[account]} ${date}: ${rupiah(current)} → ${rupiah(target)}`);
+  redirect(withMsg(backTo(date), `Saldo ${CASH_ACCOUNTS[account]} disesuaikan menjadi ${rupiah(target)} (selisih ${diff > 0 ? "+" : "−"}${rupiah(Math.abs(diff))}).`));
 }
 
 /** Ubah akun satu transaksi (mis. transaksi lama yang sebenarnya tunai). Surat PB ikut menyimpan akunnya. */

@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/buttons";
 import { requireAccess } from "@/lib/session";
 import { deletePb, payPb } from "@/actions/seed-payment";
 import { INTAKE_KIND, PB_STATUS, pbDoc } from "@/lib/seed-payment";
+import { CASH_ACCOUNTS, DEFAULT_ACCOUNT } from "@/lib/cash";
 import { signers } from "@/lib/invoice-doc";
 
 export const metadata: Metadata = { title: "Surat pengajuan PB" };
@@ -113,9 +114,12 @@ export default async function PbPage({ params, searchParams }: PageProps<"/pemba
                   </label>
                   <label className="block">
                     <span className="label">Dibayar dari</span>
-                    <select name="account" defaultValue="bank" className="input">
-                      <option value="bank">Bank</option>
-                      <option value="tunai">Kas tunai</option>
+                    <select name="account" defaultValue={DEFAULT_ACCOUNT} className="input">
+                      {Object.entries(CASH_ACCOUNTS).map(([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <SubmitButton confirm={`Tandai ${pb.number} sudah dibayar ${rupiah(total)}?`}>Tandai sudah dibayar</SubmitButton>
