@@ -1,5 +1,6 @@
 import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import { Pool, types, type PoolClient } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
 import { hashPassword } from "./password";
@@ -120,6 +121,14 @@ export async function setSetting(key: string, value: string) {
 }
 
 async function init() {
+  // Jalur cepat: struktur database sudah sesuai versi kode ini → cukup satu query ringan, tanpa kunci dan tanpa
+  // menjalankan ratusan perintah pengecekan di setiap cold start. Gagal (mis. tabel belum ada) → jalur lengkap.
+  try {
+    const v = await pool().query("SELECT value FROM settings WHERE key = 'schema_version'");
+    if (v.rows[0]?.value === SCHEMA_VERSION) return;
+  } catch {
+    /* database baru */
+  }
   const client = await pool().connect();
   const ex = (sql: string, ...p: Param[]) => client.query(toPg(sql), p);
   try {
@@ -147,6 +156,7 @@ async function init() {
         );
       }
     }
+    await ex("INSERT INTO settings (key, value) VALUES ('schema_version', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", SCHEMA_VERSION);
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK");
@@ -794,7 +804,8 @@ const SCHEMA_SQL = `
     );
     CREATE INDEX IF NOT EXISTS sheet_rows_sheet_rev_idx ON sheet_rows (sheet, rev);
   `;
-
+// Sidik struktur database: berubah setiap SCHEMA_SQL / katalog / daftar harga diubah, sehingga migrasi berjalan lagi sekali.
+const SCHEMA_VERSION = createHash("sha1").update(SCHEMA_SQL + CATALOG_VERSION + PRICELIST_VERSION).digest("hex").slice(0, 16);
 
 async function seed(ex: Ex) {
   await ex(

@@ -26,42 +26,61 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
   })();
 
-  const salesThis = (await get<{ v: number; n: number }>(
-    "SELECT COALESCE(SUM(total),0) v, COUNT(*) n FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ?",
-    monthStart,
-  ))!;
-  const salesLast = (await get<{ v: number }>(
-    "SELECT COALESCE(SUM(total),0) v FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ? AND order_date < ?",
-    lastMonthStart,
-    monthStart,
-  ))!;
-  const receivable = (await get<{ v: number; overdue: number }>(
-    `SELECT COALESCE(SUM(total - paid),0) v,
-            COALESCE(SUM(CASE WHEN due_date < ? THEN total - paid ELSE 0 END),0) overdue
-     FROM sales_orders WHERE invoice_no IS NOT NULL AND status != 'batal' AND paid < total`,
-    t,
-  ))!;
-  const toShip = (await get<{ n: number }>("SELECT COUNT(*) n FROM sales_orders WHERE status = 'dikonfirmasi'"))!.n;
-  const low = await lowStockProducts();
-  const expiring = await all<{ id: number; lot_no: string; name: string; qty_available: number; expiry_date: string }>(
-    `SELECT l.id, l.lot_no, p.name, l.qty_available, l.expiry_date FROM lots l JOIN products p ON p.id = l.product_id
-     WHERE l.qty_available > 0 AND l.expiry_date BETWEEN ? AND ? ORDER BY l.expiry_date`,
-    t,
-    addDays(t, 90),
-  );
-
   const windowStart = (() => {
     const d = new Date(t + "T00:00:00");
     d.setDate(1);
     d.setMonth(d.getMonth() - 11);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
   })();
-  const months = await all<{ m: string; v: number; n: number }>(
-    `SELECT substr(order_date,1,7) m, SUM(total) v, COUNT(*) n FROM sales_orders
-     WHERE status NOT IN ('draft','batal') AND order_date >= ?
-     GROUP BY m`,
-    windowStart,
-  );
+
+  // Semua ringkasan tidak saling bergantung → dijalankan bersamaan, bukan menunggu satu per satu.
+  const [salesThis, salesLast, receivable, toShipRow, low, expiring, months, top, recent, inbox, otpRow] = await Promise.all([
+    get<{ v: number; n: number }>(
+      "SELECT COALESCE(SUM(total),0) v, COUNT(*) n FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ?",
+      monthStart,
+    ).then((r) => r!),
+    get<{ v: number }>(
+      "SELECT COALESCE(SUM(total),0) v FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ? AND order_date < ?",
+      lastMonthStart,
+      monthStart,
+    ).then((r) => r!),
+    get<{ v: number; overdue: number }>(
+      `SELECT COALESCE(SUM(total - paid),0) v,
+              COALESCE(SUM(CASE WHEN due_date < ? THEN total - paid ELSE 0 END),0) overdue
+       FROM sales_orders WHERE invoice_no IS NOT NULL AND status != 'batal' AND paid < total`,
+      t,
+    ).then((r) => r!),
+    get<{ n: number }>("SELECT COUNT(*) n FROM sales_orders WHERE status = 'dikonfirmasi'"),
+    lowStockProducts(),
+    all<{ id: number; lot_no: string; name: string; qty_available: number; expiry_date: string }>(
+      `SELECT l.id, l.lot_no, p.name, l.qty_available, l.expiry_date FROM lots l JOIN products p ON p.id = l.product_id
+       WHERE l.qty_available > 0 AND l.expiry_date BETWEEN ? AND ? ORDER BY l.expiry_date`,
+      t,
+      addDays(t, 90),
+    ),
+    all<{ m: string; v: number; n: number }>(
+      `SELECT substr(order_date,1,7) m, SUM(total) v, COUNT(*) n FROM sales_orders
+       WHERE status NOT IN ('draft','batal') AND order_date >= ?
+       GROUP BY m`,
+      windowStart,
+    ),
+    all<{ name: string; crop: string; v: number }>(
+      `SELECT COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, SUM(i.qty * i.price) v FROM so_items i
+       JOIN sales_orders so ON so.id = i.so_id LEFT JOIN products p ON p.id = i.product_id
+       WHERE so.status NOT IN ('draft','batal') AND so.order_date >= ?
+       GROUP BY 1, 2 ORDER BY v DESC LIMIT 6`,
+      addDays(t, -90),
+    ),
+    all<{ id: number; so_no: string; customer: string; order_date: string; status: string; total: number; paid: number }>(
+      `SELECT so.id, so.so_no, c.name customer, so.order_date, so.status, so.total, so.paid
+       FROM sales_orders so JOIN customers c ON c.id = so.customer_id ORDER BY so.id DESC LIMIT 7`,
+    ),
+    all<{ id: number; from_addr: string; subject: string; created_at: string; is_read: number }>(
+      "SELECT id, from_addr, subject, created_at, is_read FROM emails WHERE direction = 'in' ORDER BY created_at DESC LIMIT 5",
+    ),
+    get<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = ?", user.id),
+  ]);
+  const toShip = toShipRow!.n;
   const chart = Array.from({ length: 12 }, (_, i) => {
     const d = new Date(t + "T00:00:00");
     d.setDate(1);
@@ -75,25 +94,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
     };
   });
 
-  const top = await all<{ name: string; crop: string; v: number }>(
-    `SELECT COALESCE(NULLIF(i.item_name, ''), p.name, '') name, COALESCE(p.crop, '') crop, SUM(i.qty * i.price) v FROM so_items i
-     JOIN sales_orders so ON so.id = i.so_id LEFT JOIN products p ON p.id = i.product_id
-     WHERE so.status NOT IN ('draft','batal') AND so.order_date >= ?
-     GROUP BY 1, 2 ORDER BY v DESC LIMIT 6`,
-    addDays(t, -90),
-  );
-
-  const recent = await all<{ id: number; so_no: string; customer: string; order_date: string; status: string; total: number; paid: number }>(
-    `SELECT so.id, so.so_no, c.name customer, so.order_date, so.status, so.total, so.paid
-     FROM sales_orders so JOIN customers c ON c.id = so.customer_id ORDER BY so.id DESC LIMIT 7`,
-  );
-
-  const inbox = await all<{ id: number; from_addr: string; subject: string; created_at: string; is_read: number }>(
-    "SELECT id, from_addr, subject, created_at, is_read FROM emails WHERE direction = 'in' ORDER BY created_at DESC LIMIT 5",
-  );
-
   const growth = salesLast.v > 0 ? ((salesThis.v - salesLast.v) / salesLast.v) * 100 : null;
-  const otpOff = !(await get<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = ?", user.id))?.totp_secret;
+  const otpOff = !otpRow?.totp_secret;
 
   return (
     <>
@@ -307,68 +309,81 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
 async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?: string; error?: string }) {
   const t = today();
   const has = (m: Parameters<typeof can>[1]) => can(user, m);
-  const count = async (sql: string, ...p: (string | number)[]) => (await get<{ n: number }>(sql, ...p))?.n ?? 0;
-  const cards: { label: string; value: number | string; hint?: string; href: string; tone?: "default" | "warn" | "danger" }[] = [];
+  const count = (sql: string, ...p: (string | number)[]) => get<{ n: number }>(sql, ...p).then((r) => r?.n ?? 0);
+  const none = <T,>(): Promise<T[]> => Promise.resolve([]);
 
+  // Semua query dasbor dijalankan bersamaan (modul yang tidak diakses = kosong tanpa query), bukan satu per satu.
+  const [monthOrders, drafts, toShip, low, expiring, batches, quarantine, complaints, findings, audits, toVerify, po, employees, neverLogin, unreadMail] = await Promise.all([
+    has("penjualan") ? count("SELECT COUNT(*) n FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ?", t.slice(0, 8) + "01") : 0,
+    has("penjualan") ? count("SELECT COUNT(*) n FROM sales_orders WHERE status = 'draft'") : 0,
+    has("pengiriman") || has("penjualan") ? count("SELECT COUNT(*) n FROM sales_orders WHERE status = 'dikonfirmasi'") : 0,
+    has("inventori") ? lowStockProducts() : none<Awaited<ReturnType<typeof lowStockProducts>>[number]>(),
+    has("inventori") || has("qc")
+      ? all<{ id: number; lot_no: string; name: string; qty_available: number; expiry_date: string }>(
+          `SELECT l.id, l.lot_no, p.name, l.qty_available, l.expiry_date FROM lots l JOIN products p ON p.id = l.product_id
+           WHERE l.qty_available > 0 AND l.expiry_date BETWEEN ? AND ? ORDER BY l.expiry_date LIMIT 8`,
+          t,
+          addDays(t, 90),
+        )
+      : none<{ id: number; lot_no: string; name: string; qty_available: number; expiry_date: string }>(),
+    has("produksi") || has("qc")
+      ? all<{ id: number; code: string; name: string; status: string }>(
+          `SELECT pr.id, pr.code, p.name, pr.status FROM productions pr JOIN products p ON p.id = pr.product_id
+           WHERE pr.status IN ('tanam','panen','prosesing','uji_lab') ORDER BY pr.id DESC LIMIT 8`,
+        )
+      : none<{ id: number; code: string; name: string; status: string }>(),
+    has("qc") ? count("SELECT COUNT(*) n FROM lots WHERE qc_status = 'karantina' AND qty_available > 0") : 0,
+    has("keluhan")
+      ? all<{ id: number; code: string; category: string; severity: string; status: string }>(
+          "SELECT id, code, category, severity, status FROM complaints WHERE status <> 'selesai' ORDER BY CASE severity WHEN 'tinggi' THEN 0 WHEN 'sedang' THEN 1 ELSE 2 END, id DESC LIMIT 8",
+        )
+      : none<{ id: number; code: string; category: string; severity: string; status: string }>(),
+    // Temuan audit: Mutu melihat semua, divisi lain hanya yang ditujukan ke divisinya.
+    all<{ id: number; code: string; category: string; status: string; due_date: string | null; description: string }>(
+      `SELECT id, code, category, status, due_date, description FROM findings
+       WHERE status <> 'ditutup' AND (? = 1 OR division = ?) ORDER BY due_date LIMIT 8`,
+      has("mutu") ? 1 : 0,
+      user.role,
+    ),
+    has("mutu") ? count("SELECT COUNT(*) n FROM audits WHERE status = 'rencana' AND start_date >= ?", t) : 0,
+    has("mutu") ? count("SELECT COUNT(*) n FROM findings WHERE status = 'ditanggapi'") : 0,
+    has("pembelian") ? count("SELECT COUNT(*) n FROM purchase_orders WHERE status = 'dipesan'") : 0,
+    has("sdm") ? count("SELECT COUNT(*) n FROM employees WHERE status = 'aktif'") : 0,
+    has("pengguna") ? count("SELECT COUNT(*) n FROM users WHERE active = 1 AND last_login IS NULL") : 0,
+    has("email") ? count("SELECT COUNT(*) n FROM emails WHERE direction = 'in' AND is_read = 0") : 0,
+  ]);
+
+  const cards: { label: string; value: number | string; hint?: string; href: string; tone?: "default" | "warn" | "danger" }[] = [];
   if (has("penjualan")) {
-    cards.push({ label: "Pesanan bulan ini", value: await count("SELECT COUNT(*) n FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ?", t.slice(0, 8) + "01"), href: "/penjualan" });
-    cards.push({ label: "Draft belum dikonfirmasi", value: await count("SELECT COUNT(*) n FROM sales_orders WHERE status = 'draft'"), href: "/penjualan?status=draft" });
+    cards.push({ label: "Pesanan bulan ini", value: monthOrders, href: "/penjualan" });
+    cards.push({ label: "Draft belum dikonfirmasi", value: drafts, href: "/penjualan?status=draft" });
   }
   if (has("pengiriman") || has("penjualan")) {
-    const toShip = await count("SELECT COUNT(*) n FROM sales_orders WHERE status = 'dikonfirmasi'");
     cards.push({ label: "Perlu dikirim", value: toShip, href: has("pengiriman") ? "/pengiriman" : "/penjualan?status=dikonfirmasi", tone: toShip ? "warn" : "default" });
   }
-  const low = has("inventori") ? await lowStockProducts() : [];
-  const expiring = has("inventori") || has("qc")
-    ? await all<{ id: number; lot_no: string; name: string; qty_available: number; expiry_date: string }>(
-        `SELECT l.id, l.lot_no, p.name, l.qty_available, l.expiry_date FROM lots l JOIN products p ON p.id = l.product_id
-         WHERE l.qty_available > 0 AND l.expiry_date BETWEEN ? AND ? ORDER BY l.expiry_date LIMIT 8`,
-        t,
-        addDays(t, 90),
-      )
-    : [];
   if (has("inventori")) {
     cards.push({ label: "Stok di bawah minimum", value: low.length, href: "/inventori", tone: low.length ? "danger" : "default" });
     cards.push({ label: "Lot kadaluarsa ≤ 90 hari", value: expiring.length, href: "/inventori", tone: expiring.length ? "warn" : "default" });
   }
-  const batches = has("produksi") || has("qc")
-    ? await all<{ id: number; code: string; name: string; status: string }>(
-        `SELECT pr.id, pr.code, p.name, pr.status FROM productions pr JOIN products p ON p.id = pr.product_id
-         WHERE pr.status IN ('tanam','panen','prosesing','uji_lab') ORDER BY pr.id DESC LIMIT 8`,
-      )
-    : [];
   if (has("produksi")) cards.push({ label: "Batch produksi berjalan", value: batches.length, href: "/produksi" });
   if (has("qc")) {
     const queue = batches.filter((b) => b.status === "uji_lab").length;
     cards.push({ label: "Menunggu uji lab", value: queue, href: "/qc", tone: queue ? "warn" : "default" });
-    const quarantine = await count("SELECT COUNT(*) n FROM lots WHERE qc_status = 'karantina' AND qty_available > 0");
     cards.push({ label: "Lot dikarantina", value: quarantine, href: "/qc?tab=lot", tone: quarantine ? "danger" : "default" });
   }
-  const complaints = has("keluhan")
-    ? await all<{ id: number; code: string; category: string; severity: string; status: string }>(
-        "SELECT id, code, category, severity, status FROM complaints WHERE status <> 'selesai' ORDER BY CASE severity WHEN 'tinggi' THEN 0 WHEN 'sedang' THEN 1 ELSE 2 END, id DESC LIMIT 8",
-      )
-    : [];
-  // Temuan audit: Mutu melihat semua, divisi lain hanya yang ditujukan ke divisinya.
-  const findings = await all<{ id: number; code: string; category: string; status: string; due_date: string | null; description: string }>(
-    `SELECT id, code, category, status, due_date, description FROM findings
-     WHERE status <> 'ditutup' AND (? = 1 OR division = ?) ORDER BY due_date LIMIT 8`,
-    has("mutu") ? 1 : 0,
-    user.role,
-  );
   if (has("mutu")) {
-    cards.push({ label: "Audit terjadwal", value: await count("SELECT COUNT(*) n FROM audits WHERE status = 'rencana' AND start_date >= ?", t), href: "/mutu" });
-    cards.push({ label: "Temuan menunggu verifikasi", value: await count("SELECT COUNT(*) n FROM findings WHERE status = 'ditanggapi'"), href: "/mutu?tab=temuan" });
+    cards.push({ label: "Audit terjadwal", value: audits, href: "/mutu" });
+    cards.push({ label: "Temuan menunggu verifikasi", value: toVerify, href: "/mutu?tab=temuan" });
   }
   if (findings.length) {
     const late = findings.filter((f) => f.due_date && f.due_date < t).length;
     cards.push({ label: has("mutu") ? "Temuan terbuka" : "Temuan audit untuk divisi Anda", value: findings.length, hint: late ? `${late} lewat tenggat` : undefined, href: "/temuan", tone: late ? "danger" : "warn" });
   }
   if (has("keluhan")) cards.push({ label: "Keluhan pelanggan terbuka", value: complaints.length, href: "/keluhan", tone: complaints.some((c) => c.severity === "tinggi") ? "danger" : complaints.length ? "warn" : "default" });
-  if (has("pembelian")) cards.push({ label: "PO menunggu barang", value: await count("SELECT COUNT(*) n FROM purchase_orders WHERE status = 'dipesan'"), href: "/pembelian" });
-  if (has("sdm")) cards.push({ label: "Karyawan aktif", value: await count("SELECT COUNT(*) n FROM employees WHERE status = 'aktif'"), href: "/sdm" });
-  if (has("pengguna")) cards.push({ label: "Akun belum pernah login", value: await count("SELECT COUNT(*) n FROM users WHERE active = 1 AND last_login IS NULL"), href: "/pengguna" });
-  if (has("email")) cards.push({ label: "Email belum dibaca", value: await count("SELECT COUNT(*) n FROM emails WHERE direction = 'in' AND is_read = 0"), href: "/email" });
+  if (has("pembelian")) cards.push({ label: "PO menunggu barang", value: po, href: "/pembelian" });
+  if (has("sdm")) cards.push({ label: "Karyawan aktif", value: employees, href: "/sdm" });
+  if (has("pengguna")) cards.push({ label: "Akun belum pernah login", value: neverLogin, href: "/pengguna" });
+  if (has("email")) cards.push({ label: "Email belum dibaca", value: unreadMail, href: "/email" });
 
   return (
     <>
