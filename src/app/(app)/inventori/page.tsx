@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 export default async function InventoryIndex({ searchParams }: PageProps<"/inventori">) {
   const sp = await searchParams;
   const q = new URLSearchParams(Object.entries(sp).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => [k, x]) : v === undefined ? [] : [[k, v]])));
-  // Tautan lama ke buku induk (?jenis=…) diteruskan ke sub-menunya.
+  // Tautan lama ke buku induk: internal → sub-menu Buku Induk Benih, eksternal → Pembayaran Benih.
+  if (q.get("jenis") === "eksternal") redirect(`/pembayaran-benih?${q}`);
   redirect(`/inventori/${q.has("jenis") ? "buku-induk" : "varietas"}${q.size ? `?${q}` : ""}`);
 }

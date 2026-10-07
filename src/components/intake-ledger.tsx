@@ -203,10 +203,11 @@ const PAGE_SIZE = 200;
 /**
  * Buku induk lengkap dengan tab Internal/Eksternal, saringan tahun/status/cari, dan halaman. Parameter URL:
  * jenis, tahun ("semua" = semua tahun; kosong = tahun terbaru), status, cari, hal. `keep` = parameter halaman induk yang dipertahankan.
+ * `only`: tampilkan satu jenis saja tanpa tab (mis. Gudang & Lot hanya INTERNAL, benih produksi sendiri).
  */
-export async function IntakeLedgerPanel({ path, sp, keep = {}, action }: { path: string; sp: Sp; keep?: Record<string, string>; action?: (r: LedgerRow) => ReactNode }) {
+export async function IntakeLedgerPanel({ path, sp, keep = {}, action, only }: { path: string; sp: Sp; keep?: Record<string, string>; action?: (r: LedgerRow) => ReactNode; only?: "internal" | "eksternal" }) {
   const one = (k: string) => String((Array.isArray(sp[k]) ? sp[k]?.[0] : sp[k]) ?? "").trim();
-  const kind = one("jenis") === "eksternal" ? "eksternal" : "internal";
+  const kind = only ?? (one("jenis") === "eksternal" ? "eksternal" : "internal");
   const years = await ledgerYears(kind);
   const cari = one("cari");
   const tahunParam = one("tahun");
@@ -227,7 +228,7 @@ export async function IntakeLedgerPanel({ path, sp, keep = {}, action }: { path:
     <div id="buku-induk" className="scroll-mt-6">
       <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
         <div className="mr-2 flex gap-1">
-          {(["internal", "eksternal"] as const).map((k) => (
+          {(only ? [only] : (["internal", "eksternal"] as const)).map((k) => (
             <Link
               key={k}
               href={href({ jenis: k, tahun: "", hal: "" })}

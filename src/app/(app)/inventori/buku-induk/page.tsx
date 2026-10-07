@@ -6,7 +6,10 @@ import { IntakeLedgerPanel } from "@/components/intake-ledger";
 
 export const metadata: Metadata = { title: "Buku Induk Benih" };
 
-/** Gudang & Lot → Buku Induk Benih: rekap benih panen yang masuk gudang, kolomnya sama dengan sheet INTERNAL / EKSTERNAL. */
+/**
+ * Gudang & Lot → Buku Induk Benih: rekap benih panen produksi sendiri (INTERNAL) yang masuk gudang, kolomnya sama
+ * dengan sheet INTERNAL. Benih eksternal (kontrak perusahaan lain) dilihat di Pembayaran Benih.
+ */
 export default async function SeedLedgerPage({ searchParams }: PageProps<"/inventori/buku-induk">) {
   await requireAccess("inventori");
   const sp = await searchParams;
@@ -14,7 +17,7 @@ export default async function SeedLedgerPage({ searchParams }: PageProps<"/inven
     <>
       <PageHeader
         title="Buku Induk Benih"
-        subtitle="Rekap benih panen yang masuk gudang dari petani (internal & eksternal), seperti buku induk spreadsheet"
+        subtitle="Rekap benih panen produksi sendiri (INTERNAL) yang masuk gudang, seperti sheet INTERNAL buku induk. Benih eksternal ada di Pembayaran Benih."
         actions={
           <Link href="/pembayaran-benih/baru" className="btn-accent">
             + Benih masuk
@@ -22,7 +25,7 @@ export default async function SeedLedgerPage({ searchParams }: PageProps<"/inven
         }
       />
       <Card className="overflow-hidden">
-        <IntakeLedgerPanel path="/inventori/buku-induk" sp={sp} />
+        <IntakeLedgerPanel path="/inventori/buku-induk" sp={sp} only="internal" />
       </Card>
     </>
   );
