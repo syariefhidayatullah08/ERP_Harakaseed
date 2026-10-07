@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { divisionLabel, hasAny, moduleForPath, type Module } from "@/lib/access";
+import { LiveClock } from "@/components/live-clock";
 import { useState, useSyncExternalStore } from "react";
 import {
   LayoutDashboard,
@@ -228,9 +229,12 @@ export function Sidebar({
           </span>{" "}
           HARAKA SEED
         </div>
-        <button onClick={() => setOpen(!open)} className="text-white" aria-label="Menu">
-          {open ? <X /> : <Menu />}
-        </button>
+        <div className="flex items-center gap-3">
+          <LiveClock compact />
+          <button onClick={() => setOpen(!open)} className="text-white" aria-label="Menu">
+            {open ? <X /> : <Menu />}
+          </button>
+        </div>
       </div>
       {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />}
       <aside
@@ -250,6 +254,9 @@ export function Sidebar({
             <div className="text-[11px] text-brand-200">Enterprise Resource Planning</div>
           </div>
         </Link>
+        <div className="relative z-10">
+          <LiveClock />
+        </div>
         <nav className="sidebar-scroll relative z-10 flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {link(HOME)}
           {groups.map((g) => {
