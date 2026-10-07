@@ -9,7 +9,7 @@ import { logActivity } from "@/lib/activity";
 import { allocateFefo, releaseAllocations } from "@/lib/inventory";
 import { orderPdfAttachment, type PdfDoc } from "@/lib/invoice-pdf";
 import { nextInvoiceNumber } from "@/lib/invoice-doc";
-import { salesCashCategory } from "@/lib/cash";
+import { accountForMethod, salesCashCategory } from "@/lib/cash";
 import { deductBulkySale, setBulkMoves } from "@/lib/bulk-stock";
 import { del } from "@vercel/blob";
 import { addDays, rupiah, today } from "@/lib/format";
@@ -358,22 +358,24 @@ export async function recordPayment(fd: FormData) {
 
   const payDate = str(fd, "pay_date") || today();
   await tx(async () => {
+    const method = str(fd, "method") || "Transfer";
     const paymentId = await insert(
       "INSERT INTO payments (so_id, pay_date, amount, method, note) VALUES (?,?,?,?,?)",
       id,
       payDate,
       amount,
-      str(fd, "method") || "Transfer",
+      method,
       str(fd, "note"),
     );
-    // Uang masuk dari penjualan langsung tercatat di Buku Kas.
+    // Uang masuk dari penjualan langsung tercatat di Buku Kas: tunai ke kas tunai, selain itu ke rekening bank.
     await run(
-      "INSERT INTO cash_entries (entry_date, description, category, amount_in, payment_id) VALUES (?,?,?,?,?)",
+      "INSERT INTO cash_entries (entry_date, description, category, amount_in, payment_id, account) VALUES (?,?,?,?,?,?)",
       payDate,
       `Pembayaran ${toChannel(so.channel) === "label" ? "Label" : toChannel(so.channel) === "kerjasama" ? "Benih Kerjasama Produksi" : `Benih ${CHANNELS[toChannel(so.channel)].label}`} ${so.customer} (${so.invoice_no ?? so.so_no})`,
       salesCashCategory(toChannel(so.channel), so.customer),
       amount,
       paymentId,
+      accountForMethod(method),
     );
     await run("UPDATE sales_orders SET paid = paid + ? WHERE id = ?", amount, id);
     await run("UPDATE sales_orders SET status = 'selesai' WHERE id = ? AND status = 'dikirim' AND paid >= total", id);

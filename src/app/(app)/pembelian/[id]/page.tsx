@@ -118,6 +118,13 @@ export default async function PODetail({ params, searchParams }: PageProps<"/pem
                   <Field label="Tanggal dibayar">
                     <input name="paid_at" type="date" defaultValue={today()} className="input" />
                   </Field>
+                  <label className="block">
+                    <span className="label">Dibayar dari</span>
+                    <select name="account" defaultValue="bank" className="input">
+                      <option value="bank">Bank</option>
+                      <option value="tunai">Kas tunai</option>
+                    </select>
+                  </label>
                   <SubmitButton className="btn-primary w-full" confirm={`Tandai ${po.po_no} dibayar ${rupiah(po.total)}? Otomatis masuk Buku Kas.`}>
                     Tandai dibayar
                   </SubmitButton>

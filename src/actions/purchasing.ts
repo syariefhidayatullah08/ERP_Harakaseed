@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { all, get, insert, nextNumber, run, tx } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { toCashAccount } from "@/lib/cash";
 import { logActivity } from "@/lib/activity";
 import { purchaseOrderEmail, sendEmail } from "@/lib/email";
 import { rupiah, today } from "@/lib/format";
@@ -104,8 +105,8 @@ export async function setPOPaid(fd: FormData) {
   await tx(async () => {
     await run("UPDATE purchase_orders SET paid_at = ? WHERE id = ?", paidAt, id);
     await run(
-      "INSERT INTO cash_entries (entry_date, description, category, amount_out, po_id) VALUES (?,?,?,?,?)",
-      paidAt, `Pembelian ${po.supplier} (${po.po_no})`, /benih/i.test(po.category) ? "pe" : "add", po.total, id,
+      "INSERT INTO cash_entries (entry_date, description, category, amount_out, po_id, account) VALUES (?,?,?,?,?,?)",
+      paidAt, `Pembelian ${po.supplier} (${po.po_no})`, /benih/i.test(po.category) ? "pe" : "add", po.total, id, toCashAccount(str(fd, "account")),
     );
   });
   revalidatePath("/pembelian");

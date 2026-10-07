@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { all, get, insert, run, tx } from "@/lib/db";
 import { requireAccess } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
+import { toCashAccount } from "@/lib/cash";
 import { logActivity } from "@/lib/activity";
 import { addDays, rupiah, today } from "@/lib/format";
 import { INTAKE_KIND, INTAKE_STATUS, nextPbNumber, settle, syncPbCash } from "@/lib/seed-payment";
@@ -138,7 +139,7 @@ export async function payPb(fd: FormData) {
   if (pb.status === "dibayar") redirect(withMsg(`${BASE}/pb/${id}`, "Surat ini sudah ditandai dibayar."));
   const paidAt = date(fd, "paid_at") ?? today();
   await tx(async () => {
-    await run("UPDATE seed_pb SET status = 'dibayar', paid_at = ? WHERE id = ?", paidAt, id);
+    await run("UPDATE seed_pb SET status = 'dibayar', paid_at = ?, pay_account = ? WHERE id = ?", paidAt, toCashAccount(str(fd, "account")), id);
     await run("UPDATE seed_intakes SET status = 'lunas' WHERE pb_id = ? AND status = 'diajukan'", id);
     await syncPbCash(id); // pengeluaran otomatis tercatat di Buku Kas
   });

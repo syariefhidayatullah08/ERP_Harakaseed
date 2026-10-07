@@ -13,10 +13,17 @@ export const CASH_CATEGORIES: Record<string, { label: string; code: string }> = 
   pinjaman: { label: "Pinjaman petani", code: "8" },
   gaji_gudang: { label: "Gaji gudang", code: "9" },
   pe: { label: "Pembelian benih eksternal", code: "10" },
+  pindah: { label: "Pindah saldo bank ↔ kas tunai", code: "" },
   lain: { label: "Biaya tetap & lainnya (gaji, BPJS, angsuran, pajak)", code: "" },
 };
 
 export const isCashCategory = (v: string) => v in CASH_CATEGORIES;
+
+/** Akun kas: rekening bank perusahaan dan uang tunai di kantor. */
+export const CASH_ACCOUNTS: Record<string, string> = { bank: "Bank", tunai: "Kas tunai" };
+export const toCashAccount = (v: unknown) => (v === "tunai" ? "tunai" : "bank");
+/** Pembayaran pesanan: tunai masuk kas tunai, selain itu (transfer, giro, QRIS) masuk rekening bank. */
+export const accountForMethod = (method: string) => (/tunai|cash/i.test(method) ? "tunai" : "bank");
 export const cashCategoryLabel = (v: string) => CASH_CATEGORIES[v]?.label ?? v;
 
 /**
@@ -30,4 +37,4 @@ export function salesCashCategory(channel: string, customer: string) {
   return channel === "kemasan" ? "in_kemasan" : "in_bulky";
 }
 
-export type CashEntry = { id: number; entry_date: string; description: string; category: string; amount_in: number; amount_out: number; so_id: number | null; pb_id: number | null; po_id: number | null };
+export type CashEntry = { id: number; entry_date: string; description: string; category: string; amount_in: number; amount_out: number; account: string; transfer_ref: string | null; so_id: number | null; pb_id: number | null; po_id: number | null };

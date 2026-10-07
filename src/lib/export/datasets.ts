@@ -7,7 +7,7 @@ import { CUSTOMER_KIND, PO_STATUS, PRD_STATUS, SO_STATUS } from "../format";
 import { ACTIVITY_MODULES } from "../activity";
 import { INTAKE_KIND, INTAKE_STATUS, PB_STATUS } from "../seed-payment";
 import { CHANNELS, toChannel } from "../sales-channel";
-import { cashCategoryLabel } from "../cash";
+import { CASH_ACCOUNTS, cashCategoryLabel } from "../cash";
 import {
   complaintLines,
   findingLines,
@@ -324,6 +324,7 @@ export const DATASETS: Record<string, Dataset> = {
       { key: "entry_date", label: "Tanggal", type: "date" },
       { key: "description", label: "Keterangan", width: 44 },
       { key: "category", label: "Kategori", width: 34 },
+      { key: "account", label: "Akun", width: 12 },
       { key: "amount_in", label: "Pemasukan", type: "money" },
       { key: "amount_out", label: "Pengeluaran", type: "money" },
       { key: "balance", label: "Saldo", type: "money" },
@@ -332,13 +333,13 @@ export const DATASETS: Record<string, Dataset> = {
       mapRows(
         // Saldo berjalan dihitung dari seluruh riwayat, jadi tetap benar walau yang diunduh hanya satu periode.
         await all<Row & { category: string }>(
-          `SELECT * FROM (SELECT entry_date, id, description, category, amount_in, amount_out,
+          `SELECT * FROM (SELECT entry_date, id, description, category, account, amount_in, amount_out,
                     SUM(amount_in - amount_out) OVER (ORDER BY entry_date, id) AS balance FROM cash_entries) t
            WHERE entry_date >= ? AND entry_date <= ? ORDER BY entry_date, id`,
           r.from,
           r.to,
         ),
-        (x) => ({ ...x, category: cashCategoryLabel(x.category) }),
+        (x) => ({ ...x, category: cashCategoryLabel(x.category), account: CASH_ACCOUNTS[String(x.account)] ?? x.account }),
       ),
   },
   pengambilan: {

@@ -767,6 +767,12 @@ const SCHEMA_SQL = `
     ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS sheet_max_pb TEXT;
     ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS sheet_max_invoice TEXT;
     ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS sheet_bill DOUBLE PRECISION;
+
+    -- Buku Kas per akun: rekening bank atau kas tunai (transaksi lama dianggap lewat bank). Pindah saldo antar akun
+    -- dicatat dua baris berpasangan dengan transfer_ref yang sama. Surat PB menyimpan akun pembayarannya.
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS account TEXT NOT NULL DEFAULT 'bank';
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS transfer_ref TEXT;
+    ALTER TABLE seed_pb ADD COLUMN IF NOT EXISTS pay_account TEXT NOT NULL DEFAULT 'bank';
   `;
 
 

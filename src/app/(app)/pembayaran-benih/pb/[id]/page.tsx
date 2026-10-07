@@ -111,6 +111,13 @@ export default async function PbPage({ params, searchParams }: PageProps<"/pemba
                     <span className="label">Tanggal dibayar</span>
                     <input name="paid_at" type="date" defaultValue={today()} className="input" />
                   </label>
+                  <label className="block">
+                    <span className="label">Dibayar dari</span>
+                    <select name="account" defaultValue="bank" className="input">
+                      <option value="bank">Bank</option>
+                      <option value="tunai">Kas tunai</option>
+                    </select>
+                  </label>
                   <SubmitButton confirm={`Tandai ${pb.number} sudah dibayar ${rupiah(total)}?`}>Tandai sudah dibayar</SubmitButton>
                 </form>
               ) : (
