@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Sprout,
   Boxes,
+  BookOpen,
   Tractor,
   Users,
   ShoppingCart,
@@ -75,6 +76,8 @@ const GROUPS: NavGroup[] = [
     title: "Gudang & Produksi",
     items: [
       { href: "/inventori", label: "Gudang & Lot", icon: Boxes },
+      { href: "/inventori/varietas", label: "Stok Varietas", icon: Package, sub: true },
+      { href: "/inventori/buku-induk", label: "Buku Induk Benih", icon: BookOpen, sub: true },
       { href: "/stok-bahan", label: "Stok Bahan Baku", icon: Warehouse },
       { href: "/produksi", label: "Produksi Benih", icon: Tractor },
       { href: "/pengambilan", label: "Pengambilan Benih", icon: Camera },

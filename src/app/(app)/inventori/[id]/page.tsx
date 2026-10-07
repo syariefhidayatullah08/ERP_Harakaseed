@@ -44,7 +44,7 @@ export default async function LotDetail({ params, searchParams }: PageProps<"/in
       <PageHeader
         title={<span className="font-mono">{lot.lot_no}</span>}
         subtitle={`${lot.name} · ${lot.crop} · ${lot.pack_size}`}
-        back={{ href: "/inventori", label: "Inventori" }}
+        back={{ href: "/inventori/varietas", label: "Stok Varietas" }}
       />
       <Flash msg={sp.msg as string} error={sp.error as string} />
       <div className="grid gap-5 lg:grid-cols-3">
