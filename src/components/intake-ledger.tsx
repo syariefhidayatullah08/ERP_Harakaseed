@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 import { addDays, rupiah, today } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import { INTAKE_STATUS, intakeLedger, ledgerYears, type LedgerRow } from "@/lib/seed-payment";
+import { setIntakeStatus } from "@/actions/seed-payment";
+
+const EDITABLE_STATUS = ["lunas", "proses_uji", "kredit_macet"];
 
 // Tabel buku induk benih masuk dengan kolom & urutan persis seperti sheet INTERNAL / EKSTERNAL di
 // "BUKU INDUK PEMBAYARAN BENIH PT BENIH HARAKA SEJAHTERA". Dipakai di Gudang & Lot dan Pembayaran Benih.
@@ -34,7 +37,8 @@ function invoiceBill(r: LedgerRow) {
   return w && r.contract_price ? rupiah(Math.round(w * r.contract_price)) : "";
 }
 
-function columns(kind: "internal" | "eksternal"): Col[] {
+/** `back`: alamat halaman ini; bila diisi, status bisa diubah langsung dari tabel. */
+function columns(kind: "internal" | "eksternal", back?: string): Col[] {
   const sortir = (r: LedgerRow) => {
     const s = splitNotes(r.notes).sortir;
     return [r.deduction ? rupiah(r.deduction) : "", s].filter(Boolean).join(" · ");
@@ -42,6 +46,23 @@ function columns(kind: "internal" | "eksternal"): Col[] {
   const status = (r: LedgerRow) => (
     <>
       <Badge tone={INTAKE_STATUS[r.status]?.tone}>{INTAKE_STATUS[r.status]?.label ?? r.status}</Badge>
+      {back && (
+        <details className="mt-0.5">
+          <summary className="cursor-pointer text-[11px] text-brand-700">Ubah</summary>
+          <form action={setIntakeStatus} className="mt-1 flex gap-1">
+            <input type="hidden" name="id" value={r.id} />
+            <input type="hidden" name="back" value={back} />
+            <select name="status" defaultValue={EDITABLE_STATUS.includes(r.status) ? r.status : "proses_uji"} className="input py-0.5 text-xs" aria-label="Status benih">
+              {EDITABLE_STATUS.map((s) => (
+                <option key={s} value={s}>
+                  {INTAKE_STATUS[s].label}
+                </option>
+              ))}
+            </select>
+            <button className="btn-secondary btn-sm">OK</button>
+          </form>
+        </details>
+      )}
       {r.pb_no && <div className="mt-0.5 text-[11px] text-muted">{r.pb_no}</div>}
       {r.sold_no && (
         <div className="mt-0.5 text-[11px]">
@@ -122,8 +143,8 @@ function columns(kind: "internal" | "eksternal"): Col[] {
 }
 
 /** Tabel buku induk satu jenis. `action`: kolom tambahan paling kanan (mis. tombol hapus) bila diperlukan. */
-export function IntakeLedger({ kind, rows, action }: { kind: "internal" | "eksternal"; rows: LedgerRow[]; action?: (r: LedgerRow) => ReactNode }) {
-  const cols = columns(kind);
+export function IntakeLedger({ kind, rows, action, back }: { kind: "internal" | "eksternal"; rows: LedgerRow[]; action?: (r: LedgerRow) => ReactNode; back?: string }) {
+  const cols = columns(kind, back);
   const span = cols.length + 1 + (action ? 1 : 0);
   // Header dua baris: kolom bergrup (Hasil Pengujian, Keterangan Status) seperti di sheet.
   const top: { label: string; span: number; group: boolean }[] = [];
@@ -264,7 +285,7 @@ export async function IntakeLedgerPanel({ path, sp, keep = {}, action, only }: {
           <button className="btn-secondary btn-sm">Saring</button>
         </form>
       </div>
-      {rows.length ? <IntakeLedger kind={kind} rows={rows} action={action} /> : <p className="p-6 text-center text-sm text-muted">Belum ada data benih masuk yang cocok.</p>}
+      {rows.length ? <IntakeLedger kind={kind} rows={rows} action={action} back={href({ hal: page > 1 ? String(page) : "" })} /> : <p className="p-6 text-center text-sm text-muted">Belum ada data benih masuk yang cocok.</p>}
       <div className="flex items-center justify-between border-t border-line px-4 py-2 text-xs text-muted">
         <span>
           {new Intl.NumberFormat("id-ID").format(total)} baris {kind}

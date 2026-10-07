@@ -166,3 +166,27 @@ export async function deletePb(fd: FormData) {
   await logActivity("pembayaran_benih", "Menghapus surat pengajuan PB", pb.number);
   redirect(withMsg(`${BASE}?tab=pb`, `Surat ${pb.number} dihapus; barisnya kembali belum diajukan.`));
 }
+
+/** Status yang bisa dipilih langsung dari tabel buku induk. */
+const EDITABLE_STATUS = ["lunas", "proses_uji", "kredit_macet"];
+
+/** Ubah status benih dari tabel buku induk (Gudang & Lot atau Pembayaran Benih), lalu kembali ke halaman yang sama. */
+export async function setIntakeStatus(fd: FormData) {
+  await requireAccess(["pembayaran_benih", "inventori"]);
+  const id = numf(fd, "id");
+  const status = str(fd, "status");
+  const backRaw = str(fd, "back");
+  // Hanya kembali ke halaman buku induk sendiri (bukan alamat luar).
+  const back = /^\/(inventori\/buku-induk|pembayaran-benih)(\?|#|$)/.test(backRaw) ? backRaw : BASE;
+  const row = await get<{ farmer: string; production_code: string; status: string }>("SELECT farmer, production_code, status FROM seed_intakes WHERE id = ?", id);
+  const [path, hash = ""] = back.split("#");
+  const go = (msg: string, kind?: "error") => redirect(withMsg(path, msg, kind) + (hash ? `#${hash}` : ""));
+  if (!row) go("Data benih tidak ditemukan.", "error");
+  if (!EDITABLE_STATUS.includes(status)) go("Pilih status Lunas, Proses uji, atau Kredit macet.", "error");
+  if (row!.status === status) go(`Status ${row!.farmer} sudah ${INTAKE_STATUS[status].label}.`);
+  await run("UPDATE seed_intakes SET status = ? WHERE id = ?", status, id);
+  revalidatePath(BASE);
+  revalidatePath("/inventori/buku-induk");
+  await logActivity("pembayaran_benih", "Mengubah status benih", `${row!.farmer} · ${row!.production_code || "tanpa kode"}: ${INTAKE_STATUS[row!.status]?.label ?? row!.status} → ${INTAKE_STATUS[status].label}`);
+  go(`Status ${row!.farmer} (${row!.production_code || "tanpa kode"}) diubah menjadi ${INTAKE_STATUS[status].label}.`);
+}

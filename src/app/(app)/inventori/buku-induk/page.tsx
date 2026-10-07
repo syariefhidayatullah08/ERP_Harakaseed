@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, Flash, PageHeader } from "@/components/ui";
 import { requireAccess } from "@/lib/session";
 import { IntakeLedgerPanel } from "@/components/intake-ledger";
 
@@ -24,6 +24,7 @@ export default async function SeedLedgerPage({ searchParams }: PageProps<"/inven
           </Link>
         }
       />
+      <Flash msg={sp.msg as string} error={sp.error as string} />
       <Card className="overflow-hidden">
         <IntakeLedgerPanel path="/inventori/buku-induk" sp={sp} only="internal" />
       </Card>
