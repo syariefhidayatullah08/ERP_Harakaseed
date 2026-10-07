@@ -24,8 +24,12 @@ function splitNotes(notes: string) {
 
 type Col = { label: string; group?: string; num?: boolean; cell: (r: LedgerRow) => ReactNode };
 
-/** Tagihan invoice ke perusahaan = bobot bersih fix × harga kontrak; bobot fix kosong/0 → bobot terkirim (seperti sheet). */
+/**
+ * Tagihan invoice ke perusahaan: angka dari sheet bila baris hasil impor; selain itu bobot bersih fix × harga kontrak
+ * (bobot fix kosong/0 → bobot terkirim).
+ */
 function invoiceBill(r: LedgerRow) {
+  if (r.sheet_year !== null) return r.sheet_bill ? rupiah(r.sheet_bill) : "";
   const w = r.fix_kg ? r.fix_kg : r.shipped_kg;
   return w && r.contract_price ? rupiah(Math.round(w * r.contract_price)) : "";
 }
@@ -54,8 +58,11 @@ function columns(kind: "internal" | "eksternal"): Col[] {
       {r.farmer}
     </Link>
   );
-  // Tgl maks pengajuan PB = sehari sebelum jatuh tempo; tgl maks pengiriman invoice (eksternal) = 5 hari sebelumnya.
-  const maxPb = (r: LedgerRow) => (r.due_date ? ddmmyyyy(addDays(r.due_date, -1)) : "");
+  // Tanggal dari sheet untuk baris hasil impor; baris baru: maks pengajuan PB = sehari sebelum jatuh tempo,
+  // maks pengiriman invoice (eksternal) = 5 hari sebelumnya.
+  const before = (r: LedgerRow, sheet: string | null, days: number) =>
+    r.sheet_year !== null ? ddmmyyyy(sheet) : r.due_date ? ddmmyyyy(addDays(r.due_date, -days)) : "";
+  const maxPb = (r: LedgerRow) => before(r, r.sheet_max_pb, 1);
   const tests: Col[] = [
     { label: "KA", group: "Hasil Pengujian (%)", cell: (r) => r.test_ka },
     { label: "KM", group: "Hasil Pengujian (%)", cell: (r) => r.test_km },
@@ -91,7 +98,7 @@ function columns(kind: "internal" | "eksternal"): Col[] {
     { label: "Perusahaan", cell: (r) => r.company },
     { label: "Tgl Benih Masuk", cell: (r) => ddmmyyyy(r.received_date) },
     { label: "Tgl Jatuh Tempo", cell: (r) => ddmmyyyy(r.due_date) },
-    { label: "Tgl Maks Pengiriman Invoice", cell: (r) => (r.due_date ? ddmmyyyy(addDays(r.due_date, -5)) : "") },
+    { label: "Tgl Maks Pengiriman Invoice", cell: (r) => before(r, r.sheet_max_invoice, 5) },
     { label: "Tgl Maks Pengajuan PB", cell: maxPb },
     { label: "Nama Petani", cell: farmer },
     { label: "Lokasi Lahan", cell: (r) => r.location },
@@ -125,7 +132,7 @@ export function IntakeLedger({ kind, rows, action }: { kind: "internal" | "ekste
     if (c.group && last?.group && last.label === c.group) last.span++;
     else top.push({ label: c.group ?? c.label, span: 1, group: !!c.group });
   }
-  const yearOf = (r?: LedgerRow) => r?.received_date?.slice(0, 4) ?? "Tanpa tanggal";
+  const yearOf = (r?: LedgerRow) => r?.section || "Tanpa tanggal";
   return (
     <div className="overflow-x-auto">
       <table className="table whitespace-nowrap text-xs [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2">
@@ -161,7 +168,7 @@ export function IntakeLedger({ kind, rows, action }: { kind: "internal" | "ekste
           {rows.flatMap((r, i) => {
             const y = yearOf(r);
             const out: ReactNode[] = [];
-            // Baris pemisah "TAHUN 2025" seperti di sheet, setiap kali tahun benih masuk berganti.
+            // Baris pemisah "TAHUN 2025" seperti di sheet, setiap kali bagian tahun berganti.
             if (i === 0 || y !== yearOf(rows[i - 1])) {
               out.push(
                 <tr key={`y-${y}-${r.id}`} className="bg-canvas">

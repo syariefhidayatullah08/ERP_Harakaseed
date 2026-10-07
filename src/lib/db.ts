@@ -761,6 +761,12 @@ const SCHEMA_SQL = `
     -- Baris kerjasama yang diambil dari buku induk benih masuk; satu benih masuk hanya bisa dijual sekali.
     ALTER TABLE so_items ADD COLUMN IF NOT EXISTS intake_id INTEGER REFERENCES seed_intakes(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS so_items_intake_idx ON so_items (intake_id);
+    -- Buku induk tampil persis seperti spreadsheet: No yang diketik di sheet dan bagian "TAHUN …"-nya (scripts/sync-no-buku-induk.mjs).
+    ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS sheet_no TEXT;
+    ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS sheet_year TEXT;
+    ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS sheet_max_pb TEXT;
+    ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS sheet_max_invoice TEXT;
+    ALTER TABLE seed_intakes ADD COLUMN IF NOT EXISTS sheet_bill DOUBLE PRECISION;
   `;
 
 

@@ -84,36 +84,46 @@ export async function pbDoc(id: number): Promise<PbDoc | null> {
 
 /* ------------------------- Buku induk lengkap (tampilan seperti sheet referensi) ------------------------- */
 
-export type LedgerRow = Intake & { no: number; pb_no: string | null; sold_id: number | null; sold_no: string | null };
+export type LedgerRow = Intake & { no: string; section: string; sheet_year: string | null; sheet_max_pb: string | null; sheet_max_invoice: string | null; sheet_bill: number | null; pb_no: string | null; sold_id: number | null; sold_no: string | null };
 export type LedgerFilter = { kind: "internal" | "eksternal"; status: string; year: string; q: string };
 
-/** Tahun benih masuk yang punya data untuk satu jenis, terbaru dulu. */
+// Bagian "TAHUN …" sebuah baris: dari sheet untuk baris hasil impor (sheet_year, lihat scripts/sync-no-buku-induk.mjs),
+// selain itu tahun benih masuk.
+const SECTION_SQL = "COALESCE(i.sheet_year, left(i.received_date, 4), '')";
+
+/** Bagian tahun yang punya data untuk satu jenis, terbaru dulu. */
 export async function ledgerYears(kind: string) {
-  return (await all<{ y: string }>("SELECT DISTINCT left(received_date, 4) y FROM seed_intakes WHERE kind = ? AND received_date IS NOT NULL ORDER BY 1 DESC", kind)).map((r) => r.y);
+  return (await all<{ y: string }>(`SELECT DISTINCT ${SECTION_SQL} y FROM seed_intakes i WHERE kind = ? AND ${SECTION_SQL} <> '' ORDER BY 1 DESC`, kind)).map((r) => r.y);
 }
 
 /**
- * Baris buku induk satu jenis, urut tanggal benih masuk seperti sheet INTERNAL/EKSTERNAL. Kolom "No" dihitung dari
- * seluruh baris jenis itu, jadi nomornya tetap sama walau disaring. `status` "belum" = proses uji + diajukan PB.
+ * Baris buku induk satu jenis, urut seperti baris di sheet INTERNAL/EKSTERNAL (urutan input). Kolom "No" = No yang
+ * diketik di sheet (mulai lagi tiap bagian tahun, bisa kosong/loncat); baris yang diinput di ERP melanjutkan nomor
+ * terbesar di bagiannya. `year` = bagian "TAHUN …". `status` "belum" = proses uji + diajukan PB.
  */
 export async function intakeLedger(f: LedgerFilter, page: number, pageSize: number) {
   const like = `%${f.q}%`;
   const where = `(? = '' OR status = ? OR (? = 'belum' AND status IN ('proses_uji','diajukan')))
-    AND (? = '' OR left(received_date, 4) = ?)
+    AND (? = '' OR section = ?)
     AND (? = '' OR farmer ILIKE ? OR production_code ILIKE ? OR contract_no ILIKE ? OR location ILIKE ? OR company ILIKE ? OR batch_no ILIKE ?)`;
   const params = [f.status, f.status, f.status, f.year, f.year, f.q, like, like, like, like, like, like];
   // Saringan dijalankan di CTE agar nama kolom (status, dll.) tidak bentrok dengan tabel yang di-join.
-  const base = `WITH base AS (SELECT i.*, row_number() OVER (ORDER BY received_date NULLS LAST, id) no FROM seed_intakes i WHERE kind = ?),
-    f AS (SELECT * FROM base WHERE ${where})`;
+  const base = `WITH base AS (SELECT i.*, ${SECTION_SQL} section FROM seed_intakes i WHERE kind = ?),
+    numbered AS (
+      SELECT b.*, CASE WHEN b.sheet_year IS NOT NULL THEN COALESCE(b.sheet_no, '') ELSE (
+        COALESCE((SELECT MAX(NULLIF(regexp_replace(x.sheet_no, '\\D', '', 'g'), '')::int) FROM base x WHERE x.section = b.section AND x.sheet_year IS NOT NULL), 0)
+        + row_number() OVER (PARTITION BY b.section, b.sheet_year IS NULL ORDER BY b.id))::text END no
+      FROM base b),
+    f AS (SELECT * FROM numbered WHERE ${where})`;
   const total = (await get<{ n: number }>(`${base} SELECT COUNT(*)::int n FROM f`, f.kind, ...params))!.n;
   const rows = await all<LedgerRow>(
     // sold_*: pesanan kerjasama produksi (tidak batal) yang menjual benih masuk ini.
     `${base}
-     SELECT b.*, b.no::int no, pb.number pb_no, sold.sold_id, sold.sold_no
+     SELECT b.*, pb.number pb_no, sold.sold_id, sold.sold_no
      FROM f b
      LEFT JOIN seed_pb pb ON pb.id = b.pb_id
      LEFT JOIN LATERAL (SELECT so.id sold_id, so.so_no sold_no FROM so_items si JOIN sales_orders so ON so.id = si.so_id WHERE si.intake_id = b.id AND so.status <> 'batal' LIMIT 1) sold ON true
-     ORDER BY b.no LIMIT ? OFFSET ?`,
+     ORDER BY b.section = '', b.section, b.id LIMIT ? OFFSET ?`,
     f.kind,
     ...params,
     pageSize,
