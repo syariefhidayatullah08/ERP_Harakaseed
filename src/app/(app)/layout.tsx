@@ -2,6 +2,8 @@ import { Sidebar } from "@/components/sidebar";
 import { can, requireUser } from "@/lib/session";
 import { get } from "@/lib/db";
 import { logout } from "@/actions/auth";
+import { OfflineSupport } from "@/components/offline-support";
+import { SHEETS } from "@/lib/sheets";
 
 // Semua halaman ERP membaca database per request; jangan pernah dirender saat build.
 export const dynamic = "force-dynamic";
@@ -14,6 +16,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="min-h-screen">
       <Sidebar user={user} unread={unread} logout={logout} />
+      {/* ERP tetap bisa dibuka tanpa sinyal: halaman & isi Lembar Kerja Offline disimpan di perangkat. */}
+      <OfflineSupport sheets={SHEETS.filter((s) => can(user, s.module)).map((s) => s.key)} />
       <main className="lg:pl-64">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-8 sm:py-8">{children}</div>
       </main>

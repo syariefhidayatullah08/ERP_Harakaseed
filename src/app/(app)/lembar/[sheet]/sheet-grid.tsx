@@ -203,21 +203,7 @@ export function SheetGrid({ sheet, family }: { sheet: GridSheet; family: GridShe
     };
   }, [familyKeys, runSync, putStore]);
 
-  // Halaman lembar ikut tersimpan di laptop supaya tetap bisa dibuka tanpa internet.
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker
-      .register("/lembar-sw.js", { scope: "/lembar/" })
-      .then(() => navigator.serviceWorker.ready)
-      .then((reg) => {
-        const assets = performance
-          .getEntriesByType("resource")
-          .map((e) => e.name)
-          .filter((u) => u.startsWith(location.origin) && u.includes("/_next/static/"));
-        reg.active?.postMessage({ type: "cache", urls: [location.pathname, ...assets] });
-      })
-      .catch(() => {});
-  }, []);
+  // Halaman lembar tersimpan di perangkat lewat /sw.js (dipasang di layout oleh OfflineSupport).
 
   /* ------------------------------ Rumus ------------------------------ */
 
