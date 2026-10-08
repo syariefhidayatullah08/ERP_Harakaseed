@@ -3,6 +3,7 @@ import Image from "next/image";
 import { cookies } from "next/headers";
 import { LoginForm } from "./login-form";
 import { OtpForm } from "./otp-form";
+import { OfflineEntry } from "./offline-entry";
 import { TWO_FACTOR_COOKIE } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Masuk" };
@@ -60,6 +61,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             {otp ? "Kata sandi benar. Satu langkah lagi untuk memastikan ini memang Anda." : "Masuk dengan email pribadi yang didaftarkan untuk divisi Anda."}
           </p>
           {otp ? <OtpForm /> : <LoginForm />}
+          {!otp && <OfflineEntry />}
         </div>
       </div>
     </main>

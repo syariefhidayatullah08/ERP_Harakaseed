@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, CloudDownload } from "lucide-react";
-import { loadRows, syncSheets, type LocalRow } from "@/lib/sheet-store";
-import { needsPrepare, prepareOffline } from "@/lib/offline-cache";
+import { isDirty, loadRows, syncSheets, type LocalRow } from "@/lib/sheet-store";
+import { needsPrepare, prepareOffline, rememberSheets } from "@/lib/offline-cache";
 
 const DATA_KEY = "haraka-lembar-data-at";
 const DATA_EVERY_MS = 15 * 60_000;
@@ -40,6 +40,7 @@ export function OfflineSupport({ sheets }: { sheets: string[] }) {
       // Pengganti service worker lama yang hanya mencakup /lembar/.
       for (const reg of await navigator.serviceWorker.getRegistrations()) if (reg.scope.endsWith("/lembar/")) await reg.unregister();
       await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      rememberSheets(sheets);
       const assets = performance
         .getEntriesByType("resource")
         .map((e) => new URL(e.name))
@@ -54,14 +55,16 @@ export function OfflineSupport({ sheets }: { sheets: string[] }) {
     return () => {
       alive = false;
     };
-  }, [sheets.length]);
+  }, [sheets]);
 
   // Isi lembar ikut diunduh ke perangkat, supaya lembar yang belum pernah dibuka pun lengkap saat offline.
+  // Isian dari /offline (tanpa login) yang belum terkirim langsung dikirim setelah login.
   // Dilewati di halaman lembar sendiri (halaman itu sudah menyinkronkan lembarnya).
   useEffect(() => {
-    if (!sheets.length || !navigator.onLine || location.pathname.startsWith("/lembar") || !due(DATA_KEY, DATA_EVERY_MS)) return;
+    if (!sheets.length || !navigator.onLine || location.pathname.startsWith("/lembar")) return;
     (async () => {
       const store: Record<string, LocalRow[]> = Object.fromEntries(await Promise.all(sheets.map(async (k) => [k, await loadRows(k)] as const)));
+      if (!due(DATA_KEY, DATA_EVERY_MS) && !Object.values(store).some((rows) => rows.some(isDirty))) return;
       const res = await syncSheets(
         sheets,
         (k) => store[k] ?? [],

@@ -105,7 +105,7 @@ const Row = memo(function Row({
  * di latar belakang; tanpa internet lembar tetap bisa diisi dan terkirim otomatis begitu online lagi. Rumus dihitung
  * di laptop, termasuk yang merujuk lembar lain dalam keluarga yang sama (`family`).
  */
-export function SheetGrid({ sheet, family }: { sheet: GridSheet; family: GridSheet[] }) {
+export function SheetGrid({ sheet, family, sameTabLogin = false }: { sheet: GridSheet; family: GridSheet[]; sameTabLogin?: boolean }) {
   const columns = sheet.columns;
   const familyKeys = useMemo(() => family.map((f) => f.key), [family]);
   const [store, setStore] = useState<Record<string, LocalRow[]>>({});
@@ -449,9 +449,16 @@ export function SheetGrid({ sheet, family }: { sheet: GridSheet; family: GridShe
           <badge.icon size={16} /> {badge.text}
         </span>
         {status.kind === "auth" && (
-          <a href="/login" target="_blank" rel="noreferrer" className="btn-secondary btn-sm">
-            Login lagi (tab baru)
-          </a>
+          // Di /offline (tanpa login) cukup pindah halaman: isian sudah tersimpan di perangkat dan terkirim setelah login.
+          sameTabLogin ? (
+            <a href="/login" className="btn-secondary btn-sm">
+              Login untuk mengirim
+            </a>
+          ) : (
+            <a href="/login" target="_blank" rel="noreferrer" className="btn-secondary btn-sm">
+              Login lagi (tab baru)
+            </a>
+          )
         )}
         <button type="button" className="btn-secondary btn-sm" onClick={() => void runSync()} disabled={status.kind === "syncing"}>
           Kirim sekarang

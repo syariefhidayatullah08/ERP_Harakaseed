@@ -7,6 +7,10 @@ export const OFFLINE_CACHE = "haraka-offline-v2";
 const STATIC = /\/_next\/static\/[^"'\\\s)]+/g;
 const READY_KEY = "haraka-offline-ready";
 const REFRESH_MS = 6 * 60 * 60_000;
+const SHELL_KEY = "haraka-offline-shell-at";
+const SHEETS_KEY = "haraka-offline-sheets";
+/** Halaman Lembar Kerja Offline tanpa login (src/app/offline): satu halaman untuk semua lembar, isinya dari perangkat. */
+export const OFFLINE_SHELL = "/offline";
 
 export type OfflineReady = { at: number; pages: number };
 
@@ -43,6 +47,56 @@ async function saveAssets(cache: Cache, html: string, extra: string[] = []) {
   }
 }
 
+/** Lembar yang boleh dibuka pengguna terakhir yang login di perangkat ini (dipakai /offline saat belum login). */
+export function rememberSheets(keys: string[]) {
+  try {
+    localStorage.setItem(SHEETS_KEY, JSON.stringify(keys));
+  } catch {
+    /* tidak apa-apa: /offline lalu menampilkan semua lembar */
+  }
+}
+/** Teks mentah (stabil untuk useSyncExternalStore); "" bila belum ada / tidak bisa dibaca. */
+export function rememberedSheetsRaw(): string {
+  try {
+    return localStorage.getItem(SHEETS_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+export function rememberedSheets(raw = rememberedSheetsRaw()): string[] | null {
+  try {
+    const v = JSON.parse(raw || "null");
+    return Array.isArray(v) ? v.map(String) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Simpan halaman /offline (tidak butuh login) + file aplikasinya, supaya perangkat yang belum/tidak sedang login pun bisa
+ * membuka Lembar Kerja Offline tanpa sinyal. Dipanggil dari halaman login dan dari dalam ERP.
+ */
+export async function prepareShell(force = false): Promise<boolean> {
+  if (!("caches" in window) || !navigator.onLine) return false;
+  const cache = await caches.open(OFFLINE_CACHE);
+  let fresh = false;
+  try {
+    fresh = Date.now() - Number(localStorage.getItem(SHELL_KEY) ?? 0) < REFRESH_MS;
+  } catch {
+    /* lanjut menyimpan */
+  }
+  if (!force && fresh && (await cache.match(OFFLINE_SHELL))) return true;
+  const html = await save(cache, OFFLINE_SHELL);
+  if (html === null) return false;
+  await saveAssets(cache, html);
+  try {
+    localStorage.setItem(SHELL_KEY, String(Date.now()));
+  } catch {
+    /* disimpan lagi lain kali */
+  }
+  return true;
+}
+
 /**
  * Simpan daftar lembar, setiap lembar yang boleh dibuka pengguna, dan file aplikasinya. `onProgress(selesai, total)`
  * untuk penanda di layar. Mengembalikan true bila semua halaman tersimpan.
@@ -64,7 +118,7 @@ export async function prepareOffline(onProgress: (done: number, total: number) =
     else await saveAssets(cache, html);
     onProgress(++done, total);
   }
-  if (failed) return false;
+  if (failed || !(await prepareShell(true))) return false;
   try {
     localStorage.setItem(READY_KEY, JSON.stringify({ at: Date.now(), pages: total } satisfies OfflineReady));
   } catch {
