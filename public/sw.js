@@ -1,9 +1,10 @@
 // Service worker ERP Haraka: supaya aplikasi (termasuk yang dipasang di layar utama HP/iPhone) tetap bisa dibuka tanpa
 // sinyal. Yang disimpan di perangkat HANYA halaman Lembar Kerja Offline (/lembar…) dan file aplikasi (/_next/static).
 // Halaman lain (keuangan, kas, dll.) tidak pernah disimpan; saat offline, membukanya diarahkan ke daftar lembar.
-// Isi lembar sendiri disimpan di IndexedDB oleh halaman lembar, bukan di sini.
+// Isi lembar sendiri disimpan di IndexedDB oleh halaman lembar, bukan di sini. Penyimpanan halaman-halaman lembar
+// dilakukan dari halaman aplikasi (src/lib/offline-cache.ts), bukan dari sini: iPhone bisa menghentikan service worker
+// di tengah jalan.
 const CACHE = "haraka-offline-v2";
-const STATIC = /\/_next\/static\/[^"'\\\s)]+/g;
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => {
@@ -22,52 +23,34 @@ async function store(url, res) {
   await cache.put(url, res);
 }
 
-/** Ambil & simpan satu alamat; halaman login (sesi habis) tidak pernah disimpan sebagai halaman lembar. */
-async function fetchAndStore(url) {
-  try {
-    const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
-    if (!res.ok || res.redirected) return null;
-    await store(url, res.clone());
-    return res;
-  } catch {
-    return null;
-  }
+/** Sinyal lemah di HP sering membuat permintaan menggantung lama, bukan langsung gagal: batasi waktunya. */
+function fetchWithin(req, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    fetch(req).then(
+      (res) => (clearTimeout(timer), resolve(res)),
+      (err) => (clearTimeout(timer), reject(err)),
+    );
+  });
 }
 
-/** File aplikasi yang dirujuk sebuah halaman (termasuk yang dimuat belakangan oleh React). */
-async function storeAssetsOf(html) {
-  for (const url of new Set(html.match(STATIC) ?? [])) {
-    if (!(await caches.match(url))) await fetchAndStore(url);
-  }
-}
-
-/** Simpan daftar lembar + semua lembar yang boleh dibuka pengguna + file aplikasinya. */
-async function precache(extra) {
-  for (const url of extra ?? []) if (url.startsWith("/_next/static/") && !(await caches.match(url))) await fetchAndStore(url);
-  const index = await fetchAndStore("/lembar");
-  if (!index) return;
-  const html = await index.text();
-  await storeAssetsOf(html);
-  for (const path of new Set([...html.matchAll(/href="(\/lembar\/[\w-]+)"/g)].map((m) => m[1]))) {
-    const page = await fetchAndStore(path);
-    if (page) await storeAssetsOf(await page.text());
-  }
-}
-
-self.addEventListener("message", (event) => {
-  if (event.data?.type === "precache") event.waitUntil(precache(event.data.urls));
-  // Tiap halaman dibuka: simpan file aplikasi yang dipakainya (kunjungan pertama belum lewat service worker).
-  if (event.data?.type === "precache-assets")
-    event.waitUntil(Promise.all((event.data.urls ?? []).filter((u) => u.startsWith("/_next/static/")).map(async (u) => (await caches.match(u)) || fetchAndStore(u))));
-});
+// Dashboard / halaman lain tanpa sinyal → pindah ke daftar Lembar Kerja Offline. Lewat skrip, bukan redirect HTTP,
+// karena Safari iPhone kadang menolak redirect dari service worker.
+const goToSheets = () =>
+  new Response(
+    `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Haraka ERP</title>
+<script>location.replace("/lembar")</script></head><body style="font-family:system-ui,sans-serif;padding:24px;color:#0a3b55">
+<p>Tanpa sinyal — membuka <a href="/lembar">Lembar Kerja Offline</a>…</p></body></html>`,
+    { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
+  );
 
 const offlinePage = () =>
   new Response(
     `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline · Haraka ERP</title></head>
 <body style="font-family:system-ui,sans-serif;padding:24px;color:#0a3b55"><h2>Sedang tidak ada sinyal</h2>
-<p>Halaman ini belum tersimpan di perangkat. Buka aplikasi sekali saat ada sinyal agar Lembar Kerja Offline tersimpan, lalu bisa dipakai tanpa internet.</p>
+<p>Halaman ini belum tersimpan di perangkat. Buka aplikasi sekali saat ada sinyal dan tunggu tanda "Siap dipakai tanpa sinyal", lalu bisa dipakai tanpa internet.</p>
 <p><a href="/lembar">Coba buka Lembar Kerja Offline</a></p></body></html>`,
-    { headers: { "content-type": "text/html; charset=utf-8" } },
+    { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
   );
 
 self.addEventListener("fetch", (event) => {
@@ -95,17 +78,17 @@ self.addEventListener("fetch", (event) => {
   if (req.mode === "navigate") {
     event.respondWith(
       (async () => {
+        const sheet = isSheetPage(url.pathname);
         try {
-          const res = await fetch(req);
-          if (isSheetPage(url.pathname) && res.ok && !res.redirected) store(url.pathname, res.clone());
+          const res = await fetchWithin(req, sheet ? 5000 : 10000);
+          if (sheet && res.ok && !res.redirected) store(url.pathname, res.clone());
           return res;
         } catch {
-          if (isSheetPage(url.pathname)) {
-            const hit = await caches.match(url.pathname);
+          if (sheet) {
+            const hit = await caches.match(url.pathname, { ignoreSearch: true });
             if (hit) return hit;
           }
-          // Dashboard / halaman lain tanpa sinyal → daftar Lembar Kerja Offline (bila sudah tersimpan).
-          if (await caches.match("/lembar")) return Response.redirect("/lembar", 302);
+          if (await caches.match("/lembar")) return goToSheets();
           return offlinePage();
         }
       })(),
