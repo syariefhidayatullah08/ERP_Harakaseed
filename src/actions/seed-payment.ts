@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { all, get, insert, run, tx } from "@/lib/db";
-import { requireAccess } from "@/lib/session";
+import { can, requireAccess, type SessionUser } from "@/lib/session";
 import { numf, str, withMsg } from "@/lib/form";
 import { toCashAccount } from "@/lib/cash";
 import { logActivity } from "@/lib/activity";
@@ -14,17 +14,27 @@ import { resolveGrower } from "@/lib/growers";
 
 const BASE = "/pembayaran-benih";
 const date = (fd: FormData, key: string) => (/^\d{4}-\d{2}-\d{2}$/.test(str(fd, key)) ? str(fd, key) : null);
+const LEDGER = "/inventori/buku-induk";
+/**
+ * Dari Gudang & Lot → Buku Induk Benih (atau pengguna tanpa akses Pembayaran Benih): setelah simpan/hapus kembali ke
+ * Buku Induk, bukan ke Pembayaran Benih.
+ */
+const fromLedger = (fd: FormData, user: SessionUser) => str(fd, "back") === LEDGER || !can(user, "pembayaran_benih");
+
 /** Angka opsional: kosong → null. */
 const optNum = (fd: FormData, key: string) => (str(fd, key) === "" ? null : numf(fd, key));
 
 /** Catat / ubah satu baris buku induk (benih masuk dari petani). */
 export async function saveIntake(fd: FormData) {
-  const user = await requireAccess("pembayaran_benih");
+  const user = await requireAccess(["pembayaran_benih", "inventori"]);
   const id = numf(fd, "id");
-  const back = id ? `${BASE}/${id}` : `${BASE}/baru`;
+  const ledger = fromLedger(fd, user);
+  if (ledger && !id && !can(user, "pembayaran_benih")) redirect(withMsg(LEDGER, "Pencatatan benih masuk baru lewat menu Pembayaran Benih.", "error"));
+  const home = ledger ? LEDGER : BASE;
+  const back = id ? `${home}/${id}` : `${BASE}/baru`;
   const old = id ? await get<{ status: string; pb_id: number | null; pb_status: string | null }>(
     "SELECT i.status, i.pb_id, pb.status pb_status FROM seed_intakes i LEFT JOIN seed_pb pb ON pb.id = i.pb_id WHERE i.id = ?", id) : undefined;
-  if (id && !old) redirect(withMsg(BASE, "Data tidak ditemukan.", "error"));
+  if (id && !old) redirect(withMsg(home, "Data tidak ditemukan.", "error"));
   if (old?.pb_status === "dibayar" && user.role !== "owner") redirect(withMsg(back, "Baris ini sudah dibayar lewat surat PB; hanya Founder yang bisa mengubahnya.", "error"));
 
   const kind = str(fd, "kind") === "eksternal" ? "eksternal" : "internal";
@@ -70,8 +80,9 @@ export async function saveIntake(fd: FormData) {
   revalidatePath("/kas");
   revalidatePath("/mitra");
   revalidatePath(BASE);
+  revalidatePath(LEDGER);
   await logActivity("pembayaran_benih", id ? "Mengubah data benih masuk" : "Mencatat benih masuk", `${farmer} · ${str(fd, "production_code").toUpperCase()} · ${netKg} kg · ${rupiah(amount)}`);
-  redirect(withMsg(`${BASE}?kind=${kind}`, `Benih dari ${farmer} tersimpan: nilai pembayaran ${rupiah(amount)}${badDebt ? `, kredit macet ${rupiah(badDebt)}` : ""}.`));
+  redirect(withMsg(ledger ? LEDGER : `${BASE}?kind=${kind}`, `Benih dari ${farmer} tersimpan: nilai pembayaran ${rupiah(amount)}${badDebt ? `, kredit macet ${rupiah(badDebt)}` : ""}.`));
 }
 
 /**
@@ -79,12 +90,13 @@ export async function saveIntake(fd: FormData) {
  * (surat yang jadi kosong ikut dihapus); baris di surat yang sudah dibayar hanya bisa dihapus Founder.
  */
 export async function deleteIntake(fd: FormData) {
-  const user = await requireAccess("pembayaran_benih");
+  const user = await requireAccess(["pembayaran_benih", "inventori"]);
   const id = numf(fd, "id");
+  const home = fromLedger(fd, user) ? LEDGER : BASE;
   const row = await get<{ farmer: string; production_code: string; net_kg: number; amount: number; kind: string; pb_id: number | null; pb_no: string | null; pb_status: string | null }>(
     "SELECT i.farmer, i.production_code, i.net_kg, i.amount, i.kind, i.pb_id, pb.number pb_no, pb.status pb_status FROM seed_intakes i LEFT JOIN seed_pb pb ON pb.id = i.pb_id WHERE i.id = ?", id);
-  if (!row) redirect(withMsg(BASE, "Data tidak ditemukan.", "error"));
-  if (row.pb_status === "dibayar" && user.role !== "owner") redirect(withMsg(`${BASE}/${id}`, `Baris ini sudah dibayar lewat surat ${row.pb_no}; hanya Founder yang bisa menghapusnya.`, "error"));
+  if (!row) redirect(withMsg(home, "Data tidak ditemukan.", "error"));
+  if (row.pb_status === "dibayar" && user.role !== "owner") redirect(withMsg(`${home}/${id}`, `Baris ini sudah dibayar lewat surat ${row.pb_no}; hanya Founder yang bisa menghapusnya.`, "error"));
   const pbGone = await tx(async () => {
     await setBulkMoves("intake", id, []); // kembalikan stok bahan baku yang ditambahkan baris ini
     await run("DELETE FROM seed_intakes WHERE id = ?", id);
@@ -99,9 +111,10 @@ export async function deleteIntake(fd: FormData) {
   revalidatePath("/stok-bahan");
   revalidatePath("/kas");
   revalidatePath(BASE);
+  revalidatePath(LEDGER);
   await logActivity("pembayaran_benih", "Menghapus data benih masuk", `${row.farmer} · ${row.production_code} · ${row.net_kg} kg · ${rupiah(row.amount)}${row.pb_no ? ` · dari surat ${row.pb_no}` : ""}`);
   const note = !row.pb_no ? "" : pbGone ? ` Surat ${row.pb_no} ikut dihapus karena tidak ada baris lain.` : ` Baris ini juga dikeluarkan dari surat ${row.pb_no}.`;
-  redirect(withMsg(`${BASE}?kind=${row.kind}`, `Data benih ${row.farmer} (${row.production_code || "tanpa kode"}) dihapus.${note}`));
+  redirect(withMsg(home === LEDGER ? LEDGER : `${BASE}?kind=${row.kind}`, `Data benih ${row.farmer} (${row.production_code || "tanpa kode"}) dihapus.${note}`));
 }
 
 /** Buat surat pengajuan pembayaran benih (PB) dari baris buku induk yang dipilih. */

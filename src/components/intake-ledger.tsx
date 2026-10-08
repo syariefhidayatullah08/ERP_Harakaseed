@@ -37,8 +37,8 @@ function invoiceBill(r: LedgerRow) {
   return w && r.contract_price ? rupiah(Math.round(w * r.contract_price)) : "";
 }
 
-/** `back`: alamat halaman ini; bila diisi, status bisa diubah langsung dari tabel. */
-function columns(kind: "internal" | "eksternal", back?: string): Col[] {
+/** `back`: alamat halaman ini; bila diisi, status bisa diubah langsung dari tabel. `detail`: alamat rincian/ubah satu baris. */
+function columns(kind: "internal" | "eksternal", back?: string, detail = "/pembayaran-benih"): Col[] {
   const sortir = (r: LedgerRow) => {
     const s = splitNotes(r.notes).sortir;
     return [r.deduction ? rupiah(r.deduction) : "", s].filter(Boolean).join(" · ");
@@ -75,7 +75,7 @@ function columns(kind: "internal" | "eksternal", back?: string): Col[] {
     </>
   );
   const farmer = (r: LedgerRow) => (
-    <Link href={`/pembayaran-benih/${r.id}`} className="font-medium text-brand-700 hover:underline">
+    <Link href={`${detail}/${r.id}`} className="font-medium text-brand-700 hover:underline">
       {r.farmer}
     </Link>
   );
@@ -143,8 +143,8 @@ function columns(kind: "internal" | "eksternal", back?: string): Col[] {
 }
 
 /** Tabel buku induk satu jenis. `action`: kolom tambahan paling kanan (mis. tombol hapus) bila diperlukan. */
-export function IntakeLedger({ kind, rows, action, back }: { kind: "internal" | "eksternal"; rows: LedgerRow[]; action?: (r: LedgerRow) => ReactNode; back?: string }) {
-  const cols = columns(kind, back);
+export function IntakeLedger({ kind, rows, action, back, detail }: { kind: "internal" | "eksternal"; rows: LedgerRow[]; action?: (r: LedgerRow) => ReactNode; back?: string; detail?: string }) {
+  const cols = columns(kind, back, detail);
   const span = cols.length + 1 + (action ? 1 : 0);
   // Header dua baris: kolom bergrup (Hasil Pengujian, Keterangan Status) seperti di sheet.
   const top: { label: string; span: number; group: boolean }[] = [];
@@ -226,7 +226,7 @@ const PAGE_SIZE = 200;
  * jenis, tahun ("semua" = semua tahun; kosong = tahun terbaru), status, cari, hal. `keep` = parameter halaman induk yang dipertahankan.
  * `only`: tampilkan satu jenis saja tanpa tab (mis. Gudang & Lot hanya INTERNAL, benih produksi sendiri).
  */
-export async function IntakeLedgerPanel({ path, sp, keep = {}, action, only }: { path: string; sp: Sp; keep?: Record<string, string>; action?: (r: LedgerRow) => ReactNode; only?: "internal" | "eksternal" }) {
+export async function IntakeLedgerPanel({ path, sp, keep = {}, action, only, detail }: { path: string; sp: Sp; keep?: Record<string, string>; action?: (r: LedgerRow) => ReactNode; only?: "internal" | "eksternal"; detail?: string }) {
   const one = (k: string) => String((Array.isArray(sp[k]) ? sp[k]?.[0] : sp[k]) ?? "").trim();
   const kind = only ?? (one("jenis") === "eksternal" ? "eksternal" : "internal");
   const years = await ledgerYears(kind);
@@ -285,7 +285,7 @@ export async function IntakeLedgerPanel({ path, sp, keep = {}, action, only }: {
           <button className="btn-secondary btn-sm">Saring</button>
         </form>
       </div>
-      {rows.length ? <IntakeLedger kind={kind} rows={rows} action={action} back={href({ hal: page > 1 ? String(page) : "" })} /> : <p className="p-6 text-center text-sm text-muted">Belum ada data benih masuk yang cocok.</p>}
+      {rows.length ? <IntakeLedger kind={kind} rows={rows} action={action} back={href({ hal: page > 1 ? String(page) : "" })} detail={detail} /> : <p className="p-6 text-center text-sm text-muted">Belum ada data benih masuk yang cocok.</p>}
       <div className="flex items-center justify-between border-t border-line px-4 py-2 text-xs text-muted">
         <span>
           {new Intl.NumberFormat("id-ID").format(total)} baris {kind}

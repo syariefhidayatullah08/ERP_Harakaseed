@@ -10,6 +10,8 @@ import { can, requireUser, type SessionUser } from "@/lib/session";
 import { divisionLabel } from "@/lib/access";
 import { COMPLAINT_SEVERITY, COMPLAINT_STATUS } from "@/lib/keluhan";
 import { FINDING_CATEGORY, FINDING_STATUS } from "@/lib/mutu";
+import { farmerPayables, stockSeedSummary } from "@/lib/dashboard-seed";
+import { FarmerPayablesCard, StockSeedCard } from "@/components/dashboard-seed";
 
 export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
@@ -34,7 +36,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   })();
 
   // Semua ringkasan tidak saling bergantung → dijalankan bersamaan, bukan menunggu satu per satu.
-  const [salesThis, salesLast, receivable, toShipRow, low, expiring, months, top, recent, inbox, otpRow] = await Promise.all([
+  const [salesThis, salesLast, receivable, toShipRow, low, expiring, months, top, recent, inbox, otpRow, stockSeed, payables] = await Promise.all([
     get<{ v: number; n: number }>(
       "SELECT COALESCE(SUM(total),0) v, COUNT(*) n FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ?",
       monthStart,
@@ -79,6 +81,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
       "SELECT id, from_addr, subject, created_at, is_read FROM emails WHERE direction = 'in' ORDER BY created_at DESC LIMIT 5",
     ),
     get<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = ?", user.id),
+    stockSeedSummary(),
+    farmerPayables(),
   ]);
   const toShip = toShipRow!.n;
   const chart = Array.from({ length: 12 }, (_, i) => {
@@ -186,6 +190,12 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
             )}
           </div>
         </Card>
+      </div>
+
+      {/* Inti bisnis benih: sisa benih sumber & kewajiban bayar ke petani. */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <StockSeedCard data={stockSeed} />
+        <FarmerPayablesCard data={payables} />
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-3">
@@ -313,6 +323,8 @@ async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?
   const none = <T,>(): Promise<T[]> => Promise.resolve([]);
 
   // Semua query dasbor dijalankan bersamaan (modul yang tidak diakses = kosong tanpa query), bukan satu per satu.
+  // Dimulai bersamaan dengan query lain di bawah.
+  const seedP = Promise.all([has("stok_bahan") ? stockSeedSummary() : null, has("pembayaran_benih") ? farmerPayables() : null]);
   const [monthOrders, drafts, toShip, low, expiring, batches, quarantine, complaints, findings, audits, toVerify, po, employees, neverLogin, unreadMail] = await Promise.all([
     has("penjualan") ? count("SELECT COUNT(*) n FROM sales_orders WHERE status NOT IN ('draft','batal') AND order_date >= ?", t.slice(0, 8) + "01") : 0,
     has("penjualan") ? count("SELECT COUNT(*) n FROM sales_orders WHERE status = 'draft'") : 0,
@@ -352,6 +364,8 @@ async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?
     has("pengguna") ? count("SELECT COUNT(*) n FROM users WHERE active = 1 AND last_login IS NULL") : 0,
     has("email") ? count("SELECT COUNT(*) n FROM emails WHERE direction = 'in' AND is_read = 0") : 0,
   ]);
+
+  const [stockSeed, payables] = await seedP;
 
   const cards: { label: string; value: number | string; hint?: string; href: string; tone?: "default" | "warn" | "danger" }[] = [];
   if (has("penjualan")) {
@@ -399,6 +413,13 @@ async function DivisionDashboard({ user, msg, error }: { user: SessionUser; msg?
         <Card>
           <Empty>Divisi Anda belum diberi akses modul apa pun. Hubungi Founder.</Empty>
         </Card>
+      )}
+
+      {(stockSeed || payables) && (
+        <div className={`mt-5 grid gap-5 ${stockSeed && payables ? "lg:grid-cols-2" : ""}`}>
+          {stockSeed && <StockSeedCard data={stockSeed} />}
+          {payables && <FarmerPayablesCard data={payables} />}
+        </div>
       )}
 
       <div className="mt-5 grid gap-5 lg:grid-cols-3">
