@@ -20,9 +20,27 @@ export type SheetColumn = {
   formula?: string;
   /** Kolom otomatis ({r} = nomor baris): selalu dihitung, tidak disimpan & tidak bisa diketik. */
   computed?: string;
+  /** Tampilan seperti Excel: gaya sel data (indeks ke SheetDef.styles), format angka Excel, kolom tersembunyi. */
+  s?: number;
+  fmt?: string;
+  hidden?: boolean;
 };
 
 export type SheetNote = { cell: string; text: string; formula?: string; bg?: string };
+
+/**
+ * Gaya sel Excel (ringkas): b/i/u = tebal/miring/garis bawah, z = ukuran huruf (pt), c = warna huruf, f = warna isi,
+ * h/v = perataan, w = teks turun baris, bd = garis tepi (t/r/b/l tipis, T/R/B/L tebal).
+ */
+export type CellStyle = { b?: 1; i?: 1; u?: 1; z?: number; c?: string; f?: string; h?: string; v?: string; w?: 1; bd?: string };
+
+/** Baris di atas data (judul, catatan, judul kolom) persis seperti Excel. */
+export type SheetHead = {
+  rows: number;
+  cells: Record<string, { t?: string; f?: string; s?: number }>;
+  heights?: Record<number, number>;
+  merges?: string[];
+};
 
 export type SheetDef = {
   key: string;
@@ -37,6 +55,13 @@ export type SheetDef = {
   headerRows?: number[];
   dataStart?: number;
   notes?: SheetNote[];
+  /** Tampilan 1:1 dengan Excel (dibuat generator dari file asal). */
+  head?: SheetHead;
+  styles?: CellStyle[];
+  freeze?: { x: number; y: number };
+  rowHeight?: number;
+  hiddenInExcel?: boolean;
+  tabColor?: string;
 };
 
 /** Kelompok lembar (satu file Excel = satu buku kerja). Rumus boleh merujuk lembar lain dalam keluarga yang sama. */
@@ -89,6 +114,34 @@ export const sheetFamily = (key: string) => {
   if (!s) return [];
   if (s.workbook === "bukuInduk" || s.workbook === "ketersediaan") return SHEETS.filter((x) => x.workbook === "bukuInduk" || x.workbook === "ketersediaan");
   return [s];
+};
+
+/** Bagian definisi lembar yang dikirim ke tabel di browser (tanpa hak akses dll.). */
+export type GridSheet = Pick<SheetDef, "key" | "title" | "excelName" | "dataStart" | "notes" | "head" | "styles" | "freeze" | "rowHeight"> & { columns: SheetColumn[] };
+export const forGrid = (s: SheetDef): GridSheet => ({
+  key: s.key,
+  title: s.title,
+  excelName: s.excelName,
+  dataStart: s.dataStart,
+  notes: s.notes,
+  head: s.head,
+  styles: s.styles,
+  freeze: s.freeze,
+  rowHeight: s.rowHeight,
+  columns: s.columns,
+});
+
+/** Tab sheet di bawah tabel (seperti Excel), dikelompokkan per file. */
+export type SheetTabs = { book: string; title: string; items: { key: string; title: string; href: string; dim?: boolean; color?: string }[] }[];
+export const sheetTabs = (current: SheetDef, family: SheetDef[], href: (key: string) => string): SheetTabs => {
+  const tabs = SHEETS.filter((s) => s.workbook && family.some((f) => f.key === s.key));
+  return [...new Set(tabs.map((t) => t.workbook!))].map((b) => ({
+    book: b,
+    title: WORKBOOKS[b]?.title ?? b,
+    items: tabs
+      .filter((t) => t.workbook === b)
+      .map((t) => ({ key: t.key, title: (t.excelName ?? t.title).trim(), href: href(t.key), dim: t.hiddenInExcel, color: t.tabColor })),
+  })).filter((g) => g.items.length > 0 && (tabs.length > 1 || g.items[0].key !== current.key));
 };
 
 /** Kunci data yang boleh disimpan untuk sebuah lembar: kolom yang bisa diketik + warna selnya ("A#bg"). */

@@ -22,6 +22,50 @@ const letter = (n) => {
   return s;
 };
 
+// Warna tema Office standar (dipakai bila warna sel di Excel menunjuk ke tema, bukan kode warna langsung).
+const THEME = ["FFFFFF", "000000", "E7E6E6", "44546A", "4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47"];
+const color = (c) => {
+  if (!c) return undefined;
+  let hex = c.argb && c.argb.length === 8 ? c.argb.slice(2) : c.theme != null ? THEME[c.theme] : undefined;
+  if (!hex) return undefined;
+  if (c.tint) {
+    hex = [0, 2, 4]
+      .map((i) => {
+        const v = parseInt(hex.slice(i, i + 2), 16);
+        const t = c.tint < 0 ? v * (1 + c.tint) : v + (255 - v) * c.tint;
+        return Math.round(t).toString(16).padStart(2, "0");
+      })
+      .join("");
+  }
+  return `#${hex.toUpperCase()}`;
+};
+/** Gaya sel Excel → bentuk ringkas (lihat CellStyle di src/lib/sheets.ts). */
+const styleOf = (cell) => {
+  const st = {};
+  const f = cell.font ?? {};
+  if (f.bold) st.b = 1;
+  if (f.italic) st.i = 1;
+  if (f.underline) st.u = 1;
+  if (f.size && f.size !== 11) st.z = f.size;
+  const fc = color(f.color);
+  if (fc && fc !== "#000000") st.c = fc;
+  const bg = cell.fill?.type === "pattern" && cell.fill.pattern === "solid" ? color(cell.fill.fgColor) : undefined;
+  if (bg && bg !== "#FFFFFF") st.f = bg;
+  const a = cell.alignment ?? {};
+  if (a.horizontal && a.horizontal !== "general") st.h = a.horizontal === "centerContinuous" ? "center" : a.horizontal;
+  if (a.vertical && a.vertical !== "bottom") st.v = a.vertical;
+  if (a.wrapText) st.w = 1;
+  const b = cell.border ?? {};
+  const bd = ["top", "right", "bottom", "left"]
+    .filter((k) => b[k]?.style)
+    .map((k) => (/medium|thick|double/.test(b[k].style) ? k[0].toUpperCase() : k[0]))
+    .join("");
+  if (bd) st.bd = bd;
+  return st;
+};
+const pxWidth = (w) => Math.round((w ?? 8.43) * 7 + 5);
+const pxHeight = (pt) => Math.round((pt * 4) / 3);
+
 /** Rumus → pola relatif baris: referensi ke baris yang sama menjadi {r}. Null bila merujuk baris lain / sheet lain. */
 function relative(formula, row) {
   if (/!/.test(formula)) return null;
@@ -47,6 +91,19 @@ for (const s of SHEETS) {
   ws.eachRow({ includeEmpty: false }, (row, r) => row.eachCell({ includeEmpty: false }, (cell, c) => {
     if (r >= s.header[0] && (text(cell) || cell.formula)) lastCol = Math.max(lastCol, c);
   }));
+  const styles = [];
+  const styleKeys = new Map();
+  const styleId = (st) => {
+    if (!Object.keys(st).length) return undefined;
+    const k = JSON.stringify(st);
+    if (!styleKeys.has(k)) styleKeys.set(k, styles.push(st) - 1);
+    return styleKeys.get(k);
+  };
+  // Baris data terakhir: gaya kolom diambil dari baris yang memang berisi (baris kosong di bawah tidak bergaris).
+  let lastData = s.dataStart;
+  ws.eachRow({ includeEmpty: false }, (row, r) => {
+    if (r >= s.dataStart && row.values.some((v) => v != null && v !== "")) lastData = r;
+  });
   const columns = [];
   for (let c = 1; c <= lastCol; c++) {
     const top = text(ws.getRow(s.header[0]).getCell(c));
@@ -54,8 +111,29 @@ for (const s of SHEETS) {
     const col = { key: letter(c) };
     if (bottom && top && bottom !== top) Object.assign(col, { group: top, label: bottom });
     else col.label = top || bottom || letter(c);
-    const w = ws.getColumn(c).width;
-    col.width = Math.round(Math.min(260, Math.max(56, (w ?? 10) * 7.5)));
+    // Lebar persis seperti Excel (lebar karakter Calibri 11 → piksel).
+    col.width = pxWidth(ws.getColumn(c).width);
+    if (ws.getColumn(c).hidden) col.hidden = true;
+    // Gaya & format angka kolom = yang paling banyak dipakai di baris data.
+    const styleCount = {};
+    const fmtCount = {};
+    for (let r = s.dataStart; r <= lastData; r++) {
+      const cell = ws.getRow(r).getCell(c);
+      // Warna isi tidak ikut gaya kolom: warna disimpan per sel (kolom "#bg") seperti di Excel.
+      const st = styleOf(cell);
+      delete st.f;
+      const k = JSON.stringify(st);
+      styleCount[k] = (styleCount[k] ?? 0) + 1;
+      // Hanya format angka (tanggal disimpan sebagai teks dd/mm/yyyy, jadi format tanggal tidak dipakai ke angka biasa).
+      if (cell.value != null && cell.value !== "" && /[0#]/.test(cell.numFmt ?? "")) fmtCount[cell.numFmt] = (fmtCount[cell.numFmt] ?? 0) + 1;
+    }
+    const topStyle = Object.entries(styleCount).sort((a, b) => b[1] - a[1])[0];
+    if (topStyle) {
+      const id = styleId(JSON.parse(topStyle[0]));
+      if (id !== undefined) col.s = id;
+    }
+    const topFmt = Object.entries(fmtCount).sort((a, b) => b[1] - a[1])[0];
+    if (topFmt) col.fmt = topFmt[0];
     // Jenis kolom & rumus standar dari isi data.
     let dates = 0, values = 0;
     const patterns = {};
@@ -73,10 +151,7 @@ for (const s of SHEETS) {
         if (p) patterns[p] = (patterns[p] ?? 0) + 1;
       }
     }
-    if (values && dates / values > 0.6) {
-      col.type = "date";
-      col.width = Math.max(col.width, 92); // dd/mm/yyyy tidak terpotong
-    }
+    if (values && dates / values > 0.6) col.type = "date";
     const best = Object.entries(patterns).sort((a, b) => b[1] - a[1])[0];
     if (best && best[1] >= 3 && best[1] >= formulas * 0.5) col.formula = `=${best[0]}`;
     columns.push(col);
@@ -94,6 +169,50 @@ for (const s of SHEETS) {
       notes.push({ cell: master.address, text: t, ...(master.formula ? { formula: `=${master.formula}` } : {}), ...(fill(master) ? { bg: fill(master) } : {}) });
     });
   }
+  // Baris di atas data (judul, catatan, judul kolom) persis seperti Excel: isi, gaya, sel gabungan, tinggi baris.
+  const headRows = s.dataStart - 1;
+  const merges = (ws.model.merges ?? [])
+    .map((m) => {
+      const [a, b] = m.split(":");
+      const ca = ws.getCell(a);
+      const cb = ws.getCell(b);
+      return { r1: Number(ca.row), c1: Number(ca.col), r2: Number(cb.row), c2: Number(cb.col) };
+    })
+    .filter((m) => m.r1 <= headRows && m.c1 <= lastCol)
+    .map((m) => ({ ...m, r2: Math.min(m.r2, headRows), c2: Math.min(m.c2, lastCol) }))
+    .filter((m) => m.r2 > m.r1 || m.c2 > m.c1);
+  const covered = new Set();
+  for (const m of merges) for (let r = m.r1; r <= m.r2; r++) for (let c = m.c1; c <= m.c2; c++) if (r !== m.r1 || c !== m.c1) covered.add(`${letter(c)}${r}`);
+  const cells = {};
+  const heights = {};
+  for (let r = 1; r <= headRows; r++) {
+    const row = ws.getRow(r);
+    if (row.height) heights[r] = pxHeight(row.height);
+    for (let c = 1; c <= lastCol; c++) {
+      const addr = `${letter(c)}${r}`;
+      if (covered.has(addr)) continue;
+      const cell = row.getCell(c);
+      const out = {};
+      const t = text(cell);
+      if (t) out.t = t;
+      if (cell.formula) out.f = `=${cell.formula}`;
+      // Sel gabungan: garis tepi kanan/bawah diambil dari sel ujung gabungan.
+      const m = merges.find((x) => x.r1 === r && x.c1 === c);
+      const st = styleOf(cell);
+      if (m) {
+        const end = styleOf(ws.getRow(m.r2).getCell(m.c2));
+        const sides = new Set([...(st.bd ?? "")].filter((x) => /[tlTL]/.test(x)).concat([...(end.bd ?? "")].filter((x) => /[rbRB]/.test(x))));
+        if (sides.size) st.bd = [...sides].join("");
+        else delete st.bd;
+      }
+      const id = styleId(st);
+      if (id !== undefined) out.s = id;
+      if (Object.keys(out).length) cells[addr] = out;
+    }
+  }
+  const view = ws.views?.[0];
+  const freeze = view?.state === "frozen" ? { x: view.xSplit ?? 0, y: view.ySplit ?? 0 } : undefined;
+
   defs.push({
     key: s.key,
     title: s.name.trim(),
@@ -104,6 +223,17 @@ for (const s of SHEETS) {
     dataStart: s.dataStart,
     notes,
     columns,
+    head: {
+      rows: headRows,
+      cells,
+      ...(Object.keys(heights).length ? { heights } : {}),
+      ...(merges.length ? { merges: merges.map((m) => `${letter(m.c1)}${m.r1}:${letter(m.c2)}${m.r2}`) } : {}),
+    },
+    styles,
+    ...(freeze ? { freeze } : {}),
+    ...(ws.properties.defaultRowHeight && ws.properties.defaultRowHeight !== 15 ? { rowHeight: pxHeight(ws.properties.defaultRowHeight) } : {}),
+    ...(ws.state !== "visible" ? { hiddenInExcel: true } : {}),
+    ...(color(ws.properties.tabColor) ? { tabColor: color(ws.properties.tabColor) } : {}),
   });
 }
 
@@ -132,6 +262,19 @@ const link = [
   { label: "Sisa Female (gr)", computed: `=IF(I{r}="","",${letter(n + 4)}{r}-${letter(n + 5)}{r})` },
 ];
 link.forEach((l, i) => rincian.columns.push({ key: letter(n + 1 + i), group: "Menurut Buku Induk (otomatis per LOT)", width: 110, ...l }));
+{
+  // Judul kolom penghubung di baris judul Excel (gabungan di baris atas, Male/Female di bawah), warna biru = otomatis.
+  const [top, bottom] = SHEETS.find((x) => x.key === "rincian-ss").header;
+  const sId = rincian.styles.push({ b: 1, f: "#DDEBF7", h: "center", v: "center", w: 1, bd: "trbl" }) - 1;
+  const first = letter(n + 1);
+  const last = letter(n + link.length);
+  rincian.head.cells[`${first}${top}`] = { t: "Menurut Buku Induk (otomatis per LOT)", s: sId };
+  for (let i = 2; i <= link.length; i++) rincian.head.cells[`${letter(n + i)}${top}`] = { s: sId };
+  rincian.head.merges = [...(rincian.head.merges ?? []), `${first}${top}:${last}${top}`];
+  link.forEach((l, i) => (rincian.head.cells[`${letter(n + 1 + i)}${bottom}`] = { t: l.label, s: sId }));
+  const dId = rincian.styles.push({ f: "#F2F8FD", c: "#1F4E79", bd: "trbl" }) - 1;
+  for (let i = 1; i <= link.length; i++) Object.assign(rincian.columns[n - 1 + i], { s: dId, fmt: '_-* #,##0.00_-;-* #,##0.00_-;_-* "-"_-;_-@_-' });
+}
 
 const out = `// DIBUAT OTOMATIS oleh scripts/gen-benih-sumber.mjs dari:
 //   ${FILES.bukuInduk}

@@ -1,8 +1,29 @@
 import ExcelJS from "exceljs";
 import { all } from "@/lib/db";
 import { can, currentUser } from "@/lib/session";
-import { sheetByKey, sheetFamily, SHEETS, WORKBOOKS, type SheetDef } from "@/lib/sheets";
+import { sheetByKey, sheetFamily, SHEETS, WORKBOOKS, type CellStyle, type SheetDef } from "@/lib/sheets";
 import { Evaluator, isError, parseNumber, type CellValue, type SheetSource } from "@/lib/sheet-formula";
+
+/** Gaya ringkas lembar (CellStyle) → gaya sel ExcelJS. */
+function applyStyle(cell: ExcelJS.Cell, st?: CellStyle) {
+  if (!st) return;
+  const argb = (hex: string) => `FF${hex.slice(1)}`;
+  if (st.b || st.i || st.u || st.z || st.c) {
+    cell.font = { name: "Calibri", size: st.z ?? 11, ...(st.b ? { bold: true } : {}), ...(st.i ? { italic: true } : {}), ...(st.u ? { underline: true } : {}), ...(st.c ? { color: { argb: argb(st.c) } } : {}) };
+  }
+  if (st.f) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: argb(st.f) } };
+  if (st.h || st.v || st.w) {
+    cell.alignment = {
+      ...(st.h ? { horizontal: st.h as ExcelJS.Alignment["horizontal"] } : {}),
+      ...(st.v ? { vertical: st.v as ExcelJS.Alignment["vertical"] } : {}),
+      ...(st.w ? { wrapText: true } : {}),
+    };
+  }
+  if (st.bd) {
+    const side = (ch: string) => (st.bd!.includes(ch.toUpperCase()) ? { style: "medium" as const } : st.bd!.includes(ch) ? { style: "thin" as const } : undefined);
+    cell.border = { top: side("t"), right: side("r"), bottom: side("b"), left: side("l") };
+  }
+}
 
 /**
  * Unduh lembar kerja offline sebagai file Excel (isi yang sudah terkirim ke ERP). Lembar dari file Excel diunduh
@@ -48,14 +69,33 @@ export async function GET(request: Request) {
     const src = srcs.get(s.key)!;
     const header = s.headerRows ?? [1];
     const start = s.dataStart ?? header[header.length - 1] + 1;
-    s.columns.forEach((c, i) => (ws.getColumn(i + 1).width = Math.round((c.width ?? 120) / 7.5)));
-    for (const n of s.notes ?? []) {
+    const styleAt = (i?: number) => (i === undefined ? undefined : s.styles?.[i]);
+    s.columns.forEach((c, i) => {
+      const col = ws.getColumn(i + 1);
+      col.width = s.head ? Math.max(0, ((c.width ?? 64) - 5) / 7) : Math.round((c.width ?? 120) / 7.5);
+      if (c.hidden) col.hidden = true;
+    });
+    if (s.freeze) ws.views = [{ state: "frozen", xSplit: s.freeze.x, ySplit: s.freeze.y }];
+    if (s.head) {
+      // Judul & judul kolom persis seperti file asal: isi, gaya, sel gabungan, tinggi baris.
+      for (const [addr, h] of Object.entries(s.head.cells)) {
+        const cell = ws.getCell(addr);
+        const col = addr.replace(/\d+$/, "");
+        const row = Number(addr.slice(col.length));
+        if (h.f) cell.value = { formula: h.f.slice(1), result: result(ev.value(src, col, row)) } as ExcelJS.CellValue;
+        else if (h.t) cell.value = parseNumber(h.t) ?? h.t;
+        applyStyle(cell, styleAt(h.s));
+      }
+      for (const m of s.head.merges ?? []) ws.mergeCells(m);
+      for (const [r, px] of Object.entries(s.head.heights ?? {})) ws.getRow(Number(r)).height = (px * 3) / 4;
+    }
+    for (const n of s.head ? [] : (s.notes ?? [])) {
       const cell = ws.getCell(n.cell);
       cell.value = n.formula ? { formula: n.formula.slice(1), result: result(ev.value(src, n.cell.replace(/\d+$/, ""), Number(n.cell.match(/\d+$/)![0]))) } as ExcelJS.CellValue : n.text;
       if (n.bg) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${n.bg.slice(1)}` } };
     }
     // Judul kolom di baris yang sama dengan file asal (dua baris bila ada kelompok).
-    s.columns.forEach((c, i) => {
+    if (!s.head) s.columns.forEach((c, i) => {
       const top = ws.getRow(header[0]).getCell(i + 1);
       top.value = c.group ?? c.label;
       top.font = { bold: true };
@@ -71,6 +111,8 @@ export async function GET(request: Request) {
       s.columns.forEach((c, i) => {
         const cell = row.getCell(i + 1);
         const raw = data[c.key] ?? "";
+        applyStyle(cell, styleAt(c.s));
+        if (c.fmt) cell.numFmt = c.fmt;
         if (c.computed) {
           // Kolom otomatis ERP (merujuk file lain) ditulis sebagai angka.
           const v = ev.value(src, c.key, pos);

@@ -44,6 +44,35 @@ export function formatValue(v: CellValue): string {
   return v;
 }
 
+/** Angka seri tanggal Excel → dd/mm/yyyy. */
+const serialDate = (n: number) => {
+  const d = new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86_400_000);
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+};
+
+/**
+ * Tampilan angka mengikuti format sel Excel ("#,##0", "0.00", akuntansi `_-* #,##0_-;…;_-* "-"_-`, persen, tanggal).
+ * Selain angka, atau tanpa format: sama dengan formatValue.
+ */
+export function formatCell(v: CellValue, fmt?: string): string {
+  if (typeof v !== "number" || !fmt || fmt === "General" || !Number.isFinite(v)) return formatValue(v);
+  const sections = fmt.split(";");
+  const sec = v < 0 && sections[1] ? sections[1] : v === 0 && sections[2] ? sections[2] : sections[0];
+  const bare = sec.replace(/"[^"]*"/g, "").replace(/\\./g, "").replace(/_./g, "");
+  if (!/[0#]/.test(bare)) {
+    if (/[dmy]/i.test(bare)) return serialDate(v);
+    const lit = sec.match(/"([^"]*)"/);
+    if (lit) return lit[1];
+  }
+  const pct = bare.includes("%");
+  const n = Math.abs(pct ? v * 100 : v);
+  const dec = (bare.match(/\.([0#]+)/)?.[1].length ?? 0);
+  const out = n.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: bare.includes(",") });
+  const body = `${out}${pct ? "%" : ""}`;
+  if (v >= 0) return body;
+  return sections[1] && sec.includes("(") ? `(${body})` : `-${body}`;
+}
+
 /* ------------------------------- Tokenizer ------------------------------- */
 
 type Tok =
