@@ -65,10 +65,19 @@ try {
       const tuples = chunk.map((row) => `(${cols.map((c) => (values.push(row[c] ?? null), `$${values.length}`)).join(",")})`);
       await client.query(`INSERT INTO ${q(t)} (${cols.map(q).join(",")}) VALUES ${tuples.join(",")}`, values);
     }
-    // Nomor id berikutnya melanjutkan dari id terbesar yang dipulihkan.
-    if (cols.includes("id")) {
-      await client.query(`SELECT setval(pg_get_serial_sequence('${q(t)}', 'id'), COALESCE(MAX(id), 1), MAX(id) IS NOT NULL) FROM ${q(t)}`);
-    }
+  }
+  // Semua nomor urut melanjutkan dari nilai terbesar yang dipulihkan: id SERIAL tiap tabel dan juga sequence lain yang
+  // dipakai sebagai default kolom (mis. sheet_rows.rev ← sheet_rev_seq). Kolom id berupa teks (mis. sheet_rows) dilewati.
+  const seqCols = (
+    await client.query(
+      `SELECT table_name t, column_name c, substring(column_default from 'nextval\\(''([^'']+)''') s
+       FROM information_schema.columns
+       WHERE table_schema = current_schema() AND column_default LIKE 'nextval(%' AND data_type IN ('integer', 'bigint', 'smallint')`,
+    )
+  ).rows;
+  for (const { t, c, s } of seqCols) {
+    const seq = s.includes(".") ? s : `${schema ?? "public"}.${s}`;
+    await client.query(`SELECT setval($1::regclass, COALESCE(MAX(${q(c)}), 1), MAX(${q(c)}) IS NOT NULL) FROM ${q(t)}`, [seq]);
   }
   await client.query("COMMIT");
   console.log("\nSelesai: data dipulihkan dari backup.");
