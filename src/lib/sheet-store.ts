@@ -76,45 +76,27 @@ export const newRowId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date
 
 export const isDirty = (r: LocalRow) => Object.keys(r.dirty).length > 0 || !!r.dirtyDeleted || !!r.dirtyPosition;
 
-export type SyncResult = { ok: true; rows: LocalRow[] } | { ok: false; reason: "offline" | "auth" | "error"; message: string };
+export type MultiSyncResult = { ok: true; rows: Record<string, LocalRow[]>; errors: Record<string, string> } | { ok: false; reason: "offline" | "auth" | "error"; message: string };
 
-/**
- * Kirim perubahan yang belum terkirim lalu ambil perubahan dari server. `getLatest` membaca isi lembar terbaru di
- * laptop setelah server menjawab, sehingga ketikan yang terjadi selama pengiriman tidak tertimpa.
- */
-export async function syncSheet(sheet: string, getLatest: () => Promise<LocalRow[]>): Promise<SyncResult> {
-  if (typeof navigator !== "undefined" && !navigator.onLine) return { ok: false, reason: "offline", message: "Sedang offline" };
-  const before = await getLatest();
-  const pending = before.filter(isDirty);
-  const sent = new Map(pending.map((r) => [r.id, { data: { ...r.data }, dirty: { ...r.dirty }, deleted: r.dirtyDeleted, position: r.position }]));
+type ServerRow = { id: string; data: Record<string, string>; position: number; deleted: boolean };
+type Sent = Map<string, { data: Record<string, string>; dirty: Record<string, true>; position: number }>;
+
+function prepare(rows: LocalRow[]) {
+  const pending = rows.filter(isDirty);
+  const sent: Sent = new Map(pending.map((r) => [r.id, { data: { ...r.data }, dirty: { ...r.dirty }, position: r.position }]));
   const changes = pending.map((r) => ({
     id: r.id,
     patch: Object.fromEntries(Object.keys(r.dirty).map((k) => [k, r.data[k] ?? ""])),
     position: r.position,
     deleted: !!r.dirtyDeleted,
   }));
-  let res: Response;
-  try {
-    res = await fetch("/api/lembar/sync", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sheet, since: await getSince(sheet), changes }),
-      credentials: "same-origin",
-      cache: "no-store",
-    });
-  } catch {
-    return { ok: false, reason: "offline", message: "Tidak tersambung ke server" };
-  }
-  // Tanpa cookie sesi, proxy mengalihkan ke halaman login (HTML), bukan JSON.
-  if (res.status === 401 || res.redirected || !(res.headers.get("content-type") ?? "").includes("json")) {
-    return { ok: false, reason: "auth", message: "Sesi login habis. Login lagi supaya data terkirim; data tetap aman di laptop." };
-  }
-  const json = (await res.json().catch(() => null)) as { rows?: { id: string; data: Record<string, string>; position: number; deleted: boolean }[]; rev?: number; error?: string } | null;
-  if (!res.ok || !json?.rows) return { ok: false, reason: "error", message: json?.error ?? `Gagal mengirim (${res.status})` };
+  return { sent, changes };
+}
 
-  // Gabungkan: data server menimpa, kecuali sel yang diubah lagi di laptop selama pengiriman berlangsung.
-  const latest = new Map((await getLatest()).map((r) => [r.id, r]));
-  for (const s of json.rows) {
+/** Gabungkan jawaban server: data server menimpa, kecuali sel yang diubah lagi di laptop selama pengiriman berlangsung. */
+function merge(latestRows: LocalRow[], serverRows: ServerRow[], sent: Sent) {
+  const latest = new Map(latestRows.map((r) => [r.id, r]));
+  for (const s of serverRows) {
     const local = latest.get(s.id);
     const was = sent.get(s.id);
     const dirty: Record<string, true> = {};
@@ -138,9 +120,70 @@ export async function syncSheet(sheet: string, getLatest: () => Promise<LocalRow
       dirtyPosition: !!local?.dirtyPosition && local.position !== was?.position,
     });
   }
-  // Baris yang terkirim tapi tidak ikut kembali (mis. ditolak karena lembar lain) dibiarkan apa adanya.
-  const merged = [...latest.values()];
-  await saveRows(sheet, merged);
-  await setSince(sheet, json.rev ?? 0);
-  return { ok: true, rows: merged };
+  // Baris yang terkirim tapi tidak ikut kembali dibiarkan apa adanya.
+  return [...latest.values()];
+}
+
+type Failure = { ok: false; reason: "offline" | "auth" | "error"; message: string };
+
+async function post(body: unknown): Promise<{ ok: true; json: Record<string, unknown> } | Failure> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return { ok: false, reason: "offline", message: "Sedang offline" };
+  let res: Response;
+  try {
+    res = await fetch("/api/lembar/sync", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, reason: "offline", message: "Tidak tersambung ke server" };
+  }
+  // Tanpa cookie sesi, proxy mengalihkan ke halaman login (HTML), bukan JSON.
+  if (res.status === 401 || res.redirected || !(res.headers.get("content-type") ?? "").includes("json")) {
+    return { ok: false, reason: "auth", message: "Sesi login habis. Login lagi supaya data terkirim; data tetap aman di laptop." };
+  }
+  const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!res.ok || !json) return { ok: false, reason: "error", message: (json?.error as string) ?? `Gagal mengirim (${res.status})` };
+  return { ok: true, json };
+}
+
+/**
+ * Sinkron beberapa lembar sekaligus dalam satu permintaan (lembar yang saling dirujuk rumus): kirim perubahan yang belum
+ * terkirim, ambil perubahan dari server, lalu gabungkan.
+ *
+ * `read` & `write` harus sinkron (tanpa await): penggabungan memakai isi lembar terbaru tepat saat jawaban server
+ * diterapkan, sehingga ketikan yang terjadi selama pengiriman tidak pernah tertimpa.
+ */
+export async function syncSheets(
+  sheets: string[],
+  read: (sheet: string) => LocalRow[],
+  write: (updates: Record<string, LocalRow[]>) => void,
+): Promise<MultiSyncResult> {
+  const prepared = new Map<string, Sent>();
+  const body = [];
+  for (const sheet of sheets) {
+    const { sent, changes } = prepare(read(sheet));
+    prepared.set(sheet, sent);
+    body.push({ sheet, since: await getSince(sheet), changes });
+  }
+  const res = await post({ sheets: body });
+  if (!res.ok) return res;
+  const results = (res.json.results ?? {}) as Record<string, { rows?: ServerRow[]; rev?: number; error?: string }>;
+  const rows: Record<string, LocalRow[]> = {};
+  const errors: Record<string, string> = {};
+  // Bagian sinkron: baca isi terbaru → gabung → tulis, tanpa jeda di antaranya.
+  for (const sheet of sheets) {
+    const r = results[sheet];
+    if (!r || r.error || !r.rows) errors[sheet] = r?.error ?? "Tidak ada jawaban";
+    else rows[sheet] = merge(read(sheet), r.rows, prepared.get(sheet)!);
+  }
+  write(rows);
+  // Penyimpanan ke laptop menyusul; transaksi IndexedDB berjalan berurutan, jadi ketikan sesudahnya tetap menang.
+  for (const sheet of Object.keys(rows)) {
+    await saveRows(sheet, rows[sheet]);
+    await setSince(sheet, results[sheet].rev ?? 0);
+  }
+  return { ok: true, rows, errors };
 }
