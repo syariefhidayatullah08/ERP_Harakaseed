@@ -58,6 +58,7 @@ export const DATASETS: Record<string, Dataset> = {
       { key: "order_date", label: "Tanggal", type: "date" },
       { key: "customer", label: "Pelanggan", width: 28 },
       { key: "city", label: "Kota", width: 16 },
+      { key: "varietas", label: "Varietas", width: 40 },
       { key: "status", label: "Status" },
       { key: "total", label: "Total", type: "money" },
       ...(finance(u)
@@ -72,7 +73,10 @@ export const DATASETS: Record<string, Dataset> = {
     rows: async (r) =>
       mapRows(
         await all<Row & { status: string; total: number; paid: number }>(
-          `SELECT so.so_no, so.channel, so.order_date, c.name customer, c.city, so.status, so.total, so.invoice_no, so.paid, so.total - so.paid sisa, so.due_date
+          `SELECT so.so_no, so.channel, so.order_date, c.name customer, c.city,
+             (SELECT string_agg(COALESCE(NULLIF(i.item_name, ''), p.name, '') || CASE WHEN i.pack_size <> '' THEN ' ' || i.pack_size ELSE '' END || ' × ' || i.qty::text, ', ' ORDER BY i.id)
+              FROM so_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = so.id) varietas,
+             so.status, so.total, so.invoice_no, so.paid, so.total - so.paid sisa, so.due_date
            FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.order_date BETWEEN ? AND ? ORDER BY so.order_date, so.so_no`,
           r.from,
           r.to,

@@ -8,6 +8,10 @@ import { SubmitButton } from "@/components/buttons";
 import { deleteOrder } from "@/actions/sales";
 import { CHANNELS, CHANNEL_KEYS, toChannel, type Channel } from "@/lib/sales-channel";
 
+type Item = { so_id: number; name: string; pack_size: string; qty: number };
+const MAX_ITEMS = 3;
+const qtyFmt = (n: number) => new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(n);
+
 type Row = { id: number; so_no: string; channel: string; customer: string; city: string; order_date: string; status: string; total: number; paid: number; invoice_no: string | null };
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
@@ -25,10 +29,23 @@ export async function SalesList({ channel, searchParams }: { channel?: Channel; 
 
   const rows = await all<Row>(
     `SELECT so.*, c.name customer, c.city FROM sales_orders so JOIN customers c ON c.id = so.customer_id
-     WHERE (? = '' OR so.channel = ?) AND (? = '' OR so.status = ?) AND (so.so_no ILIKE ? OR c.name ILIKE ? OR COALESCE(so.invoice_no,'') ILIKE ?)
+     WHERE (? = '' OR so.channel = ?) AND (? = '' OR so.status = ?)
+       AND (so.so_no ILIKE ? OR c.name ILIKE ? OR COALESCE(so.invoice_no,'') ILIKE ?
+            OR EXISTS (SELECT 1 FROM so_items i LEFT JOIN products p ON p.id = i.product_id
+                       WHERE i.so_id = so.id AND (i.item_name ILIKE ? OR p.name ILIKE ?)))
      ORDER BY so.order_date DESC, so.id DESC LIMIT 300`,
-    ch, ch, status, status, `%${q}%`, `%${q}%`, `%${q}%`,
+    ch, ch, status, status, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`,
   );
+  // Varietas yang dibeli di tiap pesanan (nama ketik manual didahulukan, lalu nama produk).
+  const items = rows.length
+    ? await all<Item>(
+        `SELECT i.so_id, COALESCE(NULLIF(i.item_name, ''), p.name, '') name, i.pack_size, i.qty FROM so_items i
+         LEFT JOIN products p ON p.id = i.product_id WHERE i.so_id = ANY(?::int[]) ORDER BY i.so_id, i.id`,
+        `{${rows.map((r) => r.id).join(",")}}`,
+      )
+    : [];
+  const itemsOf = new Map<number, Item[]>();
+  for (const it of items) itemsOf.set(it.so_id, [...(itemsOf.get(it.so_id) ?? []), it]);
   const counts = await all<{ status: string; n: number }>("SELECT status, COUNT(*) n FROM sales_orders WHERE (? = '' OR channel = ?) GROUP BY status", ch, ch);
   const count = (s: string) => counts.find((c) => c.status === s)?.n ?? 0;
 
@@ -80,7 +97,7 @@ export async function SalesList({ channel, searchParams }: { channel?: Channel; 
 
       <form className="mb-4 flex gap-2">
         {status && <input type="hidden" name="status" value={status} />}
-        <input name="q" defaultValue={q} placeholder="Cari no. pesanan, pelanggan…" className="input max-w-sm" />
+        <input name="q" defaultValue={q} placeholder="Cari no. pesanan, pelanggan, varietas…" className="input max-w-sm" />
         <button className="btn-secondary">Cari</button>
       </form>
       <Card className="overflow-hidden">
@@ -92,6 +109,7 @@ export async function SalesList({ channel, searchParams }: { channel?: Channel; 
                   <th>No. Pesanan</th>
                   {!channel && <th>Jenis</th>}
                   <th>Pelanggan</th>
+                  <th>Varietas</th>
                   <th>Tanggal</th>
                   <th>Status</th>
                   {finance && <th>Pembayaran</th>}
@@ -113,6 +131,26 @@ export async function SalesList({ channel, searchParams }: { channel?: Channel; 
                       {!channel && <td>{CHANNELS[toChannel(o.channel)].label}</td>}
                       <td>
                         {o.customer} <div className="text-xs text-muted">{o.city}</div>
+                      </td>
+                      <td className="min-w-48 text-sm">
+                        {(() => {
+                          const list = itemsOf.get(o.id) ?? [];
+                          if (!list.length) return <span className="text-xs text-muted">—</span>;
+                          const unit = CHANNELS[toChannel(o.channel)].short;
+                          return (
+                            <ul className="space-y-0.5">
+                              {list.slice(0, MAX_ITEMS).map((it, i) => (
+                                <li key={i} className="leading-tight">
+                                  <span className="font-medium">{it.name || "—"}</span>
+                                  <span className="text-xs text-muted">
+                                    {it.pack_size ? ` · ${it.pack_size}` : ""} · {qtyFmt(it.qty)} {unit}
+                                  </span>
+                                </li>
+                              ))}
+                              {list.length > MAX_ITEMS && <li className="text-xs text-muted">+{list.length - MAX_ITEMS} varietas lain</li>}
+                            </ul>
+                          );
+                        })()}
                       </td>
                       <td className="whitespace-nowrap text-muted">{tanggal(o.order_date)}</td>
                       <td>
