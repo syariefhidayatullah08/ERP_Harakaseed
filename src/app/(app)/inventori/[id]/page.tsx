@@ -4,7 +4,8 @@ import { all, get } from "@/lib/db";
 import { daysUntil, num, tanggal } from "@/lib/format";
 import { Badge, Card, DL, Empty, Field, Flash, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/buttons";
-import { adjustLot } from "@/actions/inventory";
+import { adjustLot, deleteLot, updateLot } from "@/actions/inventory";
+import { packStock } from "@/lib/inventory";
 import { requireAccess } from "@/lib/session";
 import { Attachments } from "@/components/attachments";
 
@@ -38,6 +39,16 @@ export default async function LotDetail({ params, searchParams }: PageProps<"/in
     lot.id,
   );
   const d = daysUntil(lot.expiry_date);
+  const [packs, products, attachments] = await Promise.all([
+    packStock(),
+    all<{ id: number; name: string; crop: string }>("SELECT id, name, crop FROM products WHERE active = 1 OR id = ? ORDER BY name", lot.product_id),
+    get<{ n: number }>("SELECT COUNT(*) n FROM attachments WHERE ref_type = 'lot' AND ref_id = ?", lot.id),
+  ]);
+  // Varietas/gramasi hanya bisa diganti & lot hanya bisa dihapus selama belum dipakai pesanan.
+  const used = shipments.length > 0 || !!(await get("SELECT 1 FROM so_allocations WHERE lot_id = ? LIMIT 1", lot.id));
+  const packOptions = products.flatMap((p) => packs.filter((k) => k.product_id === p.id).map((k) => ({ value: `${p.id}|${k.pack_size}`, label: `${p.name} — ${p.crop} · ${k.pack_size}` })));
+  const current = `${lot.product_id}|${lot.pack_size}`;
+  if (!packOptions.some((o) => o.value === current)) packOptions.unshift({ value: current, label: `${lot.name} — ${lot.crop} · ${lot.pack_size}` });
 
   return (
     <>
@@ -157,6 +168,63 @@ export default async function LotDetail({ params, searchParams }: PageProps<"/in
           <Attachments refType="lot" refId={lot.id} title="Dokumen mutu & bukti" />
         </div>
       </div>
+
+      <Card title="Ubah data lot" className="mt-5 scroll-mt-6">
+        <form id="ubah" action={updateLot} className="grid scroll-mt-6 gap-4 p-5 sm:grid-cols-4">
+          <input type="hidden" name="lot_id" value={lot.id} />
+          <Field label="No. lot *">
+            <input name="lot_no" required defaultValue={lot.lot_no} className="input font-mono uppercase" />
+          </Field>
+          <Field label={used ? "Varietas & gramasi (terkunci: sudah dipakai pesanan)" : "Varietas & gramasi"} className="sm:col-span-3">
+            <select name="product_pack" defaultValue={current} disabled={used} className="input">
+              {packOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Daya kecambah (%)">
+            <input name="germination" type="number" step="0.1" min={0} max={100} defaultValue={lot.germination} className="input" />
+          </Field>
+          <Field label="Kemurnian fisik (%)">
+            <input name="purity" type="number" step="0.1" min={0} max={100} defaultValue={lot.purity} className="input" />
+          </Field>
+          <Field label="Kadar air (%)">
+            <input name="moisture" type="number" step="0.1" min={0} max={100} defaultValue={lot.moisture} className="input" />
+          </Field>
+          <Field label="Lokasi gudang">
+            <input name="location" defaultValue={lot.location} className="input" />
+          </Field>
+          <Field label="Tanggal produksi/kemas *">
+            <input name="prod_date" type="date" required defaultValue={lot.prod_date} className="input" />
+          </Field>
+          <Field label="Kadaluarsa *">
+            <input name="expiry_date" type="date" required defaultValue={lot.expiry_date} className="input" />
+          </Field>
+          <p className="self-end text-xs text-muted sm:col-span-2">Jumlah stok diubah lewat Penyesuaian stok di atas, supaya tercatat di riwayat.</p>
+          <div className="flex justify-end sm:col-span-4">
+            <SubmitButton>Simpan perubahan</SubmitButton>
+          </div>
+        </form>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-5 text-sm">
+          <span className="text-muted">
+            {used
+              ? "Lot ini sudah dipakai pesanan/pengiriman, jadi tidak bisa dihapus (jejak telusur ke pelanggan harus tetap ada). Gunakan Penyesuaian stok untuk menghabiskannya."
+              : attachments?.n
+                ? "Hapus dulu dokumen yang terlampir di lot ini sebelum menghapus lot."
+                : "Hapus lot ini bila salah input. Riwayat stok lot ikut terhapus."}
+          </span>
+          {!used && !attachments?.n && (
+            <form action={deleteLot}>
+              <input type="hidden" name="lot_id" value={lot.id} />
+              <SubmitButton className="btn-danger" confirm={`Hapus lot ${lot.lot_no} (sisa ${lot.qty_available} kemasan)? Tidak bisa dibatalkan.`}>
+                Hapus lot
+              </SubmitButton>
+            </form>
+          )}
+        </div>
+      </Card>
     </>
   );
 }
